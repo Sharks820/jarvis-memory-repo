@@ -20,7 +20,7 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
-from jarvis_engine.stt_contracts import TranscriptionSegment
+from jarvis_engine.stt.contracts import TranscriptionSegment
 
 logger = logging.getLogger(__name__)
 

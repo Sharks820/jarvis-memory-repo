@@ -31,7 +31,7 @@ from jarvis_engine.commands.voice_commands import (
     VoiceVerifyCommand,
     VoiceVerifyResult,
 )
-from jarvis_engine.stt_contracts import VoiceUtterance
+from jarvis_engine.stt.contracts import VoiceUtterance
 
 
 def _build_voice_utterance(

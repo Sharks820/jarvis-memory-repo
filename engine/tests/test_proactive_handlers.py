@@ -277,6 +277,7 @@ class TestWakeWordStartHandler:
         mock_record.assert_called_once_with(
             max_duration_seconds=8.0,
             drain_seconds=0.3,
+            mode="conversation",
         )
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args.kwargs

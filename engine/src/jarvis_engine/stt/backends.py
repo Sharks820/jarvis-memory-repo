@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
-from jarvis_engine.stt_contracts import TranscriptionSegment
+from jarvis_engine.stt.contracts import TranscriptionSegment
 
 if TYPE_CHECKING:
     from jarvis_engine.stt.core import TranscriptionResult

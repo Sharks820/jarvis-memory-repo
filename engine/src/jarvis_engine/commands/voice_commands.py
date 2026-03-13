@@ -8,7 +8,7 @@ from typing import Any
 
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
 from jarvis_engine.commands.base import ResultBase
-from jarvis_engine.stt_contracts import TranscriptionSegment, VoiceUtterance
+from jarvis_engine.stt.contracts import TranscriptionSegment, VoiceUtterance
 
 
 @dataclass(frozen=True)

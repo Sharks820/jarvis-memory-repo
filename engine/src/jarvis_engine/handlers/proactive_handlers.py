@@ -28,7 +28,7 @@ from jarvis_engine.commands.proactive_commands import (
     WakeWordStartCommand,
     WakeWordStartResult,
 )
-from jarvis_engine.stt_contracts import VoiceUtterance
+from jarvis_engine.stt.contracts import VoiceUtterance
 
 logger = logging.getLogger(__name__)
 

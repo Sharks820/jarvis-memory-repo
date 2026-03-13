@@ -31,7 +31,7 @@ from jarvis_engine.voice.extractors import (
     _extract_first_url,
     _is_read_only_voice_request,
 )
-from jarvis_engine.stt_contracts import VoiceUtterance
+from jarvis_engine.stt.contracts import VoiceUtterance
 
 logger = logging.getLogger(__name__)
 

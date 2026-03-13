@@ -115,8 +115,8 @@ def test_detect_hallucination_exact_vs_substring() -> None:
     # But NOT when embedded in longer speech
     assert detect_hallucination("That's the end of my question") is False
     assert detect_hallucination("Bye bye see you later") is False
-    # Substring phrases still trigger inside longer text
-    assert detect_hallucination("He said thanks for watching the game") is True
+    # Substring phrases in longer speech are NOT hallucinations (not dominant)
+    assert detect_hallucination("He said thanks for watching the game") is False
 
 
 def test_detect_hallucination_repeated_sequences() -> None:
@@ -284,8 +284,8 @@ def test_correct_entities_phonetic_match() -> None:
     assert "Conner" in result
 
 
-def test_postprocess_short_command_skips_entity_correction() -> None:
-    """Short high-confidence commands skip entity correction (fast path)."""
+def test_postprocess_short_command_still_corrects_entities() -> None:
+    """Short high-confidence commands still apply entity correction."""
     from jarvis_engine.stt.postprocess import postprocess_transcription
 
     result = postprocess_transcription(
@@ -293,8 +293,8 @@ def test_postprocess_short_command_skips_entity_correction() -> None:
         0.99,
         entity_list=["Jarvis", "Ollama"],
     )
-    # Short-command path returns after filler removal, no entity correction
-    assert result == "hey jarvis open ollama"
+    # Short-command path skips LLM but still applies entity correction
+    assert result == "Hey Jarvis open Ollama"
 
 
 @pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
@@ -388,7 +388,7 @@ def test_postprocess_skip_path_short_command() -> None:
         entity_list=["Conner"],
     )
     mock_gateway.complete.assert_not_called()
-    assert result == "brain status"
+    assert result == "Brain status"
 
 
 def test_postprocess_hallucination_returns_empty() -> None:
