@@ -268,7 +268,7 @@ class HealthRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
+            from jarvis_engine.memory.hygiene import hygiene_dashboard_metrics
 
             metrics = hygiene_dashboard_metrics(self._root)
         except _HEALTH_PROBE_ERRORS as exc:

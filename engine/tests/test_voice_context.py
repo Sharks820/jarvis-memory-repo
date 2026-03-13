@@ -65,7 +65,7 @@ class TestBuildSmartContext:
         """Return value is a 4-tuple of lists."""
         bus = _make_bus()
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={"selected": []}):
             result = _build_smart_context(bus, "hello")
         assert isinstance(result, tuple)
         assert len(result) == 4
@@ -97,7 +97,7 @@ class TestBuildSmartContext:
         bus = _make_bus()
 
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={
                  "selected": [
                      {"summary": "Legacy memory 1"},
                      {"summary": "Legacy memory 2"},
@@ -113,7 +113,7 @@ class TestBuildSmartContext:
         bus = _make_bus()
 
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={"selected": []}):
             memory_lines, _, _, _ = _build_smart_context(bus, "hello")
 
         assert memory_lines == []
@@ -150,7 +150,7 @@ class TestBuildSmartContext:
         bus = _make_bus(pref_tracker=pref_tracker)
 
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={"selected": []}):
             _, _, _, pref_lines = _build_smart_context(bus, "hello")
 
         assert len(pref_lines) == 1
@@ -161,7 +161,7 @@ class TestBuildSmartContext:
         bus = _make_bus(pref_tracker=None)
 
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={"selected": []}):
             _, _, _, pref_lines = _build_smart_context(bus, "hello")
 
         assert pref_lines == []
@@ -209,7 +209,7 @@ class TestBuildSmartContext:
 
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", side_effect=RuntimeError("fail")), \
-             patch("jarvis_engine.brain_memory.build_context_packet", return_value={
+             patch("jarvis_engine.memory.brain.build_context_packet", return_value={
                  "selected": [{"summary": "Fallback memory"}]
              }):
             memory_lines, _, _, _ = _build_smart_context(bus, "test")

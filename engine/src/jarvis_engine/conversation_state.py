@@ -52,6 +52,7 @@ _TIMELINE_VACUUM_THRESHOLD = 1000
 # Entity validation limits (S5)
 _MAX_ENTITY_LENGTH = 200
 _MAX_ENTITIES_PER_TURN = 50
+_MAX_ROLLING_SUMMARY_CHARS = 2000
 _RE_CODE_BLOCK = re.compile(r"```")
 _RE_URL_ENCODED = re.compile(r"(?:%[0-9A-Fa-f]{2}){3,}")
 _RE_BASE64_BLOCK = re.compile(r"^(?=[A-Za-z0-9+/]*[+/=])[A-Za-z0-9+/]{16,}={0,2}$")
@@ -1170,9 +1171,9 @@ class ConversationStateManager:
                 merged = f"{self._snapshot.rolling_summary} | {combined}"
             else:
                 merged = combined
-            # Cap rolling summary at 2000 chars
-            if len(merged) > 2000:
-                merged = merged[-2000:]
+            # Cap rolling summary length
+            if len(merged) > _MAX_ROLLING_SUMMARY_CHARS:
+                merged = merged[-_MAX_ROLLING_SUMMARY_CHARS:]
             self._snapshot.rolling_summary = merged
 
             # Extract entities and decisions from dropped content

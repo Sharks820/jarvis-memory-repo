@@ -300,7 +300,7 @@ def run_mobile_server(
     - ``False``: explicitly disable TLS (plain HTTP).
     """
     from jarvis_engine.ingest import IngestionPipeline
-    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.memory.store import MemoryStore
     from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
 
     tls_cert, tls_key, tls_active = _resolve_tls(repo_root, tls)

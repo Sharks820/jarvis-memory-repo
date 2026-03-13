@@ -8,7 +8,7 @@ from typing import Literal
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_short
 from jarvis_engine.learning.trust import classify_learning_subject
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 
 logger = logging.getLogger(__name__)
 

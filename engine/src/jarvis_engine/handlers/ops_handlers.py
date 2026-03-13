@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from jarvis_engine.learning.usage_patterns import UsagePatternTracker
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
-    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.memory.store import MemoryStore
 
 from jarvis_engine._shared import check_path_within_root as _check_path_within_root
 
@@ -102,7 +103,9 @@ class OpsBriefHandler:
                 logger.warning("OpsBrief output path check failed: %s", exc)
                 return OpsBriefResult(brief=str(exc))
             cmd.output_path.parent.mkdir(parents=True, exist_ok=True)
-            cmd.output_path.write_text(brief, encoding="utf-8")
+            tmp = cmd.output_path.with_suffix(f"{cmd.output_path.suffix}.tmp.{os.getpid()}")
+            tmp.write_text(brief, encoding="utf-8")
+            os.replace(str(tmp), str(cmd.output_path))
             saved = str(cmd.output_path)
         return OpsBriefResult(brief=brief, saved_path=saved)
 
@@ -182,7 +185,7 @@ class AutomationRunHandler:
     def _get_store(self) -> MemoryStore:
         """Lazily create and cache the MemoryStore."""
         if self._store is None:
-            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.memory.store import MemoryStore
 
             self._store = MemoryStore(self._root)
         return self._store
@@ -271,7 +274,7 @@ class MissionRunHandler:
             return self._enriched_pipeline
         if self._pipeline is None:
             from jarvis_engine.ingest import IngestionPipeline
-            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.memory.store import MemoryStore
 
             self._store = MemoryStore(self._root)
             self._pipeline = IngestionPipeline(self._store)
@@ -476,7 +479,7 @@ class MemoryHygieneHandler:
         self._engine = engine
 
     def handle(self, cmd: MemoryHygieneCommand) -> MemoryHygieneResult:
-        from jarvis_engine.memory_hygiene import MemoryHygieneEngine
+        from jarvis_engine.memory.hygiene import MemoryHygieneEngine
 
         if self._engine is None:
             return MemoryHygieneResult(

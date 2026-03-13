@@ -27,7 +27,7 @@ from jarvis_engine._shared import runtime_dir
 from jarvis_engine.config import repo_root
 
 if TYPE_CHECKING:
-    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.memory.store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def _get_auto_ingest_store() -> "MemoryStore":
         return _auto_ingest_store
     with _auto_ingest_store_lock:
         if _auto_ingest_store is None:
-            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.memory.store import MemoryStore
 
             _auto_ingest_store = MemoryStore(repo_root())
         return _auto_ingest_store
@@ -136,7 +136,7 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
         content=safe_content,
     )
     try:
-        from jarvis_engine.brain_memory import ingest_brain_record
+        from jarvis_engine.memory.brain import ingest_brain_record
 
         ingest_brain_record(
             repo_root(),

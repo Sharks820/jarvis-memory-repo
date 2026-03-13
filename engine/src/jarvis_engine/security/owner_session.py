@@ -18,6 +18,8 @@ import threading
 import time
 from typing import Any, TypedDict
 
+from jarvis_engine._constants import PBKDF2_ITERATIONS as _PBKDF2_ITERATIONS, PBKDF2_SALT_LEN as _PBKDF2_SALT_LEN
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,10 +45,8 @@ try:
 except ImportError:  # pragma: no cover
     logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
 
-# PBKDF2 constants
 
-_PBKDF2_ITERATIONS = 600_000
-_PBKDF2_SALT_LEN = 32  # 256-bit random salt per password
+# PBKDF2 constants imported from jarvis_engine._constants
 
 
 # OwnerSessionManager

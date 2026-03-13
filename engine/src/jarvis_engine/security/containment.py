@@ -18,6 +18,8 @@ from collections import deque
 from enum import IntEnum
 from typing import TYPE_CHECKING, Protocol, TypedDict
 
+from jarvis_engine._constants import PBKDF2_ITERATIONS as _PBKDF2_ITERATIONS
+
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
 
@@ -85,9 +87,6 @@ class ContainmentLevel(IntEnum):
 # In production this would come from secure storage; here we use an env var
 # or fall back to a known test hash.
 _MASTER_CREDENTIAL_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
-
-
-_PBKDF2_ITERATIONS = 600_000
 
 
 def _hash_password(

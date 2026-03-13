@@ -69,7 +69,7 @@ def _retrieve_memories_legacy(
 
     Returns a list of summary strings.  Returns empty list on failure.
     """
-    from jarvis_engine.brain_memory import build_context_packet
+    from jarvis_engine.memory.brain import build_context_packet
     from jarvis_engine.config import repo_root
 
     try:

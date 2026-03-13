@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 from jarvis_engine import main as main_mod
+from jarvis_engine import cli_system as cli_system_mod
 
 
 # ===========================================================================
@@ -722,7 +723,7 @@ class TestMobileDesktopSyncMocked:
             return_code=0,
         )
         bus = mock_bus(result)
-        monkeypatch.setattr(main_mod, "_auto_ingest_memory", lambda **kw: "")
+        monkeypatch.setattr(cli_system_mod, "_auto_ingest_memory", lambda **kw: "")
         rc = main_mod.cmd_mobile_desktop_sync(auto_ingest=False, as_json=True)
         assert rc == 0
         parsed = json.loads(capsys.readouterr().out)
@@ -736,7 +737,7 @@ class TestMobileDesktopSyncMocked:
             return_code=0,
         )
         bus = mock_bus(result)
-        monkeypatch.setattr(main_mod, "_auto_ingest_memory", lambda **kw: "")
+        monkeypatch.setattr(cli_system_mod, "_auto_ingest_memory", lambda **kw: "")
         rc = main_mod.cmd_mobile_desktop_sync(auto_ingest=False, as_json=False)
         assert rc == 0
         out = capsys.readouterr().out

@@ -10,7 +10,7 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json, now_iso as _now_iso, parse_iso_timestamp
 from jarvis_engine._shared import safe_float as _safe_float
 
 _ACTIONS_LOCK = threading.Lock()
@@ -280,8 +280,7 @@ def write_spam_report(
             "tap_url": "https://www.samsung.com/us/support/answer/ANS10003465/",
         },
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    _atomic_write_json(path, payload)
 
 
 def _normalize_number(number: str) -> str:

@@ -29,6 +29,8 @@ from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
 
 logger = logging.getLogger(__name__)
 
+_SECONDS_PER_HOUR = 3600
+_VOIP_LATENCY_THRESHOLD_MS = 1500  # VoIP transcoding typical threshold
 _CAMPAIGNS_LOCK = threading.Lock()
 
 
@@ -231,7 +233,7 @@ def _score_burst_pattern(
     if span == 0:
         signals.append("burst_pattern_instant")
         return 0.15
-    if len(timestamps) / (span / 3600) >= 3:
+    if len(timestamps) / (span / _SECONDS_PER_HOUR) >= 3:
         signals.append("burst_pattern")
         return 0.10
     return 0.0
@@ -399,8 +401,8 @@ def compute_enhanced_spam_score(
         if known_voip:
             score += 0.15
 
-    # Call setup latency (VoIP transcoding > 1500ms)
-    if setup_latency_ms > 1500:
+    # Call setup latency (VoIP transcoding above threshold)
+    if setup_latency_ms > _VOIP_LATENCY_THRESHOLD_MS:
         score += 0.08
 
     # Carrier risk

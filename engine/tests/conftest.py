@@ -195,7 +195,10 @@ def mock_bus(monkeypatch):
     from jarvis_engine import cli_ops as cli_ops_mod
     from jarvis_engine import cli_knowledge as cli_knowledge_mod
     from jarvis_engine import _cli_helpers as cli_helpers_mod
-
+    from jarvis_engine import cli_system as cli_system_mod
+    from jarvis_engine import cli_security as cli_security_mod
+    from jarvis_engine import cli_tasks as cli_tasks_mod
+    from jarvis_engine import cli_voice as cli_voice_mod
     def _factory(result_obj):
         bus = _make_bus_mock(result_obj)
         def _get_bus_fn():
@@ -205,6 +208,10 @@ def mock_bus(monkeypatch):
         monkeypatch.setattr(cli_ops_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_knowledge_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_helpers_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_system_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_security_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_tasks_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_voice_mod, "_get_bus", _get_bus_fn)
         return bus
 
     return _factory

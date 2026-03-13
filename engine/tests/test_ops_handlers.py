@@ -120,7 +120,7 @@ class TestAutomationRunHandler:
 
     @patch("jarvis_engine.automation.load_actions", return_value=[])
     @patch("jarvis_engine.automation.AutomationExecutor")
-    @patch("jarvis_engine.memory_store.MemoryStore")
+    @patch("jarvis_engine.memory.store.MemoryStore")
     def test_handle_successful_run(
         self,
         mock_store_cls: MagicMock,
@@ -159,7 +159,7 @@ class TestAutomationRunHandler:
         assert result.outcomes == []
 
     @patch("jarvis_engine.automation.load_actions")
-    @patch("jarvis_engine.memory_store.MemoryStore")
+    @patch("jarvis_engine.memory.store.MemoryStore")
     def test_handle_load_actions_called_with_correct_path(
         self,
         mock_store_cls: MagicMock,
@@ -497,7 +497,7 @@ class TestMissionRunHandler:
         cmd = MissionRunCommand(mission_id="m-456", auto_ingest=True)
 
         with patch(
-            "jarvis_engine.memory_store.MemoryStore"
+            "jarvis_engine.memory.store.MemoryStore"
         ), patch(
             "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
         ):
@@ -550,7 +550,7 @@ class TestMissionRunHandler:
         cmd = MissionRunCommand(mission_id="m-err", auto_ingest=True)
 
         with patch(
-            "jarvis_engine.memory_store.MemoryStore"
+            "jarvis_engine.memory.store.MemoryStore"
         ), patch(
             "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
         ):

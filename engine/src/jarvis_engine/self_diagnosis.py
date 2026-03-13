@@ -41,6 +41,9 @@ _SEVERITY_DEDUCTIONS: dict[str, int] = {
     "info": 0,
 }
 
+# Unit conversion
+_BYTES_PER_MB = 1024.0 * 1024.0
+
 # Thresholds
 _WAL_SIZE_WARN_MB = 50.0
 _DB_SIZE_WARN_MB = 500.0
@@ -182,7 +185,7 @@ class DiagnosticEngine:
         # Check DB size
         try:
             db_size_bytes = db_path.stat().st_size
-            db_size_mb = db_size_bytes / (1024.0 * 1024.0)
+            db_size_mb = db_size_bytes / _BYTES_PER_MB
             if db_size_mb > _DB_SIZE_WARN_MB:
                 issues.append(DiagnosticIssue(
                     id=_issue_id(),
@@ -202,7 +205,7 @@ class DiagnosticEngine:
         if wal_path.exists():
             try:
                 wal_size_bytes = wal_path.stat().st_size
-                wal_size_mb = wal_size_bytes / (1024.0 * 1024.0)
+                wal_size_mb = wal_size_bytes / _BYTES_PER_MB
                 if wal_size_mb > _WAL_SIZE_WARN_MB:
                     issues.append(DiagnosticIssue(
                         id=_issue_id(),

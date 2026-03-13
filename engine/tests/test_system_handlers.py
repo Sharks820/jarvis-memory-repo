@@ -44,7 +44,7 @@ ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.memory_store.MemoryStore")
+@patch("jarvis_engine.memory.store.MemoryStore")
 @patch("jarvis_engine.config.load_config")
 def test_status_handler(mock_config: MagicMock, mock_store_cls: MagicMock) -> None:
     mock_config.return_value = SimpleNamespace(
@@ -73,7 +73,7 @@ def test_status_handler(mock_config: MagicMock, mock_store_cls: MagicMock) -> No
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.memory_store.MemoryStore")
+@patch("jarvis_engine.memory.store.MemoryStore")
 def test_log_handler(mock_store_cls: MagicMock) -> None:
     mock_store = MagicMock(spec=_MemoryStore)
     mock_store.append.return_value = SimpleNamespace(ts="2024-01-01T00:00:00", event_type="info", message="hello")

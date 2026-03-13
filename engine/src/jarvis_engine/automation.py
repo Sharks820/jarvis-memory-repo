@@ -5,7 +5,7 @@ from pathlib import Path
 
 from jarvis_engine._shared import load_json_file
 from jarvis_engine.capability import CapabilityGate
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.policy import PolicyEngine
 from jarvis_engine.task_orchestrator import run_shell_command
 

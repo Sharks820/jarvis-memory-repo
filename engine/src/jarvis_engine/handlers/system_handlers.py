@@ -46,7 +46,7 @@ class StatusHandler:
 
     def handle(self, cmd: StatusCommand) -> StatusResult:
         from jarvis_engine.config import load_config
-        from jarvis_engine.memory_store import MemoryStore
+        from jarvis_engine.memory.store import MemoryStore
 
         config = load_config()
         store = MemoryStore(self._root)
@@ -67,7 +67,7 @@ class LogHandler:
         self._root = root
 
     def handle(self, cmd: LogCommand) -> LogResult:
-        from jarvis_engine.memory_store import MemoryStore
+        from jarvis_engine.memory.store import MemoryStore
 
         store = MemoryStore(self._root)
         event = store.append(event_type=cmd.event_type, message=cmd.message)

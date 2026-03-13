@@ -28,6 +28,8 @@ except ImportError:
 
 from jarvis_engine._compat import UTC
 
+_SECONDS_PER_DAY = 86400.0
+
 
 def _parse_days_since(
     raw_date_str: str, now: datetime, default: float = 365.0
@@ -36,7 +38,7 @@ def _parse_days_since(
     dt = parse_iso_timestamp(raw_date_str)
     if dt is None:
         return default
-    return max(0.0, (now - dt).total_seconds() / 86400.0)
+    return max(0.0, (now - dt).total_seconds() / _SECONDS_PER_DAY)
 
 
 if TYPE_CHECKING:

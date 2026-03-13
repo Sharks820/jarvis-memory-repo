@@ -540,6 +540,7 @@ def recency_weight(
     parsed = parse_iso_timestamp(ts_text)
     if parsed is None:
         return default
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
+    _SECONDS_PER_HOUR = 3600.0
+    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / _SECONDS_PER_HOUR)
     return math.exp(-delta_hours / decay_hours)
 

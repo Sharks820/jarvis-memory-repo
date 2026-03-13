@@ -37,7 +37,7 @@ from jarvis_engine._shared import memory_db_path as _memory_db_path
 from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
     AuthRoutesMixin,

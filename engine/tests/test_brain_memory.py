@@ -643,7 +643,7 @@ class TestBuildContextPacketEdgeCases:
         assert packet["selected_count"] >= 1
 
     def test_hybrid_results_preserve_trust_fields(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.brain_memory._try_hybrid_search", return_value=[
+        with patch("jarvis_engine.memory.brain._try_hybrid_search", return_value=[
             {
                 "record_id": "r1",
                 "branch": "ops",

@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
+_SECONDS_PER_DAY = 86400.0
 from jarvis_engine._shared import safe_float as _safe_float
-from jarvis_engine.brain_memory import brain_regression_report
+from jarvis_engine.memory.brain import brain_regression_report
 from jarvis_engine.growth_tracker import read_history, summarize_history
 
 if TYPE_CHECKING:
@@ -194,7 +196,7 @@ def _average_run_interval_days(rows: list[dict[str, Any]], window: int = 10) -> 
     for idx in range(1, len(parsed)):
         delta = (parsed[idx] - parsed[idx - 1]).total_seconds()
         if delta > 0:
-            deltas.append(delta / 86400.0)
+            deltas.append(delta / _SECONDS_PER_DAY)
     if not deltas:
         return 1.0
     return max(0.05, sum(deltas) / len(deltas))
@@ -454,7 +456,7 @@ def _safe_mission_metrics(root: Path) -> dict[str, Any]:
 def _safe_hygiene_metrics(root: Path) -> dict[str, Any]:
     """Collect memory hygiene metrics safely."""
     try:
-        from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
+        from jarvis_engine.memory.hygiene import hygiene_dashboard_metrics
 
         return hygiene_dashboard_metrics(root)
     except (ImportError, OSError, ValueError, TypeError) as exc:

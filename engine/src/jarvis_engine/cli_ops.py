@@ -8,11 +8,14 @@ automation-run, missions, growth eval/report/audit, intelligence dashboard.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import escape_response
 from jarvis_engine._bus import get_bus as _get_bus
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
 
 from jarvis_engine.commands.ops_commands import (
@@ -371,7 +374,9 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
                 print("error: output path must be within project root.")
                 return 2
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(text, encoding="utf-8")
+            tmp = out.with_suffix(f"{out.suffix}.tmp.{os.getpid()}")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(str(tmp), str(out))
             print(f"dashboard_saved={out}")
         return 0
 
@@ -415,9 +420,6 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
         except ValueError:
             print("error: output path must be within project root.")
             return 2
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            json.dumps(dashboard, ensure_ascii=True, indent=2), encoding="utf-8"
-        )
+        _atomic_write_json(out, dashboard)
         print(f"dashboard_saved={out}")
     return 0

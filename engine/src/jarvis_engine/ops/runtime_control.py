@@ -31,7 +31,8 @@ DEFAULT_RESOURCE_BUDGETS = {
     "process_cpu_pct": 92.0,
 }
 
-_MB = 1024.0 * 1024.0
+_KB = 1024.0
+_MB = _KB * _KB
 _DEFAULT_THROTTLE = {"mild_scale": 1.35, "severe_scale": 2.0, "max_sleep_s": 1800}
 
 _dir_size_cache: dict[str, tuple[float, float]] = {}  # path -> (size_mb, timestamp)
@@ -196,7 +197,7 @@ def _process_usage() -> tuple[float, float]:
                 if sys.platform == "darwin":
                     memory_mb = maxrss / _MB
                 else:
-                    memory_mb = maxrss / 1024.0
+                    memory_mb = maxrss / _KB
         except (ImportError, OSError, AttributeError):
             memory_mb = 0.0
             cpu_pct = 0.0

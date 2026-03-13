@@ -230,6 +230,10 @@ ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
     ("ZAI_API_KEY", "glm-4.7-flash"),
 ]
 
+# Security -- PBKDF2 password hashing
+PBKDF2_ITERATIONS: int = 600_000
+PBKDF2_SALT_LEN: int = 32  # 256-bit random salt per password
+
 # Runtime data filenames (used with runtime_dir())
 
 SELF_TEST_HISTORY = "self_test_history.jsonl"

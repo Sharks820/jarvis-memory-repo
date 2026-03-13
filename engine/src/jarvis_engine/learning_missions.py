@@ -9,7 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json, now_iso as _now_iso
 from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import urlparse
@@ -26,11 +26,18 @@ _MISSIONS_LOCK = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
+
+def _now_ms() -> int:
+    """Current time in milliseconds (monotonic-friendly wall clock)."""
+    return int(time.time() * 1000)
+
 MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
 _PAGE_CACHE: dict[tuple[str, int], tuple[float, str]] = {}
 _PAGE_CACHE_LOCK = threading.Lock()
 _PAGE_CACHE_TTL_SECONDS = 900.0
 _PAGE_CACHE_MAX_BYTES = 50_000_000  # 50 MB soft cap
+_PAGE_CACHE_MAX_ENTRIES = 1200  # max entries before eviction
+_PAGE_CACHE_EVICT_BATCH = 200  # number of stale entries to evict per sweep
 _page_cache_bytes = 0
 
 
@@ -264,9 +271,9 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
         _PAGE_CACHE[key] = (now, value)
         _page_cache_bytes += len(value.encode("utf-8"))
         _page_cache_bytes = max(0, _page_cache_bytes)  # clamp against drift
-        if len(_PAGE_CACHE) > 1200 or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
+        if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
-            stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:200]
+            stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:_PAGE_CACHE_EVICT_BATCH]
             for stale_key, (_stale_ts, stale_val) in stale:
                 _page_cache_bytes -= len(stale_val.encode("utf-8"))
                 _PAGE_CACHE.pop(stale_key, None)
@@ -517,14 +524,14 @@ def run_learning_mission(
                 _save_missions(root, missions)
                 break
 
-    _t0 = int(time.time() * 1000)
+    _t0 = _now_ms()
     _update_step(root, mission_id, "init", status="running")
     topic, objective, sources = _start_mission(root, mission_id)
     queries = _mission_queries(topic, [str(s) for s in sources])
-    _update_step(root, mission_id, "init", status="completed", elapsed_ms=int(time.time() * 1000) - _t0)
+    _update_step(root, mission_id, "init", status="completed", elapsed_ms=_now_ms() - _t0)
 
     # Step: search web
-    _t1 = int(time.time() * 1000)
+    _t1 = _now_ms()
     _update_step(root, mission_id, "search_web", status="running")
     _update_mission_progress(
         root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
@@ -532,8 +539,8 @@ def run_learning_mission(
     )
 
     # Step: fetch pages
-    _update_step(root, mission_id, "search_web", status="completed", elapsed_ms=int(time.time() * 1000) - _t1)
-    _t2 = int(time.time() * 1000)
+    _update_step(root, mission_id, "search_web", status="completed", elapsed_ms=_now_ms() - _t1)
+    _t2 = _now_ms()
     _update_step(root, mission_id, "fetch_pages", status="running")
     scanned_urls, _, candidate_rows = _fetch_mission_content(
         topic, queries,
@@ -541,17 +548,17 @@ def run_learning_mission(
         max_pages=max_pages,
     )
     _update_step(root, mission_id, "fetch_pages", status="completed",
-                 elapsed_ms=int(time.time() * 1000) - _t2,
+                 elapsed_ms=_now_ms() - _t2,
                  artifacts_produced=len(scanned_urls))
 
     # Step: extract candidates
-    _t3 = int(time.time() * 1000)
+    _t3 = _now_ms()
     _update_step(root, mission_id, "extract_candidates", status="completed",
-                 elapsed_ms=int(time.time() * 1000) - _t3,
+                 elapsed_ms=_now_ms() - _t3,
                  artifacts_produced=len(candidate_rows))
 
     # Step: verify findings
-    _t4 = int(time.time() * 1000)
+    _t4 = _now_ms()
     _update_step(root, mission_id, "verify_findings", status="running")
     _update_mission_progress(
         root, mission_id, status="running",
@@ -560,11 +567,11 @@ def run_learning_mission(
     )
     verified = _verify_candidates(candidate_rows)
     _update_step(root, mission_id, "verify_findings", status="completed",
-                 elapsed_ms=int(time.time() * 1000) - _t4,
+                 elapsed_ms=_now_ms() - _t4,
                  artifacts_produced=len(verified))
 
     # Step: finalize
-    _t5 = int(time.time() * 1000)
+    _t5 = _now_ms()
     _update_step(root, mission_id, "finalize", status="running")
 
     # Build and persist report
@@ -581,10 +588,9 @@ def run_learning_mission(
     }
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+    _atomic_write_json(report_path, report)
 
-    _update_step(root, mission_id, "finalize", status="completed", elapsed_ms=int(time.time() * 1000) - _t5)
+    _update_step(root, mission_id, "finalize", status="completed", elapsed_ms=_now_ms() - _t5)
     _update_mission_progress(
         root, mission_id, status="running", progress_pct=100,
         status_detail="Finalizing mission report",

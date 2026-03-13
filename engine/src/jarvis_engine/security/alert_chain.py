@@ -43,6 +43,7 @@ _LEVEL_CHANNELS: dict[int, str] = {
 
 # Dedup window in seconds
 _DEDUP_WINDOW_S = 300  # 5 minutes
+_MAX_DEDUP_ENTRIES = 1000  # trigger cache eviction above this many entries
 
 
 class AlertChain:
@@ -103,7 +104,7 @@ class AlertChain:
                 self._dedup_cache[(source_ip, level)] = now
 
             # Periodic cleanup: evict stale entries when cache grows large
-            if len(self._dedup_cache) > 1000:
+            if len(self._dedup_cache) > _MAX_DEDUP_ENTRIES:
                 stale = [
                     k for k, v in self._dedup_cache.items() if now - v > _DEDUP_WINDOW_S
                 ]
@@ -192,17 +193,17 @@ class AlertChain:
         TTS engine, and email gateway.  Here we log the intent.
         """
         if level == 1:
-            logger.info("[BACKGROUND] %s", summary)
+            logger.info("Alert L1 background: %s", summary)
 
         elif level == 2:
-            logger.info("[ROUTINE notification] %s", summary)
+            logger.info("Alert L2 routine notification: %s", summary)
 
         elif level == 3:
-            logger.info("[IMPORTANT notification] %s", summary)
+            logger.info("Alert L3 important notification: %s", summary)
 
         elif level == 4:
             logger.warning(
-                "[URGENT notification + widget flash] %s (evidence: %s, action: %s)",
+                "Alert L4 urgent notification + widget flash: %s (evidence: %s, action: %s)",
                 summary,
                 evidence,
                 containment_action,
@@ -210,7 +211,7 @@ class AlertChain:
 
         elif level == 5:
             logger.critical(
-                "[URGENT ALL DEVICES + ALARM + EMAIL] %s (evidence: %s, action: %s)",
+                "Alert L5 urgent all-devices + alarm + email: %s (evidence: %s, action: %s)",
                 summary,
                 evidence,
                 containment_action,

@@ -13,7 +13,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import main as main_mod
-from jarvis_engine import brain_memory as brain_memory_mod
+from jarvis_engine import cli_voice as cli_voice_mod
+from jarvis_engine.memory import brain as brain_memory_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine.voice import context as voice_context_mod
 from jarvis_engine.voice import extractors as voice_extractors_mod
@@ -106,6 +107,7 @@ def test_cmd_voice_say_sanitizes_urls_before_dispatch(capsys, monkeypatch) -> No
             return VoiceSayResult(voice_name="David", output_wav="", message="Spoken.")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     rc = main_mod.cmd_voice_say(
         text="source https://www.openai.com/research/latest",
         profile="jarvis_like",
@@ -127,6 +129,7 @@ def test_cmd_voice_listen_emits_state_transitions(monkeypatch, capsys) -> None:
             return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
     assert rc == 0
@@ -147,6 +150,7 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
             return VoiceListenResult(text="", confidence=0.0, duration_seconds=0.0, message="error: microphone unavailable")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
     assert rc == 2
@@ -166,6 +170,7 @@ def test_cmd_voice_listen_dispatches_conversation_mode_when_not_executing(monkey
             return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
     assert rc == 0
@@ -183,7 +188,9 @@ def test_cmd_voice_listen_dispatches_command_mode_when_executing(monkeypatch) ->
             return VoiceListenResult(text="brain status", confidence=0.91, duration_seconds=1.2, message="ok")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(main_mod, "cmd_voice_run", lambda **_: 0)
+    monkeypatch.setattr(cli_voice_mod, "cmd_voice_run", lambda **_: 0)
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=True)
     assert rc == 0
@@ -220,7 +227,9 @@ def test_cmd_voice_listen_forwards_utterance_when_executing(monkeypatch) -> None
         return 0
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(main_mod, "cmd_voice_run", _fake_voice_run)
+    monkeypatch.setattr(cli_voice_mod, "cmd_voice_run", _fake_voice_run)
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=True)
     assert rc == 0
@@ -237,6 +246,7 @@ def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
             return VoiceRunResult(return_code=0, intent="web_research", message="ok")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_run(
         text="Jarvis, search the web for samsung galaxy s25 spam call filtering",

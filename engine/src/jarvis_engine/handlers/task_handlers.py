@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
     from jarvis_engine.gateway.classifier import IntentClassifier
-    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.memory.store import MemoryStore
     from jarvis_engine.task_orchestrator import TaskOrchestrator
 
 from jarvis_engine.commands.task_commands import (
@@ -37,7 +37,7 @@ class RunTaskHandler:
     def _get_orchestrator(self) -> TaskOrchestrator:
         """Lazily create and cache MemoryStore + TaskOrchestrator."""
         if self._orchestrator is None:
-            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.memory.store import MemoryStore
             from jarvis_engine.task_orchestrator import TaskOrchestrator
 
             self._store = MemoryStore(self._root)

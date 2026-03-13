@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
-    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.memory.store import MemoryStore
 
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -79,7 +79,7 @@ class BrainStatusHandler:
                 "branches": branches,
                 "engine": "sqlite",
             })
-        from jarvis_engine.brain_memory import brain_status
+        from jarvis_engine.memory.brain import brain_status
 
         status = brain_status(self._root)
         return BrainStatusResult(status=status)
@@ -138,7 +138,7 @@ class BrainContextHandler:
                 "total_records_scanned": self._engine.count_records(),
                 "engine": "sqlite",
             })
-        from jarvis_engine.brain_memory import build_context_packet
+        from jarvis_engine.memory.brain import build_context_packet
 
         packet = build_context_packet(
             self._root,
@@ -154,7 +154,7 @@ class BrainCompactHandler:
         self._root = root
 
     def handle(self, cmd: BrainCompactCommand) -> BrainCompactResult:
-        from jarvis_engine.brain_memory import brain_compact
+        from jarvis_engine.memory.brain import brain_compact
 
         result = brain_compact(self._root, keep_recent=max(200, min(cmd.keep_recent, 50000)))
         return BrainCompactResult(result=result)
@@ -165,7 +165,7 @@ class BrainRegressionHandler:
         self._root = root
 
     def handle(self, cmd: BrainRegressionCommand) -> BrainRegressionResult:
-        from jarvis_engine.brain_memory import brain_regression_report
+        from jarvis_engine.memory.brain import brain_regression_report
 
         report = brain_regression_report(self._root)
         return BrainRegressionResult(report=report)
@@ -182,7 +182,7 @@ class IngestHandler:
         """Lazily create and cache the fallback MemoryStore + IngestionPipeline."""
         if self._fallback_pipeline is None:
             from jarvis_engine.ingest import IngestionPipeline
-            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.memory.store import MemoryStore
 
             self._fallback_store = MemoryStore(self._root)
             self._fallback_pipeline = IngestionPipeline(self._fallback_store)
@@ -226,7 +226,7 @@ class MemorySnapshotHandler:
         self._root = root
 
     def handle(self, cmd: MemorySnapshotCommand) -> MemorySnapshotResult:
-        from jarvis_engine.memory_snapshots import create_signed_snapshot, verify_signed_snapshot
+        from jarvis_engine.memory.snapshots import create_signed_snapshot, verify_signed_snapshot
 
         if cmd.create:
             result = create_signed_snapshot(self._root, note=cmd.note)
@@ -263,7 +263,7 @@ class MemoryMaintenanceHandler:
         self._root = root
 
     def handle(self, cmd: MemoryMaintenanceCommand) -> MemoryMaintenanceResult:
-        from jarvis_engine.memory_snapshots import run_memory_maintenance
+        from jarvis_engine.memory.snapshots import run_memory_maintenance
 
         report = run_memory_maintenance(
             self._root,

@@ -149,7 +149,7 @@ class TestBuildSmartContextCrossBranch:
         bus = MagicMock(spec=[])  # No engine attribute
         bus.ctx = AppContext()  # All None defaults
         with patch(
-            "jarvis_engine.brain_memory.build_context_packet",
+            "jarvis_engine.memory.brain.build_context_packet",
             return_value={"selected": []},
         ):
             result = voice_pipeline_mod._build_smart_context(bus, "test query")
@@ -258,7 +258,7 @@ class TestBuildSmartContextCrossBranch:
         bus.ctx = AppContext()  # engine=None by default
 
         with patch(
-            "jarvis_engine.brain_memory.build_context_packet",
+            "jarvis_engine.memory.brain.build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
@@ -280,7 +280,7 @@ class TestBuildSmartContextCrossBranch:
         mock_kg_instance.query_relevant_facts.return_value = []
 
         with patch(
-            "jarvis_engine.brain_memory.build_context_packet",
+            "jarvis_engine.memory.brain.build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.knowledge.graph.KnowledgeGraph",

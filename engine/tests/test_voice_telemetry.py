@@ -364,7 +364,7 @@ class TestHealthEvents:
     def test_health_emitted_at_interval(self, mock_emit, telemetry: VoiceTelemetry):
         """Health event should fire every health_interval utterances."""
         # telemetry has health_interval=5
-        for i in range(10):
+        for _ in range(10):
             telemetry.begin_utterance()
             telemetry.mark_stage(STAGE_VAD_SPEECH_ONSET)
             telemetry.mark_stage(STAGE_TRANSCRIPTION_END)

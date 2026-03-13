@@ -21,6 +21,9 @@ from jarvis_engine._constants import (
     FAST_LOCAL_MODEL,
 )
 from jarvis_engine._shared import env_int as _env_int
+
+_SECONDS_PER_HOUR = 3600
+_MS_PER_SECOND = 1000
 from jarvis_engine.desktop.controller import (
     DesktopInteractionController,
     DesktopWidgetState,
@@ -2306,7 +2309,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._processing_timeout_id = None
         if JarvisDesktopWidget._ensure_controller(self).processing_timed_out():
             self._hide_thinking()
-            timeout_s = max(1, self._processing_timeout_ms // 1000)
+            timeout_s = max(1, self._processing_timeout_ms // _MS_PER_SECOND)
             self._log(f"Command timed out ({timeout_s}s). Ready for new commands.", role="error")
             self.command_text.config(state=tk.NORMAL)
 
@@ -2611,10 +2614,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     s = svc.get("uptime_seconds", 0)
                     if s < 60:
                         uptime_lbl.config(text=f"{s}s")
-                    elif s < 3600:
+                    elif s < _SECONDS_PER_HOUR:
                         uptime_lbl.config(text=f"{s // 60}m")
                     else:
-                        uptime_lbl.config(text=f"{s // 3600}h {(s % 3600) // 60}m")
+                        uptime_lbl.config(text=f"{s // _SECONDS_PER_HOUR}h {(s % _SECONDS_PER_HOUR) // 60}m")
                 else:
                     dot.config(text="\u25CB", fg=self.MUTED)
                     uptime_lbl.config(text="stopped")
