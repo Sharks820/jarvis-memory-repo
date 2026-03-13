@@ -475,7 +475,7 @@ class TestThreadSafety:
                     telemetry.set_backend(f"backend-{thread_id}")
                     telemetry.set_confidence(0.85)
                     telemetry.finish_utterance()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — thread error boundary; must catch all to report back
                 errors.append(exc)
 
         threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
@@ -508,7 +508,7 @@ class TestThreadSafety:
                     telemetry.get_end_to_end_stats()
                     telemetry.get_backend_distribution()
                     telemetry.get_health_summary()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — thread error boundary; must catch all to report back
                 errors.append(exc)
 
         threads = [threading.Thread(target=reader) for _ in range(4)]

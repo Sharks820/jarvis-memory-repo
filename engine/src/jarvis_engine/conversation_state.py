@@ -593,12 +593,15 @@ def _encrypt_json(payload: dict[str, Any], fernet_key: bytes) -> bytes:
 
 
 def _decrypt_json(data: bytes, fernet_key: bytes) -> dict[str, Any]:
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, InvalidToken
 
     if data.startswith(_ENCRYPTED_HEADER):
         data = data[len(_ENCRYPTED_HEADER) :]
     f = Fernet(fernet_key)
-    raw = f.decrypt(data)
+    try:
+        raw = f.decrypt(data)
+    except InvalidToken as exc:
+        raise ValueError(f"Fernet decryption failed (invalid token): {exc}") from exc
     return json.loads(raw)
 
 
@@ -1387,8 +1390,8 @@ class ConversationStateManager:
             logger.warning("Could not load conversation state: %s", exc)
         except (KeyError, AttributeError, RuntimeError) as exc:
             logger.warning("Could not decrypt conversation state: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — catch Fernet InvalidToken and other crypto errors
-            logger.warning("Could not decrypt conversation state (crypto error): %s", exc)
+        except ImportError as exc:
+            logger.warning("Could not load conversation state (missing crypto lib): %s", exc)
 
     # Reset
 
