@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import now_iso
 
 # Tone profiles: map branch domains to personality instructions
 
@@ -192,9 +192,9 @@ def save_persona_config(
         "style": current.style
         if style is None
         else str(style).strip()[:80] or current.style,
-        "updated_utc": _now_iso(),
+        "updated_utc": now_iso(),
     }
-    _atomic_write_json(_persona_path(root), payload)
+    atomic_write_json(_persona_path(root), payload)
     return load_persona_config(root)
 
 

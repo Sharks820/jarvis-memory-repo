@@ -99,11 +99,11 @@ class HealthRoutesMixin:
         return panel
 
     def _handle_get_health(self: Any) -> None:
-        from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
+        from jarvis_engine._constants import SELF_TEST_HISTORY
         from jarvis_engine._shared import load_jsonl_tail
-        from jarvis_engine._shared import runtime_dir as _runtime_dir
+        from jarvis_engine._shared import runtime_dir
 
-        self_test_history_path = _runtime_dir(self._root) / _SELF_TEST_HISTORY
+        self_test_history_path = runtime_dir(self._root) / SELF_TEST_HISTORY
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         try:
             tail = load_jsonl_tail(self_test_history_path, limit=1)
@@ -156,11 +156,11 @@ class HealthRoutesMixin:
         if not self._validate_auth(b""):
             return
         from jarvis_engine._shared import load_json_file
-        from jarvis_engine._shared import runtime_dir as _runtime_dir
+        from jarvis_engine._shared import runtime_dir
         from jarvis_engine.ops.process_manager import list_services
 
         services = list_services(self._root)
-        ctrl_path = _runtime_dir(self._root) / "control.json"
+        ctrl_path = runtime_dir(self._root) / "control.json"
         control = load_json_file(ctrl_path, {})
         self._write_json(HTTPStatus.OK, {"ok": True, "services": services, "control": control})
 

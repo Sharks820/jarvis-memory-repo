@@ -31,11 +31,10 @@ if TYPE_CHECKING:
     from jarvis_engine.sync.engine import SyncEngine
     from jarvis_engine.sync.transport import SyncTransport
 
-from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
-from jarvis_engine._shared import memory_db_path as _memory_db_path
-from jarvis_engine._shared import runtime_dir as _runtime_dir
-from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
+from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME, SUBSYSTEM_ERRORS
+from jarvis_engine._shared import memory_db_path
+from jarvis_engine._shared import runtime_dir
+from jarvis_engine._shared import make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
@@ -69,11 +68,8 @@ MAX_COMMAND_RESPONSE_CHUNK_CHARS = 800
 MAX_COMMAND_RESPONSE_CHUNKS = 24
 THREAD_CAPTURE_MAX_CHARS = 200_000
 
-# Narrowed exception tuple for subsystem initialisation / lazy-load guards.
-# Covers import failures, filesystem errors, bad config values, type mismatches,
-# and unexpected runtime states — the only error families that subsystem init can
-# raise during normal (non-catastrophic) operation.
-_SUBSYSTEM_ERRORS = (ImportError, OSError, ValueError, TypeError, RuntimeError)
+# Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
+_SUBSYSTEM_ERRORS = SUBSYSTEM_ERRORS
 
 
 class CLIResult(TypedDict, total=False):
@@ -376,7 +372,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
-        self._nonce_cache_path = _runtime_dir(repo_root) / "nonce_cache.jsonl"
+        self._nonce_cache_path = runtime_dir(repo_root) / "nonce_cache.jsonl"
         self._load_nonces()
 
     def _setup_rate_limiters(self) -> None:
@@ -408,7 +404,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             security_db_path.parent.mkdir(parents=True, exist_ok=True)
             self._security_db = _connect_db(security_db_path, full=True, check_same_thread=False)
             self._security_write_lock = threading.Lock()
-            forensic_dir = _runtime_dir(repo_root) / "forensic"
+            forensic_dir = runtime_dir(repo_root) / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
             def _rotate_signing_key(new_key: str) -> None:
                 self.signing_key = new_key
@@ -643,7 +639,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         with self._sync_init_lock:
             if self._sync_engine is not None:
                 return self._sync_engine
-            db_path = _memory_db_path(self.repo_root)
+            db_path = memory_db_path(self.repo_root)
             if not db_path.exists():
                 return None
             try:
@@ -699,7 +695,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         with self._memory_engine_init_lock:
             if self._memory_engine is not None:
                 return self._memory_engine
-            db_path = _memory_db_path(self.repo_root)
+            db_path = memory_db_path(self.repo_root)
             if not db_path.exists():
                 return None
             try:
@@ -1137,7 +1133,7 @@ class MobileIngestHandler(
             # Install thread-aware repo_root if not already done
             if not getattr(main_mod, "_repo_root_patched", False):
                 _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
                 main_mod._repo_root_patched = True  # type: ignore[attr-defined]
 
             # Per-thread stdout capture — concurrent requests run in parallel.
@@ -1149,8 +1145,8 @@ class MobileIngestHandler(
                     execute=params["execute"],
                     approve_privileged=params["approve_privileged"],
                     speak=params["speak"],
-                    snapshot_path=root / ".planning" / _OPS_SNAPSHOT_FILENAME,
-                    actions_path=root / ".planning" / _ACTIONS_FILENAME,
+                    snapshot_path=root / ".planning" / OPS_SNAPSHOT_FILENAME,
+                    actions_path=root / ".planning" / ACTIONS_FILENAME,
                     voice_user=params["voice_user"],
                     voice_auth_wav=params["voice_auth_wav"],
                     voice_threshold=params["voice_threshold"],

@@ -7,6 +7,8 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
+
 from ._helpers import HeaderProtocol
 
 if TYPE_CHECKING:
@@ -80,7 +82,7 @@ class SyncRoutesMixin:
         try:
             status = sync_engine.sync_status()
             self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/status failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -96,7 +98,7 @@ class SyncRoutesMixin:
             device_id = str(self.headers.get("X-Jarvis-Device-Id", "unknown") or "unknown")
             config = auto_sync.get_sync_config_for_device(device_id)
             self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/config GET failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -119,7 +121,7 @@ class SyncRoutesMixin:
                     "device_id": device_id,
                 },
             )
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/heartbeat failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -170,7 +172,7 @@ class SyncRoutesMixin:
                     "has_more": has_more,
                 },
             )
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/pull failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -225,7 +227,7 @@ class SyncRoutesMixin:
                     "errors": result.get("errors", []),
                 },
             )
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/push failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -257,7 +259,7 @@ class SyncRoutesMixin:
                     "config": auto_sync.get_all(),
                 },
             )
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("sync/config POST failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,

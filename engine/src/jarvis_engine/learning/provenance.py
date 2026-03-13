@@ -8,7 +8,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 from jarvis_engine.learning.trust import LearningTrustMetadata, learning_provenance_enabled
 
@@ -158,7 +158,7 @@ class LearningProvenanceStore:
     ) -> None:
         if not self._enabled:
             return
-        now = _now_iso()
+        now = now_iso()
         metadata_json = _serialize_payload(metadata)
         with self._write_lock:
             self._db.execute(
@@ -255,7 +255,7 @@ class LearningProvenanceStore:
                     policy_mode,
                     reason,
                     _serialize_payload(metadata or {}),
-                    _now_iso(),
+                    now_iso(),
                 ),
             )
             self._db.commit()
@@ -276,7 +276,7 @@ class LearningProvenanceStore:
     ) -> None:
         if not self._enabled:
             return
-        first_seen_at = _now_iso()
+        first_seen_at = now_iso()
         expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
         with self._write_lock:
             self._db.execute(
@@ -341,7 +341,7 @@ class LearningProvenanceStore:
                     subject_id,
                     reason,
                     _serialize_payload(metadata or {}),
-                    _now_iso(),
+                    now_iso(),
                 ),
             )
             self._db.commit()

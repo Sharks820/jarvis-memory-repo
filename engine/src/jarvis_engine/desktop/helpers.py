@@ -36,8 +36,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT
-from jarvis_engine._shared import env_int as _env_int
-from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs
+from jarvis_engine._shared import env_int
+from jarvis_engine._shared import win_hidden_subprocess_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +344,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
 
 
 def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+    from jarvis_engine._shared import atomic_write_json
 
     payload: dict[str, Any] = {
         "base_url": cfg.base_url,
@@ -381,7 +381,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
             payload["master_password"] = cfg.master_password
     # Never write the plaintext key when DPAPI succeeds (no "master_password" key at all)
 
-    _atomic_write_json(_widget_cfg_path(root), payload)
+    atomic_write_json(_widget_cfg_path(root), payload)
 
 
 # HTTP / signing helpers
@@ -500,8 +500,8 @@ def _taskkill_executable() -> str:
 
 def _http_timeout_seconds(path: str) -> int:
     """Return HTTP timeout for a widget API path."""
-    default_timeout = _env_int("JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600)
-    long_timeout = _env_int("JARVIS_WIDGET_COMMAND_TIMEOUT_S", 300, minimum=30, maximum=900)
+    default_timeout = env_int("JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600)
+    long_timeout = env_int("JARVIS_WIDGET_COMMAND_TIMEOUT_S", 300, minimum=30, maximum=900)
     normalized = (path or "").strip().lower()
     if normalized.startswith("/command") or normalized.startswith("/self-heal"):
         return long_timeout
@@ -641,7 +641,7 @@ def _voice_dictate_system_speech(timeout_s: int = 8) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            **_win_hidden_subprocess_kwargs(),
+            **win_hidden_subprocess_kwargs(),
         )
     except OSError as exc:
         raise RuntimeError(f"Voice dictation failed: {exc}") from exc
@@ -679,7 +679,7 @@ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
         capture_output=True,
         text=True,
         timeout=15,
-        **_win_hidden_subprocess_kwargs(),
+        **win_hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
         return False
@@ -743,7 +743,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=30,
-            **_win_hidden_subprocess_kwargs(),
+            **win_hidden_subprocess_kwargs(),
         )
     except subprocess.TimeoutExpired:
         logger.debug("Toast notification process timed out after 30s")

@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import atomic_write_json
 from pathlib import Path
 from typing import TypedDict
 
@@ -256,7 +256,7 @@ class FamilyShield:
         if not self._config_path:
             return
         try:
-            _atomic_write_json(self._config_path, {"members": self._members})
+            atomic_write_json(self._config_path, {"members": self._members})
         except OSError as exc:
             logger.error("Failed to persist FamilyShield config: %s", exc)
 

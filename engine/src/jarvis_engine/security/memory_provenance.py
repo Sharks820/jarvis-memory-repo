@@ -11,7 +11,7 @@ import heapq
 import threading
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 # TypedDicts
 
@@ -94,7 +94,7 @@ class MemoryProvenance:
             "record_hash": record_hash,
             "source": source,
             "trust_level": trust_level,
-            "ingestion_timestamp": _now_iso(),
+            "ingestion_timestamp": now_iso(),
             "verification_status": verification,
             "quarantine_reason": "",
         }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import Any
 
@@ -115,16 +115,16 @@ def grant_connector_permission(
     connectors[connector_id] = {
         "granted": True,
         "scopes": [s.strip() for s in scopes if s.strip()],
-        "granted_utc": _now_iso(),
+        "granted_utc": now_iso(),
     }
     save_connector_permissions(repo_root, data)
     return connectors[connector_id]
 
 
 def save_connector_permissions(repo_root: Path, payload: dict[str, Any]) -> None:
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+    from jarvis_engine._shared import atomic_write_json
 
-    _atomic_write_json(_permissions_path(repo_root), payload)
+    atomic_write_json(_permissions_path(repo_root), payload)
 
 
 def evaluate_connector_statuses(repo_root: Path) -> list[ConnectorStatus]:

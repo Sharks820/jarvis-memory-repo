@@ -9,7 +9,7 @@ from typing import TypedDict
 
 import numpy as np
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 
 class VoiceProfile(TypedDict):
@@ -70,7 +70,7 @@ def enroll_voiceprint(
         "user_id": safe_user,
         "samples": existing_samples,
         "embedding": embedding.tolist(),
-        "created_utc": _now_iso(),
+        "created_utc": now_iso(),
     }
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(

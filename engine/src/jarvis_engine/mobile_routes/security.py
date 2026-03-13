@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from http import HTTPStatus
 
-from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._constants import GATEWAY_AUDIT_LOG
+from jarvis_engine._shared import runtime_dir
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class SecurityRoutesMixin:
             return
         from jarvis_engine._shared import load_jsonl_tail
 
-        audit_path = _runtime_dir(self._root) / _GATEWAY_AUDIT_LOG
+        audit_path = runtime_dir(self._root) / GATEWAY_AUDIT_LOG
         records = load_jsonl_tail(audit_path, limit=50)
         self._write_json(
             HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)}

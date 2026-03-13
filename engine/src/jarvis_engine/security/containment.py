@@ -18,7 +18,7 @@ from collections import deque
 from enum import IntEnum
 from typing import TYPE_CHECKING, Protocol, TypedDict
 
-from jarvis_engine._constants import PBKDF2_ITERATIONS as _PBKDF2_ITERATIONS
+from jarvis_engine._constants import PBKDF2_ITERATIONS
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
@@ -90,7 +90,7 @@ _MASTER_CREDENTIAL_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 
 
 def _hash_password(
-    password: str, salt: bytes | None = None, *, iterations: int = _PBKDF2_ITERATIONS
+    password: str, salt: bytes | None = None, *, iterations: int = PBKDF2_ITERATIONS
 ) -> str:
     """Hash password with PBKDF2-SHA256.  Returns ``salt_hex:hash_hex``.
 
@@ -133,7 +133,7 @@ class ContainmentEngine:
         ip_tracker: _IPTrackerProtocol | None = None,
         session_manager: _SessionManagerProtocol | None = None,
         on_credential_rotate: object | None = None,
-        _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
+        _pbkdf2_iterations: int = PBKDF2_ITERATIONS,
     ) -> None:
         self._forensic_logger = forensic_logger
         self._ip_tracker = ip_tracker

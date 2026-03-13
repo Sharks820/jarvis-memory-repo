@@ -23,8 +23,8 @@ import httpx
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 from jarvis_engine._shared import (
-    get_fast_local_model as _get_fast_local_model,
-    get_local_model as _get_local_model,
+    get_fast_local_model,
+    get_local_model,
 )
 
 try:
@@ -528,8 +528,8 @@ class ModelGateway:
                 # Check that we can actually route to this candidate
                 provider = self._resolve_provider(candidate)
                 if provider != "ollama" or candidate in (
-                    _get_local_model(),
-                    _get_fast_local_model(),
+                    get_local_model(),
+                    get_fast_local_model(),
                 ):
                     logger.info(
                         "Context guard: switching %s -> %s (limit %d -> %d)",
@@ -892,7 +892,7 @@ class ModelGateway:
 
                 if isinstance(exc, BudgetExceededError):
                     logger.warning("Budget exceeded, routing to local Ollama: %s", exc)
-                    fallback_model = _get_local_model()
+                    fallback_model = get_local_model()
                     response = self._call_ollama(
                         messages, fallback_model, max_tokens, temperature
                     )
@@ -1365,7 +1365,7 @@ class ModelGateway:
             # Ollama already tried as primary -- don't double-retry
             full_reason = f"{reason} -> all cloud fallbacks also failed"
             logger.error("All providers failed: %s", full_reason)
-            fallback_model = _get_local_model()
+            fallback_model = get_local_model()
             return GatewayResponse(
                 text="",
                 model=fallback_model,
@@ -1387,7 +1387,7 @@ class ModelGateway:
         Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to qwen3.5:latest.
         Returns a graceful error response if Ollama also fails.
         """
-        fallback_model = _get_local_model()
+        fallback_model = get_local_model()
         resp, error = self._try_ollama_chat(
             messages, fallback_model, max_tokens, temperature
         )
@@ -1451,8 +1451,8 @@ class ModelGateway:
             models.add(cli_key)
         # Ollama (local) — always add both local model names
         if self._ollama is not None:
-            models.add(_get_local_model())
-            models.add(_get_fast_local_model())
+            models.add(get_local_model())
+            models.add(get_fast_local_model())
         return models
 
     def available_providers(self) -> list[str]:

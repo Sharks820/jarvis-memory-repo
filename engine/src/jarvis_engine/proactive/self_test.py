@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
@@ -104,7 +104,7 @@ class AdversarialSelfTest:
             "average_score": avg_score,
             "below_threshold": below,
             "per_task_scores": per_task_scores,
-            "timestamp": _now_iso(),
+            "timestamp": now_iso(),
         }
 
     def save_quiz_result(self, result: dict, history_path: Path) -> None:

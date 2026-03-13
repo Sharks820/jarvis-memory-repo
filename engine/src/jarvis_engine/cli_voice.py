@@ -12,8 +12,8 @@ from pathlib import Path
 
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
-from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
+from jarvis_engine._constants import ACTIONS_FILENAME
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
 from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import shorten_urls_for_speech
 from jarvis_engine.stt.contracts import VoiceUtterance
@@ -152,8 +152,8 @@ def cmd_voice_listen(
             execute=True,
             approve_privileged=False,
             speak=False,
-            snapshot_path=Path(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
-            actions_path=Path(repo_root() / ".planning" / _ACTIONS_FILENAME),
+            snapshot_path=Path(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
+            actions_path=Path(repo_root() / ".planning" / ACTIONS_FILENAME),
             voice_user="conner",
             voice_auth_wav="",
             voice_threshold=0.82,

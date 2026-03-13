@@ -8,10 +8,10 @@ from http import HTTPStatus
 from typing import Any, Protocol
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG
-from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
-from jarvis_engine._shared import memory_db_path as _memory_db_path
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._constants import KG_METRICS_LOG
+from jarvis_engine._constants import SELF_TEST_HISTORY
+from jarvis_engine._shared import memory_db_path
+from jarvis_engine._shared import runtime_dir
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _gather_kg_metrics(root: Any, metrics: dict[str, Any]) -> None:
     try:
         from jarvis_engine.proactive.kg_metrics import kg_growth_trend, load_kg_history
 
-        history_path = _runtime_dir(root) / _KG_METRICS_LOG
+        history_path = runtime_dir(root) / KG_METRICS_LOG
         history = load_kg_history(history_path, limit=50)
         if history:
             latest = history[-1]
@@ -102,7 +102,7 @@ def _gather_self_test_score(root: Any, metrics: dict[str, Any]) -> None:
     try:
         from jarvis_engine._shared import load_jsonl_tail
 
-        self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
+        self_test_path = runtime_dir(root) / SELF_TEST_HISTORY
         tail = load_jsonl_tail(self_test_path, limit=1)
         if tail:
             latest_test = tail[-1]
@@ -133,7 +133,7 @@ def _gather_capability_trend(root: Any, metrics: dict[str, Any]) -> None:
 def _gather_active_missions(root: Any, metrics: dict[str, Any]) -> None:
     """Load active learning missions and summarise them into metrics."""
     try:
-        mission_file = _runtime_dir(root) / "learning_missions.json"
+        mission_file = runtime_dir(root) / "learning_missions.json"
         active_missions: list[dict[str, Any]] = []
         if mission_file.exists():
             from jarvis_engine._shared import load_json_file
@@ -261,7 +261,7 @@ class IntelligenceRoutesMixin:
     def _handle_get_learning_summary(self: _IntelligenceRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
-        db_path = _memory_db_path(self._root)
+        db_path = memory_db_path(self._root)
         summary: dict[str, Any] = {
             "preferences": {},
             "route_quality": {},
@@ -346,7 +346,7 @@ class IntelligenceRoutesMixin:
                 "total_received": len(items),
             })
             logger.info("Intelligence merge: %d items from phone", merged)
-        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:  # narrowed from except Exception
+        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:
             logger.warning("intelligence/merge failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence merge failed.",
@@ -362,7 +362,7 @@ class IntelligenceRoutesMixin:
             items = []
 
             # Export from knowledge graph and user preferences
-            db_path = _memory_db_path(self._root)
+            db_path = memory_db_path(self._root)
             if db_path.exists():
                 from jarvis_engine._db_pragmas import connect_db as _connect_db
 
@@ -425,7 +425,7 @@ class IntelligenceRoutesMixin:
                 "total": len(items),
             })
             logger.info("Intelligence export: %d items for phone", len(items))
-        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:  # narrowed from except Exception
+        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:
             logger.warning("intelligence/export failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",

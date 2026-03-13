@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine.stt.contracts import TranscriptionSegment
 from jarvis_engine.stt.backends import (  # noqa: F401 -- re-exports
     _load_keyterms,
@@ -159,7 +159,7 @@ def _log_stt_metric(
 
     metrics_path = runtime_dir(root_dir) / "stt_metrics.jsonl"
     record = {
-        "ts": _now_iso(),
+        "ts": now_iso(),
         "backend": backend,
         "confidence": round(confidence, 3),
         "latency_ms": round(latency_ms, 1),

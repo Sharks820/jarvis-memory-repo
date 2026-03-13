@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
     from jarvis_engine.memory.store import MemoryStore
 
-from jarvis_engine._shared import check_path_within_root as _check_path_within_root
+from jarvis_engine._shared import check_path_within_root
 
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
@@ -81,7 +81,7 @@ class OpsBriefHandler:
         )
 
         try:
-            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+            check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
         except ValueError as exc:
             logger.warning("OpsBrief snapshot path check failed: %s", exc)
             return OpsBriefResult(brief=str(exc))
@@ -98,7 +98,7 @@ class OpsBriefHandler:
         saved = ""
         if cmd.output_path:
             try:
-                _check_path_within_root(cmd.output_path, self._root, "output_path")
+                check_path_within_root(cmd.output_path, self._root, "output_path")
             except ValueError as exc:
                 logger.warning("OpsBrief output path check failed: %s", exc)
                 return OpsBriefResult(brief=str(exc))
@@ -122,8 +122,8 @@ class OpsExportActionsHandler:
         )
 
         try:
-            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
-            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+            check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+            check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("OpsExportActions path check failed: %s", exc)
             return OpsExportActionsResult(message=str(exc))
@@ -144,7 +144,7 @@ class OpsSyncHandler:
         from jarvis_engine.ops.sync import build_live_snapshot
 
         try:
-            _check_path_within_root(cmd.output_path, self._root, "output_path")
+            check_path_within_root(cmd.output_path, self._root, "output_path")
         except ValueError as exc:
             logger.warning("OpsSyncHandler path check failed: %s", exc)
             return OpsSyncResult(message=str(exc))
@@ -162,8 +162,8 @@ class OpsAutopilotHandler:
         from jarvis_engine.ops.autopilot import run_ops_autopilot
 
         try:
-            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
-            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+            check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+            check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("OpsAutopilot path check failed: %s", exc)
             return OpsAutopilotResult(return_code=2, message=str(exc))
@@ -194,7 +194,7 @@ class AutomationRunHandler:
         from jarvis_engine.automation import AutomationExecutor, load_actions
 
         try:
-            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+            check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("AutomationRun path check failed: %s", exc)
             return AutomationRunResult(message=str(exc))
@@ -339,8 +339,8 @@ class GrowthEvalHandler:
         )
 
         try:
-            _check_path_within_root(cmd.tasks_path, self._root, "tasks_path")
-            _check_path_within_root(cmd.history_path, self._root, "history_path")
+            check_path_within_root(cmd.tasks_path, self._root, "tasks_path")
+            check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthEval path check failed: %s", exc)
             return GrowthEvalResult(message=str(exc))
@@ -376,7 +376,7 @@ class GrowthReportHandler:
         from jarvis_engine.growth_tracker import read_history, summarize_history
 
         try:
-            _check_path_within_root(cmd.history_path, self._root, "history_path")
+            check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthReport path check failed: %s", exc)
             return GrowthReportResult(message=str(exc))
@@ -393,7 +393,7 @@ class GrowthAuditHandler:
         from jarvis_engine.growth_tracker import audit_run, read_history
 
         try:
-            _check_path_within_root(cmd.history_path, self._root, "history_path")
+            check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthAudit path check failed: %s", exc)
             return GrowthAuditResult(message=str(exc))

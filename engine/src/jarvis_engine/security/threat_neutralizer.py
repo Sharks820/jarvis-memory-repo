@@ -20,7 +20,7 @@ import urllib.request
 from collections import deque
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso, sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
@@ -311,7 +311,7 @@ class ThreatNeutralizer:
             "ip": ip,
             "category": category,
             "actions_taken": list(actions_taken),
-            "timestamp": _now_iso(),
+            "timestamp": now_iso(),
         }
         with self._lock:
             self._total_neutralized += 1
@@ -479,7 +479,7 @@ class ThreatNeutralizer:
 
         # Build attack timeline from evidence
         timeline: list[dict] = []
-        timestamp = evidence.get("timestamp", _now_iso())
+        timestamp = evidence.get("timestamp", now_iso())
         timeline.append(
             {
                 "timestamp": timestamp,

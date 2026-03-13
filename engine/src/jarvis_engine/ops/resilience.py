@@ -7,12 +7,12 @@ import secrets
 from pathlib import Path
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import safe_float as _safe_float
-from jarvis_engine._shared import safe_int as _safe_int
+from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import safe_float
+from jarvis_engine._shared import safe_int
 from jarvis_engine.memory.brain import RegressionReport, brain_regression_report, brain_status
 from jarvis_engine.memory.snapshots import run_memory_maintenance
 from jarvis_engine.ops.runtime_control import read_control_state
@@ -83,12 +83,12 @@ def _ensure_mobile_security_config(root: Path) -> dict[str, Any]:
         signing_key = secrets.token_urlsafe(64)
         repaired = True
     if repaired or not path.exists():
-        _atomic_write_json(
+        atomic_write_json(
             path,
             {
                 "token": token,
                 "signing_key": signing_key,
-                "updated_utc": _now_iso(),
+                "updated_utc": now_iso(),
                 "source": "resilience_repair",
             },
         )
@@ -129,7 +129,7 @@ def run_mobile_desktop_sync(root: Path) -> SyncReport:
     sync_ok = all(item.get("ok", False) for item in checks)
     report = {
         "sync_ok": sync_ok,
-        "generated_utc": _now_iso(),
+        "generated_utc": now_iso(),
         "security": security,
         "owner_guard": {
             "enabled": bool(owner_guard.get("enabled", False)),
@@ -143,13 +143,13 @@ def run_mobile_desktop_sync(root: Path) -> SyncReport:
             "updated_utc": str(control_state.get("updated_utc", "")),
         },
         "memory": {
-            "total_records": _safe_int(memory_stats.get("total_records", 0)),
-            "fact_count": _safe_int(memory_stats.get("fact_count", 0)),
+            "total_records": safe_int(memory_stats.get("total_records", 0)),
+            "fact_count": safe_int(memory_stats.get("fact_count", 0)),
         },
         "checks": checks,
     }
-    report_path = _runtime_dir(root) / "mobile_desktop_sync.json"
-    _atomic_write_json(report_path, report)
+    report_path = runtime_dir(root) / "mobile_desktop_sync.json"
+    atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
     return report
 
@@ -195,7 +195,7 @@ def run_self_heal(
     snapshot_note: str = "self-heal",
     force_maintenance: bool = False,
 ) -> SelfHealReport:
-    now = _now_iso()
+    now = now_iso()
     actions: list[str] = []
     security = _ensure_mobile_security_config(root)
     if security.get("repaired", False):
@@ -208,8 +208,8 @@ def run_self_heal(
     regression = brain_regression_report(root)
     status = str(regression.get("status", "unknown")).strip().lower()
     regression_healthy = status in {"healthy", "pass"}
-    unresolved_conflicts = _safe_int(regression.get("unresolved_conflicts", 0))
-    duplicate_ratio = _safe_float(regression.get("duplicate_ratio", 0.0))
+    unresolved_conflicts = safe_int(regression.get("unresolved_conflicts", 0))
+    duplicate_ratio = safe_float(regression.get("duplicate_ratio", 0.0))
 
     maintenance: dict[str, Any] = {"status": "skipped"}
     should_maintain = (
@@ -228,7 +228,7 @@ def run_self_heal(
 
     logs = _scan_recent_logs(root)
     issue_counts = logs.get("issues", {})
-    issue_total = sum(_safe_int(v) for v in issue_counts.values())
+    issue_total = sum(safe_int(v) for v in issue_counts.values())
 
     overall = "ok"
     if (not regression_healthy) or maintenance.get("status") == "error":
@@ -245,7 +245,7 @@ def run_self_heal(
         "sync": sync_report,
         "log_scan": logs,
     }
-    report_path = _runtime_dir(root) / "self_heal_report.json"
-    _atomic_write_json(report_path, report)
+    report_path = runtime_dir(root) / "self_heal_report.json"
+    atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
     return report

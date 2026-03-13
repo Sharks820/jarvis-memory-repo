@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
         - temporal_breakdown: {permanent: N, time_sensitive: N, expired: N, unknown: N}
     """
     metrics: KGMetrics = {
-        "ts": _now_iso(),
+        "ts": now_iso(),
         "node_count": 0,
         "edge_count": 0,
         "branch_counts": {},

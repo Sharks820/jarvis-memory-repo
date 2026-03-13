@@ -13,7 +13,7 @@ import logging
 import threading
 from typing import ClassVar
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class ScopeEnforcer:
 
     def _record_violation(self, scope: str, action: str, reason: str) -> None:
         entry = {
-            "timestamp": _now_iso(),
+            "timestamp": now_iso(),
             "scope": scope,
             "action": action,
             "reason": reason,

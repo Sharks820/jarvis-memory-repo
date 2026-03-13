@@ -22,8 +22,8 @@ import struct
 import threading
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
-from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine._shared import now_iso, sanitize_fts_query
+from jarvis_engine._constants import EMBEDDING_DIM
 from jarvis_engine.knowledge._base import upsert_fts_kg
 
 if TYPE_CHECKING:
@@ -49,11 +49,7 @@ RELATION_SYNONYMS: dict[str, str] = {
 }
 
 
-def _placeholder_csv(count: int) -> str:
-    """Return a bounded SQLite placeholder list for IN clauses."""
-    if count <= 0 or count > 900:
-        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
-    return ",".join("?" for _ in range(count))
+from jarvis_engine._shared import placeholder_csv as _placeholder_csv
 
 
 def _keyword_like_where(count: int) -> str:
@@ -212,7 +208,7 @@ class KnowledgeGraph:
                 self._db.execute(
                     f"""
                     CREATE VIRTUAL TABLE IF NOT EXISTS vec_kg_nodes
-                        USING vec0(node_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
+                        USING vec0(node_id TEXT PRIMARY KEY, embedding float[{EMBEDDING_DIM}])
                     """
                 )
             except sqlite3.Error as exc:
@@ -331,7 +327,7 @@ class KnowledgeGraph:
             return None
         try:
             embedding = self._embed_service.embed(label, prefix="search_document")
-            if len(embedding) == _EMBEDDING_DIM:
+            if len(embedding) == EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (ImportError, ValueError, struct.error) as exc:
             logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
@@ -693,11 +689,11 @@ class KnowledgeGraph:
 
         try:
             query_embedding = svc.embed(query, prefix="search_query")
-            if len(query_embedding) != _EMBEDDING_DIM:
+            if len(query_embedding) != EMBEDDING_DIM:
                 logger.warning(
                     "KG semantic search dimension mismatch: got %d, expected %d",
                     len(query_embedding),
-                    _EMBEDDING_DIM,
+                    EMBEDDING_DIM,
                 )
                 return []
 
@@ -798,7 +794,7 @@ class KnowledgeGraph:
         for kw in filtered:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             like_params.append(f"%{sanitized}%")
-        now = _now_iso()
+        now = now_iso()
 
         where_clause = _keyword_like_where(len(like_params))
 

@@ -13,8 +13,8 @@ import logging
 import sqlite3
 from typing import TypeGuard, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine._shared import now_iso
+from jarvis_engine._constants import EMBEDDING_DIM
 from jarvis_engine.knowledge._base import KGManagerBase, upsert_fts_kg
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class ContradictionManager(KGManagerBase):
             import struct
 
             embedding = embed_service.embed(label, prefix="search_document")
-            if len(embedding) == _EMBEDDING_DIM:
+            if len(embedding) == EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             logger.debug(
@@ -413,7 +413,7 @@ class ContradictionManager(KGManagerBase):
         contradiction = result
 
         node_id = contradiction["node_id"]
-        now = _now_iso()
+        now = now_iso()
 
         node_result = self._load_node_for_resolution(
             node_id,

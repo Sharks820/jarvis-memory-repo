@@ -5,8 +5,8 @@ import uuid
 from http import HTTPStatus
 from typing import Any, Protocol
 
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
-from jarvis_engine._shared import make_task_id as _make_task_id
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME, SUBSYSTEM_ERRORS
+from jarvis_engine._shared import make_task_id
 from jarvis_engine.mobile_routes._helpers import (
     MobileRouteHandlerProtocol,
     MobileRouteServerProtocol,
@@ -95,14 +95,14 @@ class CommandRoutesMixin:
                     LearnInteractionCommand(
                         user_message=user_text[:1000],
                         assistant_response=assistant_response[:1000],
-                        task_id=_make_task_id(f"mobile-{intent}"),
+                        task_id=make_task_id(f"mobile-{intent}"),
                         route=intent,
                         topic=user_text[:100],
                     )
                 )
             finally:
                 _thread_local.repo_root_override = None
-        except (ImportError, RuntimeError, ValueError, TypeError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Best-effort command learning fallback failed: %s", exc)
 
     def _handle_post_command(self: _CommandRoutesHandlerProtocol) -> None:
@@ -188,7 +188,7 @@ class CommandRoutesMixin:
             except (OSError, ValueError, TypeError, RuntimeError) as reset_exc:
                 logger.debug("Conversation continuity reset failed during clear: %s", reset_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
-        except (ValueError, TypeError, OSError, ImportError, RuntimeError, AttributeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Conversation history clear failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
@@ -301,7 +301,7 @@ class CommandRoutesMixin:
             logger.warning("Mission create validation failed: %s", exc)
             sanitized = str(exc)[:200].replace("\n", " ")
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": sanitized})
-        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
 
@@ -413,7 +413,7 @@ class CommandRoutesMixin:
             })
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
-        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Mission pause failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission pause failed."})
 
@@ -437,7 +437,7 @@ class CommandRoutesMixin:
             })
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
-        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Mission resume failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission resume failed."})
 
@@ -461,7 +461,7 @@ class CommandRoutesMixin:
             })
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
-        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Mission restart failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
 
@@ -485,10 +485,10 @@ class CommandRoutesMixin:
             from jarvis_engine.proactive.alert_queue import peek_alerts
 
             digest["proactive_alerts"] = peek_alerts(self._root, limit=10)
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Peek alerts for digest failed: %s", exc)
         try:
-            snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
+            snapshot_path = self._root / ".planning" / OPS_SNAPSHOT_FILENAME
             if snapshot_path.exists():
                 from jarvis_engine._shared import load_json_file
 
@@ -517,7 +517,7 @@ class CommandRoutesMixin:
                         logger.debug("Skipping calendar event with invalid date: %s", exc)
                         continue
                 digest["calendar_upcoming"] = upcoming[:5]
-        except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Calendar upcoming for digest failed: %s", exc)
         if context_label:
             try:
@@ -525,11 +525,11 @@ class CommandRoutesMixin:
                 from jarvis_engine.commands.ops_commands import OpsBriefCommand
 
                 bus = get_bus()
-                snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
+                snapshot_path = self._root / ".planning" / OPS_SNAPSHOT_FILENAME
                 result = bus.dispatch(OpsBriefCommand(snapshot_path=snapshot_path))
                 if hasattr(result, "brief") and result.brief:
                     digest["notifications_summary"] = result.brief[:1000]
-            except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
+            except SUBSYSTEM_ERRORS as exc:
                 logger.debug("Ops brief for digest failed: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "digest": digest})
 
@@ -568,7 +568,7 @@ class CommandRoutesMixin:
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                        except SUBSYSTEM_ERRORS as exc:
                             logger.debug("KG person fact lookup failed for %s: %s", person, exc)
                     if title:
                         try:
@@ -579,7 +579,7 @@ class CommandRoutesMixin:
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                        except SUBSYSTEM_ERRORS as exc:
                             logger.debug("KG topic fact lookup failed: %s", exc)
                 keywords = attendees + ([title] if title else [])
                 # Batch: collect all record IDs first, then fetch in one query
@@ -589,7 +589,7 @@ class CommandRoutesMixin:
                         results = mem_engine.search_fts(keyword, limit=3)
                         for record_id, _score in results:
                             _keyword_record_ids.append((keyword, record_id))
-                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                    except SUBSYSTEM_ERRORS as exc:
                         logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
                 if _keyword_record_ids:
                     try:
@@ -604,7 +604,7 @@ class CommandRoutesMixin:
                                     "summary": str(rec.get("summary", ""))[:200],
                                     "date": str(rec.get("ts", "")),
                                 })
-                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                    except SUBSYSTEM_ERRORS as exc:
                         logger.debug("Batch record fetch for meeting prep failed: %s", exc)
         except _COMMAND_ROUTE_ERRORS as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)

@@ -28,8 +28,8 @@ import time
 from pathlib import Path
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import runtime_dir
 from jarvis_engine.config import repo_root
 
 
@@ -117,17 +117,17 @@ def write_gaming_mode_state(
     When *state_path* is ``None``, resolves the default path via
     :func:`gaming_mode_state_path`.
     """
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+    from jarvis_engine._shared import atomic_write_json
 
     if state_path is None:
         state_path = gaming_mode_state_path()
     payload: GamingModeState = {
         "enabled": bool(state.get("enabled", False)),
         "auto_detect": bool(state.get("auto_detect", False)),
-        "updated_utc": str(state.get("updated_utc", "")) or _now_iso(),
+        "updated_utc": str(state.get("updated_utc", "")) or now_iso(),
         "reason": str(state.get("reason", "")).strip()[:200],
     }
-    _atomic_write_json(state_path, dict(payload))
+    atomic_write_json(state_path, dict(payload))
     return payload
 
 
@@ -254,7 +254,7 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
 
 def gaming_mode_state_path() -> Path:
     """Return the path to the gaming mode JSON state file."""
-    return _runtime_dir(repo_root()) / "gaming_mode.json"
+    return runtime_dir(repo_root()) / "gaming_mode.json"
 
 
 def gaming_processes_path() -> Path:

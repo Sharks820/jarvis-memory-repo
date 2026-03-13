@@ -16,8 +16,8 @@ from jarvis_engine._compat import UTC
 from enum import Enum
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import parse_iso_timestamp, safe_float as _safe_float
-from jarvis_engine._shared import safe_int as _safe_int
+from jarvis_engine._shared import parse_iso_timestamp, safe_float
+from jarvis_engine._shared import safe_int
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
@@ -74,8 +74,8 @@ class TierManager:
         if age_hours <= self.HOT_WINDOW_HOURS:
             return Tier.HOT
 
-        access_count = _safe_int(record.get("access_count", 0))
-        confidence = _safe_float(record.get("confidence", 0.0))
+        access_count = safe_int(record.get("access_count", 0))
+        confidence = safe_float(record.get("confidence", 0.0))
 
         # Frequently accessed or high-confidence records stay WARM
         if access_count >= self.HIGH_ACCESS_THRESHOLD:
@@ -156,7 +156,7 @@ class TierManager:
             current_tier = str(record.get("tier", "warm"))
             if current_tier != Tier.COLD.value:
                 continue
-            access_count = _safe_int(record.get("access_count", 0))
+            access_count = safe_int(record.get("access_count", 0))
             if access_count >= self.COLD_PROMOTION_ACCESS_THRESHOLD:
                 updates.append((rid, Tier.WARM.value))
 

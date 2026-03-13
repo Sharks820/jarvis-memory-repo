@@ -15,7 +15,7 @@ from pathlib import Path
 
 from typing import TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso, sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class ActionAuditor:
         input_hash = sha256_hex(detail)[:16]
 
         entry: dict = {
-            "timestamp": _now_iso(),
+            "timestamp": now_iso(),
             "action_type": action_type,
             "detail": truncated_detail,
             "trigger": trigger,
@@ -129,7 +129,7 @@ class ActionAuditor:
         with self._lock:
             entries = list(self._recent)
 
-        today = _now_iso()[:10]
+        today = now_iso()[:10]
         by_type: dict[str, int] = {}
         by_trigger: dict[str, int] = {}
         total = 0

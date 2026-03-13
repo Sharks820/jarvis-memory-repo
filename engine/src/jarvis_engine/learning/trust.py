@@ -11,7 +11,7 @@ import os
 import re
 from typing import TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
+from jarvis_engine._shared import now_iso, sha256_hex, sha256_short
 
 TRUST_POLICY_AUDIT_ONLY = "audit_only"
 TRUST_POLICY_WARN_ONLY = "warn_only"
@@ -183,7 +183,7 @@ def classify_learning_subject(
     learning_lane, trust_level, promotion_state, approved_by_owner = _base_trust(
         source_type, artifact_kind,
     )
-    now = _now_iso()
+    now = now_iso()
     source_hash = sha256_hex(content or f"{subject_type}:{subject_id}:{source_channel}")
     correlation_id = sha256_short(
         f"{subject_type}|{subject_id}|{source_channel}|{mission_id}|{source_hash}".encode("utf-8")

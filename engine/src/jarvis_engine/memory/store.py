@@ -4,7 +4,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, asdict
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import Iterable
 
@@ -30,7 +30,7 @@ class MemoryStore:
 
     def append(self, event_type: str, message: str) -> MemoryEvent:
         event = MemoryEvent(
-            ts=_now_iso(),
+            ts=now_iso(),
             event_type=event_type,
             message=message,
         )

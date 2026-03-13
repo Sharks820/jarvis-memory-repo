@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
     BlockIPResult,
@@ -99,7 +100,7 @@ def _get_or_create_orchestrator(
             _shared_orchestrator = orch
             _shared_orchestrator_key = key
             return orch
-        except (OSError, ValueError, RuntimeError, TypeError, ImportError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("SecurityOrchestrator init failed: %s", exc)
             return None
 

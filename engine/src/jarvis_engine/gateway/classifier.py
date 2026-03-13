@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
 from jarvis_engine._protocols import EmbedServiceProtocol
-from jarvis_engine._shared import get_fast_local_model as _get_fast_local_model
+from jarvis_engine._shared import get_fast_local_model
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ class IntentClassifier:
     # qwen3.5:latest (9B) handles complex/math tasks requiring deeper reasoning.
     # Cloud CLIs (Claude, Codex, Gemini) are fallbacks only — used when local
     # models detect they can't handle the query or for web grounding.
-    # All routes resolved at runtime via _get_local_model / _get_fast_local_model.
+    # All routes resolved at runtime via get_local_model / get_fast_local_model.
     MODEL_MAP: MappingProxyType[str, str] = MappingProxyType({})  # All routes resolved dynamically in _resolve_model_for_route
 
     # Fallback preferences per route — cloud CLIs as escalation only.
@@ -292,15 +292,15 @@ class IntentClassifier:
         queries, and qwen3.5:latest (9B) for complex/math tasks needing deeper
         reasoning.  Cloud CLIs (Claude, Codex, Gemini) are fallbacks only.
         """
-        from jarvis_engine._shared import get_local_model as _get_local_model
+        from jarvis_engine._shared import get_local_model
 
         # Local-first: pick the right local model based on task complexity
         if route in ("math_logic", "complex"):
             # Heavy reasoning → full 9B model
-            primary = _get_local_model()
+            primary = get_local_model()
         else:
             # Routine, creative, web_research → fast 4B model
-            primary = _get_fast_local_model()
+            primary = get_fast_local_model()
 
         if available_models is None or primary in available_models:
             return primary
@@ -316,7 +316,7 @@ class IntentClassifier:
                 return fallback
 
         # Ultimate fallback: any available local model
-        local = _get_local_model()
+        local = get_local_model()
         if available_models is None or local in available_models:
             return local
         if available_models:
@@ -341,8 +341,8 @@ class IntentClassifier:
         """
         import numpy as np
 
-        from jarvis_engine._shared import get_local_model as _get_local_model
-        local_model = _get_local_model()
+        from jarvis_engine._shared import get_local_model
+        local_model = get_local_model()
 
         # Privacy check first -- always trumps embedding similarity
         if self._check_privacy(query):

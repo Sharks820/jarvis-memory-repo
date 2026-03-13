@@ -97,9 +97,9 @@ from jarvis_engine.cli_proactive import (  # noqa: E402
 from jarvis_engine.mobile_api_lifecycle import run_mobile_server  # noqa: F401, E402
 
 # Imports from _constants (used by argparse registrations)
-from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT  # noqa: E402
-from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME  # noqa: E402
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME  # noqa: E402
+from jarvis_engine._constants import DEFAULT_API_PORT  # noqa: E402
+from jarvis_engine._constants import ACTIONS_FILENAME  # noqa: E402
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ def _register_core_commands(sub: argparse._SubParsersAction) -> None:
 
     p_mobile = sub.add_parser("serve-mobile", help="Run secure mobile ingestion API.")
     p_mobile.add_argument("--host", default="127.0.0.1")
-    p_mobile.add_argument("--port", type=int, default=_DEFAULT_API_PORT)
+    p_mobile.add_argument("--port", type=int, default=DEFAULT_API_PORT)
     p_mobile.add_argument("--token", help="Shared token. Falls back to JARVIS_MOBILE_TOKEN env var.")
     p_mobile.add_argument(
         "--signing-key",
@@ -427,7 +427,7 @@ def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
     p_ops_brief = sub.add_parser("ops-brief", help="Generate daily life operations brief.")
     p_ops_brief.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_ops_brief.add_argument("--output-path")
     p_ops_brief.set_defaults(handler=lambda a: cmd_ops_brief(snapshot_path=Path(a.snapshot_path), output_path=Path(a.output_path) if a.output_path else None))
@@ -435,29 +435,29 @@ def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
     p_ops_actions = sub.add_parser("ops-export-actions", help="Export suggested actions from ops snapshot.")
     p_ops_actions.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_ops_actions.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
+        default=str(repo_root() / ".planning" / ACTIONS_FILENAME),
     )
     p_ops_actions.set_defaults(handler=lambda a: cmd_ops_export_actions(snapshot_path=Path(a.snapshot_path), actions_path=Path(a.actions_path)))
 
     p_ops_sync = sub.add_parser("ops-sync", help="Build live operations snapshot from connectors.")
     p_ops_sync.add_argument(
         "--output-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_ops_sync.set_defaults(handler=lambda a: cmd_ops_sync(output_path=Path(a.output_path)))
 
     p_ops_autopilot = sub.add_parser("ops-autopilot", help="Run connector check, sync, brief, action export, and automation.")
     p_ops_autopilot.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_ops_autopilot.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
+        default=str(repo_root() / ".planning" / ACTIONS_FILENAME),
     )
     p_ops_autopilot.add_argument("--execute", action="store_true")
     p_ops_autopilot.add_argument("--approve-privileged", action="store_true")
@@ -468,11 +468,11 @@ def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
     p_daemon.add_argument("--interval-s", type=int, default=180)
     p_daemon.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_daemon.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
+        default=str(repo_root() / ".planning" / ACTIONS_FILENAME),
     )
     p_daemon.add_argument("--execute", action="store_true")
     p_daemon.add_argument("--approve-privileged", action="store_true")
@@ -559,7 +559,7 @@ def _register_runtime_security_commands(sub: argparse._SubParsersAction) -> None
     p_automation = sub.add_parser("automation-run", help="Run planned actions with capability gates.")
     p_automation.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
+        default=str(repo_root() / ".planning" / ACTIONS_FILENAME),
     )
     p_automation.add_argument(
         "--approve-privileged",
@@ -653,11 +653,11 @@ def _register_voice_commands(sub: argparse._SubParsersAction) -> None:
     )
     p_voice_run.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+        default=str(repo_root() / ".planning" / OPS_SNAPSHOT_FILENAME),
     )
     p_voice_run.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
+        default=str(repo_root() / ".planning" / ACTIONS_FILENAME),
     )
     p_voice_run.add_argument(
         "--model-override",

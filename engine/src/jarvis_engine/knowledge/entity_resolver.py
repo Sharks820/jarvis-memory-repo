@@ -14,7 +14,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine._constants import EMBEDDING_DIM
 from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
 
 if TYPE_CHECKING:
@@ -400,7 +400,7 @@ class EntityResolver:
             import struct
 
             embedding = self._embed_service.embed(label, prefix="search_document")
-            if len(embedding) == _EMBEDDING_DIM:
+            if len(embedding) == EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (RuntimeError, TypeError, ValueError, OSError) as exc:
             logger.debug("Vec embedding pre-compute for merge label failed: %s", exc)

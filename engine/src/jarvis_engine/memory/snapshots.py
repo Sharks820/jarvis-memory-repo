@@ -10,8 +10,8 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import runtime_dir as _runtime_dir
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import runtime_dir
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -63,7 +63,7 @@ def _default_targets(root: Path) -> list[Path]:
         root / ".planning" / "brain",
         root / ".planning" / "events.jsonl",
         root / ".planning" / "capability_history.jsonl",
-        _runtime_dir(root),
+        runtime_dir(root),
     ]
 
 
@@ -154,9 +154,9 @@ def _capture_kg_metrics(root_resolved: Path) -> dict[str, Any] | None:
         from jarvis_engine.knowledge.regression import RegressionChecker
         from jarvis_engine.knowledge.graph import KnowledgeGraph
         from jarvis_engine.memory.engine import MemoryEngine
-        from jarvis_engine._shared import memory_db_path as _memory_db_path
+        from jarvis_engine._shared import memory_db_path
 
-        db_path = _memory_db_path(root_resolved)
+        db_path = memory_db_path(root_resolved)
         if not db_path.exists():
             return None
         _kg_engine = MemoryEngine(db_path)
@@ -205,7 +205,7 @@ def create_signed_snapshot(
 
     metadata: dict[str, Any] = {
         "snapshot_file": snapshot_path.name,
-        "created_utc": _now_iso(),
+        "created_utc": now_iso(),
         "sha256": digest,
         "hmac_alg": "sha256",
         "signature_file": signature_path.name,
@@ -352,9 +352,9 @@ def run_memory_maintenance(
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 from jarvis_engine.memory.engine import MemoryEngine
 
-                from jarvis_engine._shared import memory_db_path as _memory_db_path
+                from jarvis_engine._shared import memory_db_path
 
-                db_path = _memory_db_path(root)
+                db_path = memory_db_path(root)
                 if db_path.exists():
                     _kg_engine = MemoryEngine(db_path)
                     try:
@@ -377,7 +377,7 @@ def run_memory_maintenance(
         logger.warning("KG regression comparison failed: %s", exc)
 
     report = {
-        "ts": _now_iso(),
+        "ts": now_iso(),
         "keep_recent": keep_recent,
         "compact": compact_result,
         "regression": regression,

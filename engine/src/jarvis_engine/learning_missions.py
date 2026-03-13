@@ -9,7 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json, now_iso as _now_iso
+from jarvis_engine._shared import atomic_write_json, now_iso
 from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import urlparse
@@ -112,9 +112,9 @@ def load_missions(root: Path) -> list[dict[str, Any]]:
 
 
 def _save_missions(root: Path, missions: list[dict[str, Any]]) -> None:
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+    from jarvis_engine._shared import atomic_write_json
 
-    _atomic_write_json(_missions_path(root), missions, secure=False)
+    atomic_write_json(_missions_path(root), missions, secure=False)
 
 
 def _progress_bar(pct: int) -> str:
@@ -145,7 +145,7 @@ def _update_mission_progress(
             mission["progress_pct"] = max(0, min(100, int(progress_pct)))
             mission["status_detail"] = status_detail[:180]
             mission["progress_bar"] = _progress_bar(mission["progress_pct"])
-            mission["updated_utc"] = _now_iso()
+            mission["updated_utc"] = now_iso()
             _save_missions(root, missions)
             event_payload = {
                 "topic": str(mission.get("topic", "")),
@@ -213,8 +213,8 @@ def create_learning_mission(
         "sources": sources or list(MISSION_DEFAULT_SOURCES),
         "status": "pending",
         "origin": origin,
-        "created_utc": _now_iso(),
-        "updated_utc": _now_iso(),
+        "created_utc": now_iso(),
+        "updated_utc": now_iso(),
         "last_report_path": "",
         "verified_findings": 0,
         "progress_pct": 0,
@@ -385,7 +385,7 @@ def _start_mission(
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
         target["status"] = "running"
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         _save_missions(root, missions)
         topic = str(target.get("topic", "")).strip()
         objective = str(target.get("objective", ""))
@@ -490,7 +490,7 @@ def _finalize_mission(
             target["progress_pct"] = 100
             target["status_detail"] = "Completed with no verified findings"
             target["progress_bar"] = _progress_bar(100)
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         target["last_report_path"] = str(report_path)
         target["verified_findings"] = len(verified)
         final_status = str(target.get("status", "completed"))
@@ -584,11 +584,11 @@ def run_learning_mission(
         "candidate_count": len(candidate_rows),
         "verified_findings": verified,
         "verified_count": len(verified),
-        "completed_utc": _now_iso(),
+        "completed_utc": now_iso(),
     }
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
-    _atomic_write_json(report_path, report)
+    atomic_write_json(report_path, report)
 
     _update_step(root, mission_id, "finalize", status="completed", elapsed_ms=_now_ms() - _t5)
     _update_mission_progress(
@@ -623,7 +623,7 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
             raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
 
         target["status"] = "cancelled"
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         target["status_detail"] = "Cancelled"
         target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
@@ -658,7 +658,7 @@ def retry_failed_missions(root: Path) -> int:
             retries = int(mission.get("retries", 0) or 0)
             if retries >= 2:
                 mission["status"] = "exhausted"
-                mission["updated_utc"] = _now_iso()
+                mission["updated_utc"] = now_iso()
                 modified = True
                 continue
             # Broaden search: add alternative query phrasing
@@ -671,7 +671,7 @@ def retry_failed_missions(root: Path) -> int:
             mission["sources"] = sources
             mission["retries"] = retries + 1
             mission["status"] = "pending"
-            mission["updated_utc"] = _now_iso()
+            mission["updated_utc"] = now_iso()
             mission["progress_pct"] = 0
             mission["status_detail"] = "Retry queued"
             mission["progress_bar"] = _progress_bar(0)
@@ -857,8 +857,8 @@ def auto_generate_missions(
     collector = _TopicCollector(max_new, existing_topics)
 
     if db_path is None:
-        from jarvis_engine._shared import memory_db_path as _memory_db_path
-        db_path = _memory_db_path(root)
+        from jarvis_engine._shared import memory_db_path
+        db_path = memory_db_path(root)
 
     conn = None
     try:
@@ -947,7 +947,7 @@ def _update_step(
             running_step = next((s for s in steps if s.get("status") == "running"), None)
             if running_step:
                 mission["status_detail"] = str(running_step.get("description", ""))[:180]
-            mission["updated_utc"] = _now_iso()
+            mission["updated_utc"] = now_iso()
             _save_missions(root, missions)
             break
 
@@ -1021,7 +1021,7 @@ def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if str(target.get("status", "")).lower() != "running":
             raise ValueError(f"can only pause a running mission, current status: {target.get('status')}")
         target["status"] = "paused"
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         target["status_detail"] = "Paused"
         target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
@@ -1050,7 +1050,7 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if str(target.get("status", "")).lower() != "paused":
             raise ValueError(f"can only resume a paused mission, current status: {target.get('status')}")
         target["status"] = "pending"  # Will be picked up by daemon loop
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         target["status_detail"] = "Resumed — queued for execution"
         target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
@@ -1083,7 +1083,7 @@ def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         target["progress_pct"] = 0
         target["progress_bar"] = _progress_bar(0)
         target["status_detail"] = "Restarted — queued for execution"
-        target["updated_utc"] = _now_iso()
+        target["updated_utc"] = now_iso()
         target["steps"] = _init_mission_steps()
         _save_missions(root, missions)
 

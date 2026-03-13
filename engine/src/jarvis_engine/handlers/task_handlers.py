@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from jarvis_engine._shared import make_task_id as _make_task_id
+from jarvis_engine._shared import make_task_id
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -67,7 +67,7 @@ class RunTaskHandler:
             auto_id = auto_ingest_memory(
                 source="task_outcome",
                 kind="episodic",
-                task_id=_make_task_id(f"task-{cmd.task_type}"),
+                task_id=make_task_id(f"task-{cmd.task_type}"),
                 content=(
                     f"Task type={cmd.task_type}; execute={cmd.execute}; approved={cmd.approve_privileged}; "
                     f"allowed={result.allowed}; provider={result.provider}; reason={result.reason}; "
@@ -116,14 +116,25 @@ class RouteHandler:
                 reason=f"Intent: {route_name} (confidence={confidence:.2f})",
             )
 
-        # Legacy path: risk/complexity routing via ModelRouter
+        # Legacy path: simple risk/complexity routing (inlined from deprecated ModelRouter)
         from jarvis_engine.config import load_config
-        from jarvis_engine.router import ModelRouter
 
         config = load_config()
-        router = ModelRouter(cloud_burst_enabled=config.cloud_burst_enabled)
-        decision = router.route(risk=cmd.risk, complexity=cmd.complexity)
-        return RouteResult(provider=decision.provider, reason=decision.reason)
+        if config.cloud_burst_enabled:
+            if cmd.risk in {"high", "critical"}:
+                return RouteResult(
+                    provider="cloud_verifier",
+                    reason="High-risk task routed for stronger verification.",
+                )
+            if cmd.complexity in {"hard", "very_hard"}:
+                return RouteResult(
+                    provider="cloud_burst",
+                    reason="Complex task routed to cloud burst path.",
+                )
+        return RouteResult(
+            provider="local_primary",
+            reason="Default local-first routing.",
+        )
 
 
 class WebResearchHandler:
@@ -172,7 +183,7 @@ class WebResearchHandler:
                     auto_id = auto_ingest_memory(
                         source="task_outcome",
                         kind="semantic",
-                        task_id=_make_task_id("web-research"),
+                        task_id=make_task_id("web-research"),
                         content=(
                             f"Web research query: {cleaned}\n"
                             f"Top domains: {domain_text}\n"

@@ -10,8 +10,8 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json, now_iso as _now_iso, parse_iso_timestamp
-from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import atomic_write_json, now_iso, parse_iso_timestamp
+from jarvis_engine._shared import safe_float
 
 _ACTIONS_LOCK = threading.Lock()
 
@@ -80,7 +80,7 @@ def _build_area_stats(
         area_distinct[area].add(number)
         for record in records:
             call_type = str(record.get("type", record.get("direction", ""))).lower()
-            duration = _safe_float(
+            duration = safe_float(
                 record.get("duration_sec", record.get("duration", 0.0))
             )
             contact = str(record.get("contact_name", "")).strip()
@@ -108,7 +108,7 @@ def _score_number(
 
     for r in records:
         call_type = str(r.get("type", r.get("direction", ""))).lower()
-        duration = _safe_float(r.get("duration_sec", r.get("duration", 0.0)))
+        duration = safe_float(r.get("duration_sec", r.get("duration", 0.0)))
         total_duration += duration
         if any(t in call_type for t in ["missed", "rejected", "declined", "ignored"]):
             missed += 1
@@ -212,7 +212,7 @@ def build_spam_block_actions(
                 action="block_number",
                 number=candidate.number,
                 message="",
-                created_utc=_now_iso(),
+                created_utc=now_iso(),
                 reason="spam_guard",
             )
         )
@@ -222,7 +222,7 @@ def build_spam_block_actions(
                 action="silence_unknown_callers",
                 number="",
                 message="duration=24h",
-                created_utc=_now_iso(),
+                created_utc=now_iso(),
                 reason="high_spam_volume_detected",
             )
         )
@@ -251,7 +251,7 @@ def build_phone_action(
         action=action,
         number=normalized,
         message=message.strip(),
-        created_utc=_now_iso(),
+        created_utc=now_iso(),
         reason=reason,
     )
 
@@ -271,7 +271,7 @@ def write_spam_report(
     threshold: float,
 ) -> None:
     payload = {
-        "generated_utc": _now_iso(),
+        "generated_utc": now_iso(),
         "threshold": threshold,
         "candidates": [asdict(c) for c in candidates],
         "actions": [asdict(a) for a in actions],
@@ -280,7 +280,7 @@ def write_spam_report(
             "tap_url": "https://www.samsung.com/us/support/answer/ANS10003465/",
         },
     }
-    _atomic_write_json(path, payload)
+    atomic_write_json(path, payload)
 
 
 def _normalize_number(number: str) -> str:

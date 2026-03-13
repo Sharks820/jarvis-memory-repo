@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp, sha256_hex
+from jarvis_engine._shared import now_iso, parse_iso_timestamp, sha256_hex
 
 try:
     import numpy as np
@@ -27,8 +27,6 @@ except ImportError:
     np = None  # type: ignore[assignment]
 
 from jarvis_engine._compat import UTC
-
-_SECONDS_PER_DAY = 86400.0
 
 
 def _parse_days_since(
@@ -38,7 +36,7 @@ def _parse_days_since(
     dt = parse_iso_timestamp(raw_date_str)
     if dt is None:
         return default
-    return max(0.0, (now - dt).total_seconds() / _SECONDS_PER_DAY)
+    return max(0.0, (now - dt).total_seconds() / 86400.0)
 
 
 if TYPE_CHECKING:
@@ -357,7 +355,7 @@ class MemoryConsolidator:
         id_material = f"consolidated|{content_hash}"
         record_id = sha256_hex(id_material)[:32]
 
-        ts = _now_iso()
+        ts = now_iso()
         resolved_branch = branch or (
             group_records[0].get("branch", "general") if group_records else "general"
         )

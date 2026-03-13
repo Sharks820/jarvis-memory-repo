@@ -14,7 +14,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
+from jarvis_engine._shared import now_iso, sha256_hex, sha256_short
 from jarvis_engine.learning.provenance import LearningProvenanceStore
 from jarvis_engine.learning.trust import (
     artifact_requires_quarantine,
@@ -276,7 +276,7 @@ class EnrichedIngestPipeline:
                 return []
 
         # Step 3: Prepare metadata
-        ts = _now_iso()
+        ts = now_iso()
         tag_list = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
         tag_str = json.dumps(tag_list)
 

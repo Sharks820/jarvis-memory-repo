@@ -6,7 +6,8 @@ import logging
 import sqlite3
 from http import HTTPStatus
 
-from jarvis_engine._shared import memory_db_path as _memory_db_path
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._shared import memory_db_path
 from jarvis_engine.mobile_routes._helpers import (
     ALLOWED_KINDS,
     ALLOWED_SOURCES,
@@ -17,6 +18,8 @@ from jarvis_engine.mobile_routes._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
 
 
 class DataRoutesMixin:
@@ -75,7 +78,7 @@ class DataRoutesMixin:
             return
         route = str(payload.get("route", "")).strip()[:100]
         comment = str(payload.get("comment", "")).strip()[:500]
-        db_path = _memory_db_path(self._root)
+        db_path = memory_db_path(self._root)
         if not db_path.exists():
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": False, "reason": "DB not available"})
             return
@@ -87,7 +90,7 @@ class DataRoutesMixin:
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
-        except (ValueError, KeyError, TypeError, OSError, ImportError, sqlite3.Error) as exc:  # narrowed from except Exception
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("Feedback recording failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
         finally:
@@ -117,7 +120,7 @@ class DataRoutesMixin:
                 "events": [_serialize_activity_event(e) for e in events],
                 "stats": stats,
             })
-        except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Activity feed query failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
 
@@ -129,6 +132,6 @@ class DataRoutesMixin:
             from jarvis_engine.proactive.alert_queue import drain_alerts
             alerts = drain_alerts(self._root, limit=50)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Alert queue drain failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": []})

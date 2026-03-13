@@ -15,7 +15,7 @@ from pathlib import Path
 from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import escape_response
 from jarvis_engine._bus import get_bus as _get_bus
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import atomic_write_json
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
 
 from jarvis_engine.commands.ops_commands import (
@@ -420,6 +420,6 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
         except ValueError:
             print("error: output path must be within project root.")
             return 2
-        _atomic_write_json(out, dashboard)
+        atomic_write_json(out, dashboard)
         print(f"dashboard_saved={out}")
     return 0

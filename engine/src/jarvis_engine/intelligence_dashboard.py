@@ -3,14 +3,9 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime
-from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
+from jarvis_engine._shared import atomic_write_json, now_iso, parse_iso_timestamp, safe_float
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
-
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-
-_SECONDS_PER_DAY = 86400.0
-from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine.memory.brain import brain_regression_report
 from jarvis_engine.growth_tracker import read_history, summarize_history
 
@@ -105,12 +100,6 @@ MILESTONES: list[dict[str, Any]] = [
 ]
 
 
-_to_float = _safe_float
-
-
-_safe_parse_ts = parse_iso_timestamp
-
-
 def _targets_path(root: Path) -> Path:
     return root / ".planning" / "intelligence_targets.json"
 
@@ -137,7 +126,7 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
             if not isinstance(item, dict):
                 continue
             score = item.get("target_score_pct")
-            score_value = _to_float(score, float("nan"))
+            score_value = safe_float(score, float("nan"))
             if math.isnan(score_value):
                 continue
             values.append(
@@ -171,7 +160,7 @@ def _load_achievements(root: Path) -> dict[str, Any]:
             {
                 "id": str(item.get("id", "")).strip(),
                 "label": str(item.get("label", "")).strip(),
-                "score": _to_float(item.get("score", 0.0), 0.0),
+                "score": safe_float(item.get("score", 0.0), 0.0),
                 "ts": str(item.get("ts", "")).strip(),
             }
         )
@@ -179,7 +168,7 @@ def _load_achievements(root: Path) -> dict[str, Any]:
 
 
 def _save_achievements(root: Path, payload: dict[str, Any]) -> None:
-    _atomic_write_json(_achievements_path(root), payload)
+    atomic_write_json(_achievements_path(root), payload)
 
 
 def _average_run_interval_days(rows: list[dict[str, Any]], window: int = 10) -> float:
@@ -187,7 +176,7 @@ def _average_run_interval_days(rows: list[dict[str, Any]], window: int = 10) -> 
         return 1.0
     parsed: list[datetime] = []
     for row in rows[-window:]:
-        ts = _safe_parse_ts(str(row.get("ts", "")))
+        ts = parse_iso_timestamp(str(row.get("ts", "")))
         if ts is not None:
             parsed.append(ts)
     if len(parsed) < 2:
@@ -196,7 +185,7 @@ def _average_run_interval_days(rows: list[dict[str, Any]], window: int = 10) -> 
     for idx in range(1, len(parsed)):
         delta = (parsed[idx] - parsed[idx - 1]).total_seconds()
         if delta > 0:
-            deltas.append(delta / _SECONDS_PER_DAY)
+            deltas.append(delta / 86400.0)
     if not deltas:
         return 1.0
     return max(0.05, sum(deltas) / len(deltas))
@@ -206,8 +195,8 @@ def _score_slope_per_run(rows: list[dict[str, Any]], window: int = 12) -> float:
     sample = rows[-window:]
     if len(sample) < 2:
         return 0.0
-    start = _to_float(sample[0].get("score_pct", 0.0), 0.0)
-    end = _to_float(sample[-1].get("score_pct", 0.0), 0.0)
+    start = safe_float(sample[0].get("score_pct", 0.0), 0.0)
+    end = safe_float(sample[-1].get("score_pct", 0.0), 0.0)
     return (end - start) / float(len(sample) - 1)
 
 
@@ -298,7 +287,7 @@ def _build_ranking_and_etas(
     ]
     etas: list[dict[str, Any]] = []
     for target in targets:
-        target_score = _to_float(target.get("target_score_pct", 0.0), 0.0)
+        target_score = safe_float(target.get("target_score_pct", 0.0), 0.0)
         ranking.append(
             {
                 "id": str(target.get("id", "")),
@@ -317,7 +306,7 @@ def _build_ranking_and_etas(
             }
         )
     ranking.sort(
-        key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True
+        key=lambda item: safe_float(item.get("score_pct", 0.0), 0.0), reverse=True
     )
     return ranking, etas
 
@@ -337,7 +326,7 @@ def _check_milestone_unlocks(
     }
     new_unlocks: list[dict[str, Any]] = []
     for milestone in MILESTONES:
-        milestone_score = _to_float(milestone.get("score", 0.0), 0.0)
+        milestone_score = safe_float(milestone.get("score", 0.0), 0.0)
         milestone_id = str(milestone.get("id", ""))
         if latest_score >= milestone_score and milestone_id not in unlocked_ids:
             new_unlocks.append(
@@ -366,7 +355,7 @@ def build_intelligence_dashboard(
 ) -> IntelligenceDashboard:
     history_rows = read_history(_history_path(root))
     summary = summarize_history(history_rows, last=last_runs)
-    latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)
+    latest_score = safe_float(summary.get("latest_score_pct", 0.0), 0.0)
     window = max(4, min(20, last_runs))
     slope = _score_slope_per_run(history_rows, window=window)
     avg_days = _average_run_interval_days(history_rows, window=window)
@@ -378,7 +367,7 @@ def build_intelligence_dashboard(
         avg_days,
     )
 
-    now = _now_iso()
+    now = now_iso()
     new_unlocks, unlocked = _check_milestone_unlocks(root, latest_score, now)
 
     return {
@@ -392,8 +381,8 @@ def build_intelligence_dashboard(
         },
         "jarvis": {
             "score_pct": latest_score,
-            "delta_vs_prev_pct": _to_float(summary.get("delta_vs_prev_pct", 0.0), 0.0),
-            "window_avg_pct": _to_float(summary.get("window_avg_pct", 0.0), 0.0),
+            "delta_vs_prev_pct": safe_float(summary.get("delta_vs_prev_pct", 0.0), 0.0),
+            "window_avg_pct": safe_float(summary.get("window_avg_pct", 0.0), 0.0),
             "latest_model": str(summary.get("latest_model", "")),
             "latest_ts": str(summary.get("latest_ts", "")),
         },

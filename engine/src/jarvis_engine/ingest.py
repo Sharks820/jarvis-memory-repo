@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass, asdict
 from typing import Literal
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_short
+from jarvis_engine._shared import now_iso, sha256_short
 from jarvis_engine.learning.trust import classify_learning_subject
 from jarvis_engine.memory.store import MemoryStore
 
@@ -70,7 +70,7 @@ class IngestionPipeline:
                 )
                 return IngestRecord(
                     record_id=existing_id,
-                    ts=_now_iso(),
+                    ts=now_iso(),
                     source=source,
                     kind=kind,
                     task_id=task_id,
@@ -78,7 +78,7 @@ class IngestionPipeline:
                     deduplicated=True,
                 )
 
-        ts = _now_iso()
+        ts = now_iso()
         # Use content hash as record_id for deterministic deduplication
         record_id = content_hash
         rec = IngestRecord(

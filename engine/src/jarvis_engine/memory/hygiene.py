@@ -21,11 +21,10 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
+from jarvis_engine._shared import now_iso, parse_iso_timestamp
 
 logger = logging.getLogger(__name__)
 
-_SECONDS_PER_DAY = 86400.0
 
 # Quality tiers
 
@@ -108,7 +107,7 @@ class HygieneReport:
     archived: int = 0
     protected: int = 0
     errors: list[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=_now_iso)
+    timestamp: str = field(default_factory=now_iso)
 
 
 # Rule-based classifier (Pass 1)
@@ -384,7 +383,7 @@ class MemoryHygieneEngine:
             if ts:
                 record_time = parse_iso_timestamp(ts)
                 if record_time is not None:
-                    age_days = (now - record_time).total_seconds() / _SECONDS_PER_DAY
+                    age_days = (now - record_time).total_seconds() / 86400.0
 
             threshold = (
                 self.JUNK_ARCHIVE_DAYS

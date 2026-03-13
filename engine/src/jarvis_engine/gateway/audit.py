@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class GatewayAudit:
     ) -> None:
         """Append a routing decision record to the JSONL audit log."""
         record = {
-            "ts": _now_iso(),
+            "ts": now_iso(),
             "provider": provider,
             "model": model,
             "reason": reason,

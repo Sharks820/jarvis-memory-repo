@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine.config import repo_root
 
 logger = logging.getLogger(__name__)
@@ -248,8 +248,8 @@ class ConversationSnapshot:
     active_model: str = ""
     model_history: list[list[Any]] = field(default_factory=list)
     turn_count: int = 0
-    created_at: str = field(default_factory=_now_iso)
-    updated_at: str = field(default_factory=_now_iso)
+    created_at: str = field(default_factory=now_iso)
+    updated_at: str = field(default_factory=now_iso)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dictionary.
@@ -984,7 +984,7 @@ class ConversationStateManager:
         with self._lock:
             self._snapshot.turn_count += 1
             self._snapshot.active_model = model
-            self._snapshot.updated_at = _now_iso()
+            self._snapshot.updated_at = now_iso()
 
             # Extract entities
             entities = extract_entities(content)
@@ -1042,7 +1042,7 @@ class ConversationStateManager:
             ).hexdigest()[:16]
             snippet = content[:200].replace("\n", " ").strip()
             entry = TimelineEntry(
-                timestamp=_now_iso(),
+                timestamp=now_iso(),
                 model=model,
                 role=role,
                 content_hash=content_hash,
@@ -1082,7 +1082,7 @@ class ConversationStateManager:
                 [to_model, self._snapshot.turn_count, reason]
             )
             self._snapshot.active_model = to_model
-            self._snapshot.updated_at = _now_iso()
+            self._snapshot.updated_at = now_iso()
 
             # Cap model history
             if len(self._snapshot.model_history) > 100:
@@ -1139,7 +1139,7 @@ class ConversationStateManager:
         """
         with self._lock:
             self._snapshot.checkpoint_id += 1
-            self._snapshot.updated_at = _now_iso()
+            self._snapshot.updated_at = now_iso()
 
             # Build summary from dropped messages.
             # Compute a per-message budget so the total summary is always

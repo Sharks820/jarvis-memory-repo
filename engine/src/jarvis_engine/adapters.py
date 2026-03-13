@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import Literal
 
@@ -303,7 +303,7 @@ class Model3DAdapter(AdapterBase):
             "quality_profile": quality_profile,
             "vertices": vertices,
             "faces": faces,
-            "created_utc": _now_iso(),
+            "created_utc": now_iso(),
         }
         meta_note = f"metadata={meta_path.resolve()}"
         try:

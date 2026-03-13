@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Optional, Type, get_type_hints, Union
+from typing import Any, Union, get_type_hints
 
 
 # Response contracts (dataclasses)
@@ -22,7 +22,7 @@ class HealthResponse:
 
     ok: bool = True
     status: str = ""
-    intelligence: Optional[Dict[str, Any]] = None
+    intelligence: dict[str, Any] | None = None
 
 
 @dataclass
@@ -41,8 +41,8 @@ class BootstrapResponse:
     """POST /bootstrap response."""
 
     ok: bool = False
-    session: Optional[Dict[str, Any]] = None
-    owner_guard: Optional[Dict[str, Any]] = None
+    session: dict[str, Any] | None = None
+    owner_guard: dict[str, Any] | None = None
     message: str = ""
 
 
@@ -54,14 +54,14 @@ class CommandResponse:
     lifecycle_state: str = ""
     intent: str = ""
     response: str = ""
-    response_chunks: List[str] = field(default_factory=list)
+    response_chunks: list[str] = field(default_factory=list)
     response_truncated: bool = False
-    stdout_tail: List[str] = field(default_factory=list)
+    stdout_tail: list[str] = field(default_factory=list)
     stdout_truncated: bool = False
     command_exit_code: int = 0
     status_code: str = ""
     reason: str = ""
-    stderr_tail: List[str] = field(default_factory=list)
+    stderr_tail: list[str] = field(default_factory=list)
     correlation_id: str = ""
     diagnostic_id: str = ""
     error_code: str = ""
@@ -76,7 +76,7 @@ class SettingsResponse:
     """GET /settings and POST /settings response."""
 
     ok: bool = True
-    settings: Optional[Dict[str, Any]] = None
+    settings: dict[str, Any] | None = None
 
 
 @dataclass
@@ -84,7 +84,7 @@ class DashboardResponse:
     """GET /dashboard response."""
 
     ok: bool = True
-    dashboard: Optional[Dict[str, Any]] = None
+    dashboard: dict[str, Any] | None = None
 
 
 @dataclass
@@ -92,7 +92,7 @@ class SpamCandidatesResponse:
     """GET /spam/candidates response."""
 
     ok: bool = False
-    candidates: List[Dict[str, Any]] = field(default_factory=list)
+    candidates: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -121,8 +121,8 @@ class ProcessesResponse:
     """GET /processes response."""
 
     ok: bool = True
-    services: List[Dict[str, Any]] = field(default_factory=list)
-    control: Dict[str, Any] = field(default_factory=dict)
+    services: list[dict[str, Any]] = field(default_factory=list)
+    control: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -131,7 +131,7 @@ class SyncPullResponse:
 
     ok: bool = True
     encrypted_payload: str = ""
-    new_cursors: Dict[str, Any] = field(default_factory=dict)
+    new_cursors: dict[str, Any] = field(default_factory=dict)
     has_more: bool = False
 
 
@@ -142,7 +142,7 @@ class SyncPushResponse:
     ok: bool = True
     applied: int = 0
     conflicts_resolved: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -150,7 +150,7 @@ class SyncStatusResponse:
     """GET /sync/status response."""
 
     ok: bool = True
-    sync_status: Optional[Dict[str, Any]] = None
+    sync_status: dict[str, Any] | None = None
 
 
 @dataclass
@@ -163,7 +163,7 @@ class ErrorResponse:
 
 # Contract registry: endpoint name -> contract dataclass
 
-_CONTRACT_REGISTRY: Dict[str, Type[Any]] = {
+_CONTRACT_REGISTRY: dict[str, type[Any]] = {
     "GET /health": HealthResponse,
     "POST /bootstrap": BootstrapResponse,
     "POST /command": CommandResponse,
@@ -182,7 +182,7 @@ _CONTRACT_REGISTRY: Dict[str, Type[Any]] = {
 
 # Type mapping for JSON schema generation
 
-_PYTHON_TYPE_TO_JSON: Dict[type, str] = {
+_PYTHON_TYPE_TO_JSON: dict[type, str] = {
     bool: "boolean",
     int: "integer",
     float: "number",
@@ -190,7 +190,7 @@ _PYTHON_TYPE_TO_JSON: Dict[type, str] = {
 }
 
 
-def _type_to_json_schema(tp: Any) -> Dict[str, Any]:
+def _type_to_json_schema(tp: Any) -> dict[str, Any]:
     """Convert a Python type annotation to a JSON schema fragment."""
     # Handle string type annotations (from __future__ annotations)
     if isinstance(tp, str):
@@ -229,9 +229,9 @@ def _type_to_json_schema(tp: Any) -> Dict[str, Any]:
             return {"type": "object"}
 
     # Fallback for bare List/Dict without args
-    if tp is list or tp is List:
+    if tp is list:
         return {"type": "array"}
-    if tp is dict or tp is Dict:
+    if tp is dict:
         return {"type": "object"}
 
     return {"type": "object"}
@@ -240,7 +240,7 @@ def _type_to_json_schema(tp: Any) -> Dict[str, Any]:
 # Public API
 
 
-def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List[str]:
+def validate_contract(endpoint_name: str, response_dict: dict[str, Any]) -> list[str]:
     """Validate a response dict against the contract for *endpoint_name*.
 
     Returns a list of error strings.  An empty list means the response
@@ -252,7 +252,7 @@ def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List
     if contract_cls is None:
         return [f"Unknown endpoint: {endpoint_name}"]
 
-    errors: List[str] = []
+    errors: list[str] = []
     contract_fields = {f.name: f for f in fields(contract_cls)}
 
     # Check that all contract-required fields are present
@@ -291,7 +291,7 @@ def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List
     return errors
 
 
-def get_contract_schema(endpoint_name: Optional[str] = None) -> Dict[str, Any]:
+def get_contract_schema(endpoint_name: str | None = None) -> dict[str, Any]:
     """Return JSON schema(s) for API contracts.
 
     If *endpoint_name* is provided, returns the schema for that single
@@ -306,10 +306,10 @@ def get_contract_schema(endpoint_name: Optional[str] = None) -> Dict[str, Any]:
     return {name: _dataclass_to_schema(cls) for name, cls in _CONTRACT_REGISTRY.items()}
 
 
-def _dataclass_to_schema(cls: Type[Any]) -> Dict[str, Any]:
+def _dataclass_to_schema(cls: type[Any]) -> dict[str, Any]:
     """Convert a dataclass to a JSON-schema-like dict."""
-    properties: Dict[str, Any] = {}
-    required: List[str] = []
+    properties: dict[str, Any] = {}
+    required: list[str] = []
     # Use get_type_hints to resolve string annotations from __future__ annotations
     try:
         resolved_hints = get_type_hints(cls)
@@ -324,7 +324,7 @@ def _dataclass_to_schema(cls: Type[Any]) -> Dict[str, Any]:
         has_factory = f.default_factory is not dataclasses.MISSING  # type: ignore[misc]
         if not has_default and not has_factory:
             required.append(f.name)
-    schema: Dict[str, Any] = {
+    schema: dict[str, Any] = {
         "type": "object",
         "properties": properties,
     }
@@ -344,7 +344,7 @@ def _resolve_str_type(type_str: str) -> Any:
     return mapping.get(type_str, str)
 
 
-def get_android_expected_fields() -> Dict[str, List[str]]:
+def get_android_expected_fields() -> dict[str, list[str]]:
     """Return the fields Android's Kotlin data classes expect per endpoint.
 
     This is the ground truth from ApiModels.kt, maintained in sync with
@@ -376,13 +376,13 @@ def get_android_expected_fields() -> Dict[str, List[str]]:
     }
 
 
-def check_android_compatibility() -> List[str]:
+def check_android_compatibility() -> list[str]:
     """Check that all fields Android expects are present in the server contracts.
 
     Returns a list of incompatibility descriptions.  Empty means compatible.
     """
     android_fields = get_android_expected_fields()
-    errors: List[str] = []
+    errors: list[str] = []
 
     for endpoint_key, expected in android_fields.items():
         # For nested objects like "POST /bootstrap.session", validate

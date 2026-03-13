@@ -14,7 +14,7 @@ import threading
 import zipfile
 from pathlib import Path
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso, sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class ForensicLogger:
         """Append *event* to the forensic log with timestamp and hash chain."""
         with self._lock:
             entry = dict(event)
-            entry["timestamp_utc"] = _now_iso()
+            entry["timestamp_utc"] = now_iso()
             entry["prev_hash"] = self._prev_hash
 
             line = json.dumps(entry, separators=(",", ":"), sort_keys=True)

@@ -17,7 +17,7 @@ from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import atomic_write_json
 
 from jarvis_engine.connectors import (
     build_connector_prompts,
@@ -85,7 +85,7 @@ def build_live_snapshot(root: Path, output_path: Path) -> SyncSummary:
         "connector_statuses": serialize_statuses(connector_statuses),
         "connector_prompts": connector_prompts,
     }
-    _atomic_write_json(output_path, snapshot, secure=False)
+    atomic_write_json(output_path, snapshot, secure=False)
     connectors_ready = sum(1 for status in connector_statuses if status.ready)
     return SyncSummary(
         snapshot_path=str(output_path),

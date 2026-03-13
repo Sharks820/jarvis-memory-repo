@@ -8,9 +8,9 @@ import secrets
 from pathlib import Path
 from typing import TypedDict
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import safe_int as _safe_int
+from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import safe_int
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def read_owner_guard(root: Path) -> OwnerGuardState:
         "master_password_salt_b64": str(
             raw.get("master_password_salt_b64", "")
         ).strip(),
-        "master_password_iterations": _safe_int(
+        "master_password_iterations": safe_int(
             raw.get("master_password_iterations", 200000), 200000
         ),
         "updated_utc": str(raw.get("updated_utc", "")),
@@ -91,8 +91,8 @@ def write_owner_guard(
         state["trusted_mobile_devices"] = [
             str(d).strip()[:128] for d in trusted_mobile_devices if str(d).strip()
         ]
-    state["updated_utc"] = _now_iso()
-    _atomic_write_json(owner_guard_path(root), dict(state))
+    state["updated_utc"] = now_iso()
+    atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 
@@ -116,8 +116,8 @@ def set_master_password(
         salt=salt,
         iterations=int(state["master_password_iterations"]),
     )
-    state["updated_utc"] = _now_iso()
-    _atomic_write_json(owner_guard_path(root), dict(state))
+    state["updated_utc"] = now_iso()
+    atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 
@@ -126,7 +126,7 @@ def clear_master_password(root: Path) -> OwnerGuardState:
     state["master_password_hash"] = ""  # nosec B105
     state["master_password_salt_b64"] = ""  # nosec B105
     state["master_password_iterations"] = 200000
-    _atomic_write_json(owner_guard_path(root), dict(state))
+    atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 

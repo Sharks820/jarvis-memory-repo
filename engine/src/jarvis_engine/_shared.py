@@ -29,6 +29,7 @@ __all__ = [
     "make_thread_aware_repo_root",
     "now_iso",
     "parse_iso_timestamp",
+    "placeholder_csv",
     "safe_float",
     "safe_int",
     "sanitize_fts_query",
@@ -540,7 +541,13 @@ def recency_weight(
     parsed = parse_iso_timestamp(ts_text)
     if parsed is None:
         return default
-    _SECONDS_PER_HOUR = 3600.0
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / _SECONDS_PER_HOUR)
+    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
     return math.exp(-delta_hours / decay_hours)
+
+
+def placeholder_csv(count: int) -> str:
+    """Return a bounded SQLite placeholder list for IN clauses."""
+    if count <= 0 or count > 900:
+        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
+    return ",".join("?" for _ in range(count))
 

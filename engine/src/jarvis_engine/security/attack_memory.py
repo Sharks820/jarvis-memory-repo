@@ -11,7 +11,7 @@ import sqlite3
 import threading
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso, sha256_hex
 
 
 # TypedDicts
@@ -120,7 +120,7 @@ class AttackPatternMemory:
         Returns the pattern_id (SHA-256 of the payload).
         """
         pid = _payload_hash(payload)
-        now = _now_iso()
+        now = now_iso()
         # Truncate payload for storage to prevent stored XSS and limit DB bloat
         safe_payload = payload[: self._MAX_PAYLOAD_STORED]
 

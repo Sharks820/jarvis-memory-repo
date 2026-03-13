@@ -206,9 +206,9 @@ class GamingModeHandler:
         if cmd.reason.strip():
             state["reason"] = cmd.reason.strip()
         if changed:
-            from jarvis_engine._shared import now_iso as _now_iso
+            from jarvis_engine._shared import now_iso
 
-            state["updated_utc"] = _now_iso()
+            state["updated_utc"] = now_iso()
             state = write_gaming_mode_state(state)
 
         detected = False
@@ -300,9 +300,9 @@ class MigrateMemoryHandler:
         from jarvis_engine.memory.migration import run_full_migration
 
         embed_service = EmbeddingService()
-        from jarvis_engine._shared import memory_db_path as _memory_db_path
+        from jarvis_engine._shared import memory_db_path
 
-        db_path = _memory_db_path(self._root)
+        db_path = memory_db_path(self._root)
         summary = run_full_migration(self._root, db_path, embed_service)
         rc = 0 if summary.get("status") == "ok" else 2
         return MigrateMemoryResult(summary=summary, return_code=rc)

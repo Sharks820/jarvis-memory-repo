@@ -6,8 +6,9 @@ import logging
 from http import HTTPStatus
 from typing import Any, Protocol
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +41,18 @@ class ScamRoutesMixin:
     @staticmethod
     def _parse_scam_report_body(body: dict[str, Any]) -> dict[str, Any]:
         """Parse and normalize fields from the scam report request body."""
-        from jarvis_engine._shared import safe_float as _safe_float
+        from jarvis_engine._shared import safe_float
 
         return {
             "number": str(body.get("number", "")),
             "stir_status": str(body.get("stir_status", "")),
             "presentation": str(body.get("presentation", "")),
-            "duration_sec": _safe_float(body.get("duration_sec", 0)),
+            "duration_sec": safe_float(body.get("duration_sec", 0)),
             "answered": bool(body.get("answered", False)),
             "contact_name": str(body.get("contact_name", "")),
             "caller_display_name": str(body.get("caller_display_name", "")),
             "gateway_domain": str(body.get("gateway_domain", "")),
-            "setup_latency_ms": int(_safe_float(body.get("setup_latency_ms", 0))),
+            "setup_latency_ms": int(safe_float(body.get("setup_latency_ms", 0))),
         }
 
     @staticmethod
@@ -79,11 +80,11 @@ class ScamRoutesMixin:
             answered=fields["answered"],
             contact_name=fields["contact_name"],
         )
-        intel_path = _runtime_dir(root) / "call_intel.jsonl"
+        intel_path = runtime_dir(root) / "call_intel.jsonl"
         save_call_intel(intel_path, report)
 
         # Check carrier cache
-        carrier_cache_path = _runtime_dir(root) / "carrier_cache.json"
+        carrier_cache_path = runtime_dir(root) / "carrier_cache.json"
         carrier = lookup_carrier_cached(carrier_cache_path, report.normalized)
         line_type = carrier.line_type if carrier else ""
         carrier_risk = carrier.risk_score if carrier else 0.0
@@ -91,7 +92,7 @@ class ScamRoutesMixin:
         # Run campaign detection on recent data
         all_reports = load_call_intel(intel_path, limit=200)
         campaigns = detect_campaigns(all_reports)
-        campaign_path = _runtime_dir(root) / "scam_campaigns.json"
+        campaign_path = runtime_dir(root) / "scam_campaigns.json"
         save_campaigns(campaign_path, campaigns)
 
         return report, all_reports, campaigns, line_type, carrier_risk
@@ -196,7 +197,7 @@ class ScamRoutesMixin:
                 "stir_status": fields["stir_status"],
                 "signals": result["campaign_signals"],
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam report-call failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
 
@@ -220,11 +221,11 @@ class ScamRoutesMixin:
             normalized = _normalize_number(number)
 
             # Check carrier cache
-            carrier_cache_path = _runtime_dir(self._root) / "carrier_cache.json"
+            carrier_cache_path = runtime_dir(self._root) / "carrier_cache.json"
             carrier = lookup_carrier_cached(carrier_cache_path, normalized)
 
             # Check campaigns
-            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
+            campaign_path = runtime_dir(self._root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             campaign_id = ""
             campaign_confidence = 0.0
@@ -248,7 +249,7 @@ class ScamRoutesMixin:
                 "campaign_signals": campaign_signals,
             }
             self._write_json(HTTPStatus.OK, result)
-        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam lookup failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "number": str(body.get("number", "")),
@@ -263,7 +264,7 @@ class ScamRoutesMixin:
             from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
             from dataclasses import asdict
 
-            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
+            campaign_path = runtime_dir(self._root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             block_actions = build_prefix_block_actions(campaigns)
 
@@ -274,7 +275,7 @@ class ScamRoutesMixin:
                 "total_campaigns": len(campaigns),
                 "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam campaigns fetch failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "campaigns": [], "block_actions": []})
 
@@ -285,8 +286,8 @@ class ScamRoutesMixin:
         try:
             from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
 
-            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
-            intel_path = _runtime_dir(self._root) / "call_intel.jsonl"
+            campaign_path = runtime_dir(self._root) / "scam_campaigns.json"
+            intel_path = runtime_dir(self._root) / "call_intel.jsonl"
             campaigns = load_campaigns(campaign_path)
             all_intel = load_call_intel(intel_path, limit=500)
 
@@ -325,6 +326,6 @@ class ScamRoutesMixin:
                 "top_scam_prefixes": [{"prefix": p, "numbers": n} for p, n in top_prefixes],
                 "top_scam_carriers": [{"carrier": c, "numbers": n} for c, n in top_carriers],
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam stats fetch failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "total_screened": 0, "active_campaigns": 0})

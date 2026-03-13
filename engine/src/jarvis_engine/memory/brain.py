@@ -21,7 +21,7 @@ import re
 import threading
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -88,8 +88,8 @@ class BrainStatusResult(TypedDict):
     branches: list[dict[str, Any]]
 
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import safe_float
 from jarvis_engine._shared import sha256_hex, sha256_short
 from jarvis_engine._shared import recency_weight as _recency_weight_core
 
@@ -140,7 +140,7 @@ class BrainRecord:
     content_hash: str
 
 
-_to_float = _safe_float
+_to_float = safe_float
 
 
 def _brain_dir(root: Path) -> Path:
@@ -234,8 +234,8 @@ def _load_index(root: Path) -> dict[str, Any]:
 
 
 def _save_index(root: Path, payload: dict[str, Any]) -> None:
-    payload["updated_utc"] = _now_iso()
-    _atomic_write_json(_index_path(root), payload)
+    payload["updated_utc"] = now_iso()
+    atomic_write_json(_index_path(root), payload)
 
 
 def _load_facts(root: Path) -> dict[str, Any]:
@@ -252,8 +252,8 @@ def _load_facts(root: Path) -> dict[str, Any]:
 
 
 def _save_facts(root: Path, payload: dict[str, Any]) -> None:
-    payload["updated_utc"] = _now_iso()
-    _atomic_write_json(_facts_path(root), payload)
+    payload["updated_utc"] = now_iso()
+    atomic_write_json(_facts_path(root), payload)
 
 
 def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:
@@ -410,7 +410,7 @@ def _check_dedup(
     if isinstance(known, dict) and content_hash in known:
         return BrainRecord(
             record_id=str(known[content_hash]),
-            ts=_now_iso(),
+            ts=now_iso(),
             source=source,
             kind=kind,
             task_id=task_id,
@@ -437,7 +437,7 @@ def _build_brain_record(
     branch = _pick_branch(tokens)
     summary = _summarize(cleaned)
     unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
-    ts = _now_iso()
+    ts = now_iso()
     # Exclude timestamp from hash material so identical content ingested at
     # different times produces the same record_id (cross-temporal dedup).
     material = f"{source}|{kind}|{task_id}|{content_hash}".encode("utf-8")
@@ -760,7 +760,7 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> BrainCompac
         for (branch, month), summaries in grouped.items():
             sample = [s for s in summaries if s][:3]
             payload = {
-                "ts": _now_iso(),
+                "ts": now_iso(),
                 "branch": branch,
                 "month": month,
                 "count": len(summaries),
@@ -870,7 +870,7 @@ def brain_regression_report(root: Path) -> RegressionReport:
         "branch_count": len(counts),
         "unresolved_conflicts": unresolved,
         "conflict_total": len(conflicts),
-        "generated_utc": _now_iso(),
+        "generated_utc": now_iso(),
     }
 
 

@@ -22,6 +22,7 @@ __all__ = [
     "KG_METRICS_LOG",
     "OPS_SNAPSHOT_FILENAME",
     "ACTIONS_FILENAME",
+    "SUBSYSTEM_ERRORS",
 ]
 
 # Privacy keywords -- used by IntentClassifier and manual fallback routing
@@ -241,3 +242,18 @@ GATEWAY_AUDIT_LOG = "gateway_audit.jsonl"
 KG_METRICS_LOG = "kg_metrics.jsonl"
 OPS_SNAPSHOT_FILENAME = "ops_snapshot.live.json"
 ACTIONS_FILENAME = "actions.generated.json"
+
+# Broad exception tuple for subsystem catch-all handlers.
+# Modules that lazily import subsystems should catch these so a single broken
+# subsystem does not crash the daemon loop, mobile API, or CLI surface.
+# Includes KeyError and AttributeError since subsystem dict-lookups and
+# optional-attribute access are common failure modes alongside the core five.
+SUBSYSTEM_ERRORS: tuple[type[Exception], ...] = (
+    ImportError,
+    OSError,
+    ValueError,
+    TypeError,
+    RuntimeError,
+    KeyError,
+    AttributeError,
+)

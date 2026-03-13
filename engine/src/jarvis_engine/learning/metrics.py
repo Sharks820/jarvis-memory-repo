@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> KnowledgeMetrics:
         Dict with: total_records, total_facts, total_edges, locked_facts,
         branches_populated, branch_distribution, temporal_distribution, captured_at.
     """
-    captured_at = _now_iso()
+    captured_at = now_iso()
 
     # -- Record counts from engine --
     total_records = 0

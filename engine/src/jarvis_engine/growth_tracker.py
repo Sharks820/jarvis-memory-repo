@@ -13,7 +13,7 @@ import logging
 from jarvis_engine.gateway.ollama_client import (
     call_ollama_generate as _call_ollama_generate,
 )
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine._shared import sha256_hex
 
 if TYPE_CHECKING:
@@ -555,7 +555,7 @@ def run_eval(
     avg_latency = round(sum(r.total_duration_s for r in results) / len(results), 3)
 
     return EvalRun(
-        ts=_now_iso(),
+        ts=now_iso(),
         model=model,
         tasks=len(results),
         score_pct=score_pct,

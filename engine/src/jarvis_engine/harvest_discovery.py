@@ -15,7 +15,7 @@ from pathlib import Path
 
 from jarvis_engine._compat import UTC
 from jarvis_engine._constants import STOP_WORDS as _HARVEST_STOP_WORDS
-from jarvis_engine._shared import memory_db_path as _memory_db_path
+from jarvis_engine._shared import memory_db_path
 
 logger = logging.getLogger(__name__)
 
@@ -346,7 +346,7 @@ def discover_harvest_topics(root: Path) -> list[str]:
     args = (candidates, seen_lower, recently_harvested, _MAX_TOPICS)
 
     # Open a single shared SQLite connection for sources 1-3
-    db_path = _memory_db_path(root)
+    db_path = memory_db_path(root)
     conn = None
     try:
         if db_path.exists():

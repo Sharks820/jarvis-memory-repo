@@ -19,8 +19,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
-from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine._shared import now_iso, sanitize_fts_query
+from jarvis_engine._constants import EMBEDDING_DIM
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -33,11 +33,7 @@ _RECORD_LOOKUP_SQL = {
 }
 
 
-def _placeholder_csv(count: int) -> str:
-    """Return a bounded SQLite placeholder list for IN clauses."""
-    if count <= 0 or count > 900:
-        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
-    return ",".join("?" for _ in range(count))
+from jarvis_engine._shared import placeholder_csv as _placeholder_csv
 
 
 class OptimizeResult(TypedDict):
@@ -168,7 +164,7 @@ class MemoryEngine:
                 cur.execute(
                     f"""
                     CREATE VIRTUAL TABLE IF NOT EXISTS vec_records
-                        USING vec0(record_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
+                        USING vec0(record_id TEXT PRIMARY KEY, embedding float[{EMBEDDING_DIM}])
                     """
                 )
             except sqlite3.Error as exc:
@@ -239,9 +235,9 @@ class MemoryEngine:
 
                 # Insert into vec_records if embedding provided and vec available
                 if embedding is not None and self._vec_available:
-                    if len(embedding) != _EMBEDDING_DIM:
+                    if len(embedding) != EMBEDDING_DIM:
                         raise ValueError(
-                            f"Embedding dimension mismatch: got {len(embedding)}, expected {_EMBEDDING_DIM}"
+                            f"Embedding dimension mismatch: got {len(embedding)}, expected {EMBEDDING_DIM}"
                         )
                     blob = struct.pack(f"{len(embedding)}f", *embedding)
                     cur.execute(
@@ -404,11 +400,11 @@ class MemoryEngine:
         if not self._vec_available:
             return []
         try:
-            if len(query_embedding) != _EMBEDDING_DIM:
+            if len(query_embedding) != EMBEDDING_DIM:
                 logger.warning(
                     "Vec search dimension mismatch: got %d, expected %d",
                     len(query_embedding),
-                    _EMBEDDING_DIM,
+                    EMBEDDING_DIM,
                 )
                 return []
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
@@ -434,7 +430,7 @@ class MemoryEngine:
         Returns True if the record existed and was updated, False otherwise.
         """
         self._check_open()
-        now = _now_iso()
+        now = now_iso()
         with self._write_lock:
             with self._db_lock:
                 cur = self._db.execute(
@@ -454,7 +450,7 @@ class MemoryEngine:
         self._check_open()
         if not record_ids:
             return
-        now = _now_iso()
+        now = now_iso()
         with self._write_lock:
             with self._db_lock:
                 self._db.executemany(

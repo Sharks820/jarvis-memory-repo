@@ -4,7 +4,7 @@ import re
 from typing import TypedDict
 from urllib.parse import urlparse
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
     search_web as _search_web,
@@ -131,5 +131,5 @@ def run_web_research(
         "finding_count": len(findings),
         "findings": findings,
         "summary_lines": summary_lines,
-        "generated_utc": _now_iso(),
+        "generated_utc": now_iso(),
     }

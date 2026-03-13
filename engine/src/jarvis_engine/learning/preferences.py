@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from types import MappingProxyType
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 from jarvis_engine.learning.trust import classify_learning_subject
@@ -119,7 +119,7 @@ class PreferenceTracker(LearningTrackerBase):
         if not existing:
             return
 
-        now = _now_iso()
+        now = now_iso()
         with self._write_lock:
             for pref_name in existing:
                 self._db.execute(
@@ -132,7 +132,7 @@ class PreferenceTracker(LearningTrackerBase):
             self._db.commit()
 
     def _update_preference(self, category: str, preference: str) -> None:
-        now = _now_iso()
+        now = now_iso()
         with self._write_lock:
             self._db.execute(
                 """

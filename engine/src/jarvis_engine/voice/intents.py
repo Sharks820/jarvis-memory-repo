@@ -19,8 +19,8 @@ from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.owner_guard import read_owner_guard, verify_master_password
 from jarvis_engine.persona import compose_persona_reply, load_persona_config
 
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
-from jarvis_engine._shared import make_task_id as _make_task_id
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
+from jarvis_engine._shared import make_task_id
 
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 
@@ -368,7 +368,7 @@ def _handle_phone_place_call(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 def _handle_ops_sync(ctx: _DispatchCtx) -> tuple[str, int]:
-    live_snapshot = ctx.snapshot_path.with_name(_OPS_SNAPSHOT_FILENAME)
+    live_snapshot = ctx.snapshot_path.with_name(OPS_SNAPSHOT_FILENAME)
     return "ops_sync", ctx.cmd_ops_sync(live_snapshot)
 
 
@@ -528,7 +528,7 @@ def _handle_memory_ingest(ctx: _DispatchCtx) -> tuple[str, int]:
         content = ctx.text
     rc = ctx.cmd_ingest(
         source="user", kind="episodic",
-        task_id=_make_task_id("voice-remember"), content=content,
+        task_id=make_task_id("voice-remember"), content=content,
     )
     if rc == 0:
         ctx._respond("Got it, I'll remember that.")
@@ -969,7 +969,7 @@ def _post_dispatch_learn(
         _auto_ingest_memory(
             source="user",
             kind="episodic",
-            task_id=_make_task_id(f"voice-{intent}"),
+            task_id=make_task_id(f"voice-{intent}"),
             content=(
                 f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
                 f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}; "
@@ -996,7 +996,7 @@ def _post_dispatch_learn(
             _learn_cmd = LearnInteractionCommand(
                 user_message=text[:1000],
                 assistant_response=learn_response[:1000],
-                task_id=_make_task_id(f"learn-{intent}"),
+                task_id=make_task_id(f"learn-{intent}"),
                 route=intent,
                 topic=text[:100],
             )

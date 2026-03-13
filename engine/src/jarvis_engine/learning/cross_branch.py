@@ -11,7 +11,7 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._constants import STOP_WORDS as _STOP_WORDS
+from jarvis_engine._constants import STOP_WORDS
 from jarvis_engine._shared import extract_keywords as _extract_keywords_core
 
 if TYPE_CHECKING:
@@ -303,7 +303,7 @@ def _extract_keywords(label: str) -> list[str]:
     """
     return _extract_keywords_core(
         label,
-        stop_words=_STOP_WORDS,
+        stop_words=STOP_WORDS,
         min_length=_MIN_KEYWORD_LEN,
         pattern=r"[a-zA-Z]+",
         deduplicate=True,

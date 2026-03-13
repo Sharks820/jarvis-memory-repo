@@ -20,9 +20,8 @@ from jarvis_engine._constants import (
     DEFAULT_LOCAL_MODEL,
     FAST_LOCAL_MODEL,
 )
-from jarvis_engine._shared import env_int as _env_int
+from jarvis_engine._shared import env_int
 
-_SECONDS_PER_HOUR = 3600
 _MS_PER_SECOND = 1000
 from jarvis_engine.desktop.controller import (
     DesktopInteractionController,
@@ -169,7 +168,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
         self._model_label: tk.Label | None = None  # Model indicator label widget
         self._seen_event_ids: dict[str, None] = {}  # Ordered dedup for activity feed events
-        self._processing_timeout_ms = _env_int(
+        self._processing_timeout_ms = env_int(
             "JARVIS_WIDGET_PROCESSING_TIMEOUT_MS",
             300_000,
             minimum=30_000,
@@ -2614,10 +2613,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     s = svc.get("uptime_seconds", 0)
                     if s < 60:
                         uptime_lbl.config(text=f"{s}s")
-                    elif s < _SECONDS_PER_HOUR:
+                    elif s < 3600:
                         uptime_lbl.config(text=f"{s // 60}m")
                     else:
-                        uptime_lbl.config(text=f"{s // _SECONDS_PER_HOUR}h {(s % _SECONDS_PER_HOUR) // 60}m")
+                        uptime_lbl.config(text=f"{s // 3600}h {(s % 3600) // 60}m")
                 else:
                     dot.config(text="\u25CB", fg=self.MUTED)
                     uptime_lbl.config(text="stopped")

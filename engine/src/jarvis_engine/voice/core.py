@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from jarvis_engine._shared import (
-    win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs,
+    win_hidden_subprocess_kwargs,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def _run_ps(script: str, timeout_s: int = 30) -> subprocess.CompletedProcess[str
         text=True,
         check=False,
         timeout=timeout_s,
-        **_win_hidden_subprocess_kwargs(),
+        **win_hidden_subprocess_kwargs(),
     )
 
 
@@ -52,7 +52,7 @@ def _run_ps_encoded(
         check=False,
         env=env,
         timeout=timeout_s,
-        **_win_hidden_subprocess_kwargs(),
+        **win_hidden_subprocess_kwargs(),
     )
 
 
@@ -117,7 +117,7 @@ def _list_edge_voices_cached() -> tuple[str, ...]:
         text=True,
         timeout=35,
         check=False,
-        **_win_hidden_subprocess_kwargs(),
+        **win_hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
         return ()
@@ -218,7 +218,7 @@ def _speak_text_edge(
         text=True,
         timeout=180,
         check=False,
-        **_win_hidden_subprocess_kwargs(),
+        **win_hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
         if not output_wav:
@@ -324,7 +324,7 @@ def _speak_text_edge_streamed(
                     text=True,
                     timeout=180,
                     check=False,
-                    **_win_hidden_subprocess_kwargs(),
+                    **win_hidden_subprocess_kwargs(),
                 )
                 if proc.returncode != 0:
                     raise RuntimeError(

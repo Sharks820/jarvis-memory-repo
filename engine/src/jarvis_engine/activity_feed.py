@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine.config import repo_root
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ class ActivityFeed:
     ) -> str:
         """Log an activity event and return its event_id.  Thread-safe."""
         event_id = uuid.uuid4().hex
-        ts = _now_iso()
+        ts = now_iso()
         details_json = json.dumps(details or {})
         created_at = time.time()
 

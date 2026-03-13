@@ -8,9 +8,9 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any, TypedDict
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -76,15 +76,15 @@ def _default_control_state() -> ControlState:
 
 
 def control_state_path(root: Path) -> Path:
-    return _runtime_dir(root) / "control.json"
+    return runtime_dir(root) / "control.json"
 
 
 def resource_budgets_path(root: Path) -> Path:
-    return _runtime_dir(root) / "resource_budgets.json"
+    return runtime_dir(root) / "resource_budgets.json"
 
 
 def resource_pressure_path(root: Path) -> Path:
-    return _runtime_dir(root) / "resource_pressure.json"
+    return runtime_dir(root) / "resource_pressure.json"
 
 
 def read_control_state(root: Path) -> ControlState:
@@ -253,7 +253,7 @@ def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
         pressure_level = "none"
 
     return {
-        "captured_utc": _now_iso(),
+        "captured_utc": now_iso(),
         "pressure_level": pressure_level,
         "over_budget_count": over_budget_count,
         "should_throttle": pressure_level in {"mild", "severe"},
@@ -267,7 +267,7 @@ def write_resource_pressure_state(
     snapshot: ResourceSnapshot | dict[str, Any],
 ) -> dict[str, Any]:
     payload: dict[str, Any] = dict(snapshot) if isinstance(snapshot, dict) else {}
-    _atomic_write_json(resource_pressure_path(root), dict(payload))
+    atomic_write_json(resource_pressure_path(root), dict(payload))
     return payload
 
 
@@ -317,16 +317,16 @@ def write_control_state(
         state["mute_until_utc"] = mute_until_utc.strip()
     if reason.strip():
         state["reason"] = reason.strip()[:200]
-    state["updated_utc"] = _now_iso()
+    state["updated_utc"] = now_iso()
 
     path = control_state_path(root)
-    _atomic_write_json(path, dict(state))
+    atomic_write_json(path, dict(state))
     return state
 
 
 def reset_control_state(root: Path) -> ControlState:
     state = _default_control_state()
-    state["updated_utc"] = _now_iso()
+    state["updated_utc"] = now_iso()
     path = control_state_path(root)
-    _atomic_write_json(path, dict(state))
+    atomic_write_json(path, dict(state))
     return state

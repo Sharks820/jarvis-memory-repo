@@ -18,12 +18,12 @@ from pathlib import Path
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
-from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
-from jarvis_engine._shared import make_task_id as _make_task_id
-from jarvis_engine._shared import memory_db_path as _memory_db_path
-from jarvis_engine._shared import set_process_title as _set_process_title
+from jarvis_engine._constants import ACTIONS_FILENAME
+from jarvis_engine._constants import DEFAULT_API_PORT
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
+from jarvis_engine._shared import make_task_id
+from jarvis_engine._shared import memory_db_path
+from jarvis_engine._shared import set_process_title
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.config import repo_root
 from jarvis_engine.gaming_mode import gaming_processes_path
@@ -157,7 +157,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
             logger.debug("Non-fatal: could not parse mobile API config for age check: %s", exc)
 
     # Set descriptive process title for Task Manager visibility
-    _set_process_title("jarvis-mobile-api")
+    set_process_title("jarvis-mobile-api")
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
@@ -192,7 +192,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
 
 
 def cmd_desktop_widget() -> int:
-    _set_process_title("jarvis-widget")
+    set_process_title("jarvis-widget")
     root = repo_root()
     from jarvis_engine.ops.process_manager import is_service_running, write_pid_file, remove_pid_file
     if is_service_running("widget", root):
@@ -341,7 +341,7 @@ def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
         _auto_ingest_memory(
             source="task_outcome",
             kind="episodic",
-            task_id=_make_task_id("sync"),
+            task_id=make_task_id("sync"),
             content=(
                 f"Mobile/Desktop sync executed. "
                 f"sync_ok={report.get('sync_ok', False)}; "
@@ -385,7 +385,7 @@ def cmd_memory_eval() -> int:
     from jarvis_engine.config import repo_root as _repo_root
 
     root = _repo_root()
-    db_path = _memory_db_path(root)
+    db_path = memory_db_path(root)
 
     engine = None
     embed_service = None

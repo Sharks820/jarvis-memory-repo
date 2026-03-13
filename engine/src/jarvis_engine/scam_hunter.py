@@ -23,13 +23,12 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import safe_float
 from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
 
 logger = logging.getLogger(__name__)
 
-_SECONDS_PER_HOUR = 3600
 _VOIP_LATENCY_THRESHOLD_MS = 1500  # VoIP transcoding typical threshold
 _CAMPAIGNS_LOCK = threading.Lock()
 
@@ -204,7 +203,7 @@ def _score_call_patterns(
     short_calls = sum(
         1
         for r in reports
-        if _safe_float(r.get("duration_sec", 0)) < 5 and r.get("answered", False)
+        if safe_float(r.get("duration_sec", 0)) < 5 and r.get("answered", False)
     )
     confidence = 0.0
     if unanswered / total >= 0.8:
@@ -233,7 +232,7 @@ def _score_burst_pattern(
     if span == 0:
         signals.append("burst_pattern_instant")
         return 0.15
-    if len(timestamps) / (span / _SECONDS_PER_HOUR) >= 3:
+    if len(timestamps) / (span / 3600) >= 3:
         signals.append("burst_pattern")
         return 0.10
     return 0.0
@@ -733,7 +732,7 @@ def create_call_intel_report(
         number=number,
         normalized=normalized,
         prefix=prefix,
-        timestamp_utc=_now_iso(),
+        timestamp_utc=now_iso(),
         stir_status=stir_status,
         presentation=presentation,
         duration_sec=duration_sec,
@@ -748,15 +747,15 @@ def create_call_intel_report(
 
 def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
     """Save detected campaigns to a JSON file (thread-safe, atomic write)."""
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+    from jarvis_engine._shared import atomic_write_json
 
     with _CAMPAIGNS_LOCK:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "updated_utc": _now_iso(),
+            "updated_utc": now_iso(),
             "campaigns": [asdict(c) for c in campaigns],
         }
-        _atomic_write_json(path, payload)
+        atomic_write_json(path, payload)
 
 
 def load_campaigns(path: Path) -> list[ScamCampaign]:
@@ -874,7 +873,7 @@ def build_prefix_block_actions(
                     "campaign_id": campaign.campaign_id,
                     "prefix": campaign.prefix,
                     "confidence": campaign.confidence,
-                    "created_utc": _now_iso(),
+                    "created_utc": now_iso(),
                 }
             )
         # If high confidence, recommend prefix-level silencing
@@ -886,7 +885,7 @@ def build_prefix_block_actions(
                     "reason": f"high_confidence_scam_campaign_{campaign.campaign_id}",
                     "campaign_id": campaign.campaign_id,
                     "confidence": campaign.confidence,
-                    "created_utc": _now_iso(),
+                    "created_utc": now_iso(),
                 }
             )
     return actions

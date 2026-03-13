@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso, safe_int as _safe_int
+from jarvis_engine._shared import now_iso, safe_int
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -144,7 +144,7 @@ class RegressionChecker:
             "locked_count": locked_count,
             "graph_hash": graph_hash,
             "node_labels": node_labels,
-            "captured_at": _now_iso(),
+            "captured_at": now_iso(),
         }
 
     # Backup / Restore
@@ -336,8 +336,8 @@ class RegressionChecker:
 
         discrepancies = []
 
-        prev_nodes = _safe_int(previous.get("node_count", 0))
-        curr_nodes = _safe_int(current.get("node_count", 0))
+        prev_nodes = safe_int(previous.get("node_count", 0))
+        curr_nodes = safe_int(current.get("node_count", 0))
         if curr_nodes < prev_nodes:
             discrepancies.append({
                 "type": "node_loss",
@@ -348,8 +348,8 @@ class RegressionChecker:
                 "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
             })
 
-        prev_edges = _safe_int(previous.get("edge_count", 0))
-        curr_edges = _safe_int(current.get("edge_count", 0))
+        prev_edges = safe_int(previous.get("edge_count", 0))
+        curr_edges = safe_int(current.get("edge_count", 0))
         if curr_edges < prev_edges:
             discrepancies.append({
                 "type": "edge_loss",
@@ -360,8 +360,8 @@ class RegressionChecker:
                 "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
             })
 
-        prev_locked = _safe_int(previous.get("locked_count", 0))
-        curr_locked = _safe_int(current.get("locked_count", 0))
+        prev_locked = safe_int(previous.get("locked_count", 0))
+        curr_locked = safe_int(current.get("locked_count", 0))
         if curr_locked < prev_locked:
             discrepancies.append({
                 "type": "locked_fact_loss",

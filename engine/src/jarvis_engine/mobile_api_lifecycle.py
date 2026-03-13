@@ -17,14 +17,15 @@ from pathlib import Path
 
 import sqlite3 as _sqlite3
 
-from jarvis_engine._shared import memory_db_path as _memory_db_path
-from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._shared import memory_db_path
+from jarvis_engine._shared import make_thread_aware_repo_root
 from jarvis_engine.mobile_routes._helpers import _thread_local
 
 logger = logging.getLogger(__name__)
 
-# Narrowed exception tuple for subsystem init / lazy-load guards.
-_SUBSYSTEM_ERRORS = (ImportError, OSError, ValueError, TypeError, RuntimeError)
+# Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
+_SUBSYSTEM_ERRORS = SUBSYSTEM_ERRORS
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ def _init_sync_engine(
     signing_key: str,
 ) -> None:
     """Initialize sync engine and transport if the memory DB exists."""
-    db_path = _memory_db_path(repo_root)
+    db_path = memory_db_path(repo_root)
     if not db_path.exists():
         return
 
@@ -216,7 +217,7 @@ def _start_bus_prewarm(repo_root: Path) -> None:
             if not getattr(main_mod, "_repo_root_patched", False):
                 _orig = main_mod.repo_root
                 main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
-                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
                 main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 from jarvis_engine._bus import get_bus

@@ -7,7 +7,7 @@ import logging
 import re
 from pathlib import Path
 
-from jarvis_engine._shared import check_path_within_root as _check_path_within_root
+from jarvis_engine._shared import check_path_within_root
 
 from jarvis_engine.commands.security_commands import (
     ConnectBootstrapCommand,
@@ -198,7 +198,7 @@ class PhoneActionHandler(_SecurityHandlerBase):
             return PhoneActionResult(return_code=2)
         if cmd.queue_action:
             try:
-                _check_path_within_root(cmd.queue_path, self._root, "queue_path")
+                check_path_within_root(cmd.queue_path, self._root, "queue_path")
             except ValueError as exc:
                 logger.warning("PhoneAction queue path check failed: %s", exc)
                 return PhoneActionResult(return_code=2)
@@ -217,9 +217,9 @@ class PhoneSpamGuardHandler(_SecurityHandlerBase):
         )
 
         try:
-            _check_path_within_root(cmd.call_log_path, self._root, "call_log_path")
-            _check_path_within_root(cmd.report_path, self._root, "report_path")
-            _check_path_within_root(cmd.queue_path, self._root, "queue_path")
+            check_path_within_root(cmd.call_log_path, self._root, "call_log_path")
+            check_path_within_root(cmd.report_path, self._root, "report_path")
+            check_path_within_root(cmd.queue_path, self._root, "queue_path")
         except ValueError as exc:
             logger.warning("PhoneSpamGuard path check failed: %s", exc)
             return PhoneSpamGuardResult(return_code=2)

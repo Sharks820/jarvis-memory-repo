@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -447,37 +446,6 @@ class TestFeedbackInfluencesRouting:
 
 # ---------------------------------------------------------------------------
 # 5. ModelRouter Deprecation
-# ---------------------------------------------------------------------------
-
-class TestModelRouterDeprecation:
-    """ModelRouter.__init__ emits DeprecationWarning."""
-
-    def test_deprecation_warning(self) -> None:
-        """Creating a ModelRouter should emit DeprecationWarning."""
-        from jarvis_engine.router import ModelRouter
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            router = ModelRouter(cloud_burst_enabled=True)
-
-        assert len(w) == 1
-        assert issubclass(w[0].category, DeprecationWarning)
-        assert "ModelRouter is deprecated" in str(w[0].message)
-        assert "IntentClassifier" in str(w[0].message)
-
-    def test_router_still_works_after_deprecation(self) -> None:
-        """ModelRouter still functions after deprecation warning."""
-        from jarvis_engine.router import ModelRouter, RouteDecision
-
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
-            router = ModelRouter(cloud_burst_enabled=True)
-
-        result = router.route("high", "hard")
-        assert isinstance(result, RouteDecision)
-        assert result.provider == "cloud_verifier"
-
-
 # ---------------------------------------------------------------------------
 # 6. CLI Provider Token Parsing
 # ---------------------------------------------------------------------------

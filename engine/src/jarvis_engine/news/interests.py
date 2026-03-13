@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from jarvis_engine._shared import atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class InterestLearner:
             entry = data.get(topic, {"score": 0.0, "count": 0, "last_seen": ""})
             entry["score"] = max(0.0, entry["score"] + weight)
             entry["count"] = entry.get("count", 0) + 1
-            entry["last_seen"] = _now_iso()
+            entry["last_seen"] = now_iso()
             data[topic] = entry
             self._save(data)
 

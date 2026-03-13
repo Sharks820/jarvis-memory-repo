@@ -18,18 +18,18 @@ from pathlib import Path
 from typing import Any, Callable
 
 from jarvis_engine._bus import get_bus
-from jarvis_engine._shared import env_int as _env_int
+from jarvis_engine._shared import env_int
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
 from jarvis_engine.config import repo_root
 
-from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY
+from jarvis_engine._constants import ENV_MODEL_PRIORITY
 from jarvis_engine._shared import (
-    get_local_model as _get_local_model,
-    is_privacy_sensitive as _is_privacy_sensitive,
-    make_task_id as _make_task_id,
+    get_local_model,
+    is_privacy_sensitive,
+    make_task_id,
 )
 
 # Imports from sub-modules used internally in this file
@@ -41,10 +41,10 @@ logger = logging.getLogger(__name__)
 
 # Conversation history buffer for multi-turn context (persisted to disk)
 
-_CONVERSATION_MAX_TURNS = _env_int(
+_CONVERSATION_MAX_TURNS = env_int(
     "JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40
 )
-_CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
+_CONVERSATION_MAX_CHARS_PER_MESSAGE = env_int(
     "JARVIS_CONVERSATION_MAX_CHARS",
     2000,
     minimum=400,
@@ -385,7 +385,7 @@ def _learn_conversation(
             LearnInteractionCommand(
                 user_message=text[:1000],
                 assistant_response=response[:1000],
-                task_id=_make_task_id(f"conv-{route}"),
+                task_id=make_task_id(f"conv-{route}"),
                 route=route,
                 topic=text[:100],
             )
@@ -396,7 +396,7 @@ def _learn_conversation(
             _auto_ingest_memory(
                 source="conversation",
                 kind="episodic",
-                task_id=_make_task_id(f"conv-{route}"),
+                task_id=make_task_id(f"conv-{route}"),
                 content=(
                     f"User asked: {text[:400]}\n"
                     f"Jarvis responded ({model}): {response[:600]}"
@@ -577,19 +577,19 @@ def _classify_and_route(
         except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Fallback IntentClassifier classification failed: %s", exc)
     if llm_model is None:
-        if _is_privacy_sensitive(text):
-            llm_model = _get_local_model()
+        if is_privacy_sensitive(text):
+            llm_model = get_local_model()
             route = "simple_private"
             logger.debug(
                 "Privacy fallback: classifier failed, forcing local for private query"
             )
         else:
-            for env_key, model_alias in _ENV_MODEL_PRIORITY:
+            for env_key, model_alias in ENV_MODEL_PRIORITY:
                 if os.environ.get(env_key, ""):
                     llm_model = model_alias
                     break
     if llm_model is None:
-        llm_model = _get_local_model()
+        llm_model = get_local_model()
     return route, llm_model
 
 

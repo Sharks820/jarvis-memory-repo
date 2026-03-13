@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Any, TypedDict
 
-from jarvis_engine._constants import PBKDF2_ITERATIONS as _PBKDF2_ITERATIONS, PBKDF2_SALT_LEN as _PBKDF2_SALT_LEN
+from jarvis_engine._constants import PBKDF2_ITERATIONS, PBKDF2_SALT_LEN
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class OwnerSessionManager:
         max_failures: int = 5,
         lockout_duration: int = 300,
         force_pbkdf2: bool = False,
-        _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
+        _pbkdf2_iterations: int = PBKDF2_ITERATIONS,
     ) -> None:
         self._session_timeout = session_timeout
         self._max_failures = max(max_failures, 1)
@@ -135,7 +135,7 @@ class OwnerSessionManager:
                 self._password_salt = None
                 self._hash_algo = "argon2"
             else:
-                salt = secrets.token_bytes(_PBKDF2_SALT_LEN)
+                salt = secrets.token_bytes(PBKDF2_SALT_LEN)
                 dk = hashlib.pbkdf2_hmac(
                     "sha256",
                     password.encode("utf-8"),

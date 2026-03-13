@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from jarvis_engine.security.attack_memory import AttackPatternMemory
     from jarvis_engine.security.ip_tracker import IPTracker
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class AdaptiveDefenseEngine:
             "payload_hash": payload_hash,
             "source_ip": source_ip,
             "blocked": blocked,
-            "timestamp": _now_iso(),
+            "timestamp": now_iso(),
         }
         with self._lock:
             self._events.append(event)
@@ -154,7 +154,7 @@ class AdaptiveDefenseEngine:
             rule: dict[str, Any] = {
                 "pattern": f"auto_rule_{category}",
                 "category": category,
-                "created_at": _now_iso(),
+                "created_at": now_iso(),
                 "triggered_by": triggered_by,
                 "detection_count": count,
             }

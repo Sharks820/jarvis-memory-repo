@@ -14,17 +14,18 @@ from pathlib import Path
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 from jarvis_engine._constants import (
-    DEFAULT_API_PORT as _DEFAULT_API_PORT,
-    KG_METRICS_LOG as _KG_METRICS_LOG,
-    SELF_TEST_HISTORY as _SELF_TEST_HISTORY,
+    DEFAULT_API_PORT,
+    KG_METRICS_LOG,
+    SELF_TEST_HISTORY,
+    SUBSYSTEM_ERRORS,
 )
 from jarvis_engine._shared import (
-    memory_db_path as _memory_db_path,
-    runtime_dir as _runtime_dir,
+    memory_db_path,
+    runtime_dir,
 )
-from jarvis_engine._shared import set_process_title as _set_process_title
+from jarvis_engine._shared import set_process_title
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.ops_commands import MissionRunCommand
 from jarvis_engine.config import repo_root
@@ -47,6 +48,9 @@ from jarvis_engine.harvest_discovery import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Extended subsystem errors including sqlite3.Error for DB-touching daemon subsystems.
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
 
 
 # Parameter bundle dataclasses
@@ -202,7 +206,7 @@ def _restart_mobile_api(service_name: str) -> None:
     engine_src = str(root / "engine" / "src")
     cmd = [
         python, "-m", "jarvis_engine.main", "serve-mobile",
-        "--host", "127.0.0.1", "--port", str(_DEFAULT_API_PORT),
+        "--host", "127.0.0.1", "--port", str(DEFAULT_API_PORT),
         "--config-file", str(config_path),
     ]
     env = os.environ.copy()
@@ -257,7 +261,7 @@ def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
 
         cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
         log_activity(cat, message, metadata)
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.debug("Activity feed log failed: %s", exc)
 
 
@@ -361,7 +365,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
         return
     try:
         mission_rc = _run_next_pending_mission()
-    except (ImportError, OSError, sqlite3.Error, AttributeError, KeyError, ValueError, RuntimeError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         mission_rc = 2
         _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
         _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
@@ -388,7 +392,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
                 if generated:
                     topics = ", ".join(m.get("topic", "") for m in generated)
                     print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
-            except (ImportError, OSError, sqlite3.Error, KeyError, ValueError) as exc:
+            except _SUBSYSTEM_ERRORS_DB as exc:
                 _emit_cycle_failure("mission_autogen", exc, message="Daemon mission auto-generation failed")
 
 
@@ -396,7 +400,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
     """Run mobile-desktop sync (never raises)."""
     try:
         sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
-    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         sync_rc = 2
         _emit_cycle_failure("sync_cycle", exc, message="Daemon sync cycle failed")
     else:
@@ -424,7 +428,7 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
             snapshot_note="daemon-self-heal",
             as_json=False,
         )
-    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         heal_rc = 2
         _emit_cycle_failure("self_heal_cycle", exc, message="Daemon self-heal cycle failed")
     else:
@@ -456,7 +460,7 @@ def _collect_kg_metrics(root: Path) -> None:
             metrics = collect_kg_metrics(kg)
         else:
             # Fallback: open a temporary connection when bus KG is unavailable
-            db_path = _memory_db_path(root)
+            db_path = memory_db_path(root)
             if db_path.exists():
                 from jarvis_engine._db_pragmas import connect_db as _connect_db
 
@@ -471,10 +475,10 @@ def _collect_kg_metrics(root: Path) -> None:
                     _kg_conn.close()
             else:
                 metrics = {"node_count": 0, "edge_count": 0}
-        history_path = _runtime_dir(root) / _KG_METRICS_LOG
+        history_path = runtime_dir(root) / KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
-    except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_metrics", exc, message="Daemon KG metrics collection failed")
 
 
@@ -489,7 +493,7 @@ def _run_self_test_cycle(root: Path) -> None:
         if engine is not None and embed_svc is not None:
             tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
             quiz_result = tester.run_memory_quiz()
-            quiz_history = _runtime_dir(root) / _SELF_TEST_HISTORY
+            quiz_history = runtime_dir(root) / SELF_TEST_HISTORY
             tester.save_quiz_result(quiz_result, quiz_history)
             regression = tester.check_regression(quiz_history)
             print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
@@ -498,7 +502,7 @@ def _run_self_test_cycle(root: Path) -> None:
                 print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
         else:
             print("self_test_skipped=engine_not_initialized")
-    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("self_test", exc, message="Daemon self-test failed")
 
 
@@ -517,7 +521,7 @@ def _run_db_optimize_cycle(cycles: int) -> None:
                 print(f"db_optimize_errors={len(opt_result['errors'])}")
         else:
             print("db_optimize_skipped=engine_not_initialized")
-    except (OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("db_optimize", exc, message="Daemon DB optimize failed")
 
 
@@ -548,7 +552,7 @@ def _run_kg_regression_cycle(root: Path) -> None:
                 )
                 # Auto-restore from backup on failure
                 if comparison["status"] == "fail":
-                    backup_dir = _runtime_dir(root) / "kg_backups"
+                    backup_dir = runtime_dir(root) / "kg_backups"
                     if backup_dir.exists():
                         backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                         if backups:
@@ -561,7 +565,7 @@ def _run_kg_regression_cycle(root: Path) -> None:
                             )
         else:
             print("kg_regression_skipped=kg_not_initialized")
-    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_regression", exc, message="Daemon KG regression check failed")
 
 
@@ -595,7 +599,7 @@ def _run_memory_consolidation_cycle() -> None:
         print(f"consolidation_new_facts={result.new_facts_created}")
         if result.errors:
             print(f"consolidation_errors={len(result.errors)}")
-    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("consolidation", exc, message="Daemon memory consolidation failed")
 
 
@@ -636,7 +640,7 @@ def _run_entity_resolution_cycle() -> None:
             )
         else:
             print("entity_resolve_skipped=kg_not_initialized")
-    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("entity_resolve", exc, message="Daemon entity resolution failed")
 
 
@@ -655,7 +659,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
         harvest_topics = _discover_harvest_topics(root)
         if harvest_topics:
             # Build harvester with ingest pipeline so results are stored
-            harvest_db_path = _memory_db_path(root)
+            harvest_db_path = memory_db_path(root)
             h_budget = None
             if harvest_db_path.exists():
                 h_budget = BudgetManager(harvest_db_path)
@@ -708,7 +712,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                     h_budget.close()
         else:
             print("auto_harvest_skipped=no_topics_discovered")
-    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
 
@@ -829,10 +833,10 @@ def _run_diagnostic_scan_cycle(root: Path) -> None:
         print(f"diagnostic_scan_score={score} issues={len(issues)}")
 
         # Persist to diagnostics_history.jsonl
-        history_path = _runtime_dir(root) / "diagnostics_history.jsonl"
+        history_path = runtime_dir(root) / "diagnostics_history.jsonl"
         history_path.parent.mkdir(parents=True, exist_ok=True)
         entry = {
-            "ts": _now_iso(),
+            "ts": now_iso(),
             "score": score,
             "issue_count": len(issues),
             "issues": [i.to_dict() for i in issues],
@@ -902,7 +906,7 @@ def _emit_cycle_status(
     last_pressure_level: str,
 ) -> None:
     """Log and print all per-cycle status and resource pressure info."""
-    cycle_start_ts = _now_iso()
+    cycle_start_ts = now_iso()
     _log_cycle_start(cycles, cycle_start_ts)
     _print_cycle_status(cycles, cycle_start_ts, state)
     _log_resource_pressure(
@@ -928,10 +932,10 @@ def _should_skip_cycle(state: dict, idle_interval: int) -> str | None:
 
 def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
-    from jarvis_engine.main import cmd_mobile_desktop_sync, cmd_self_heal
+    from jarvis_engine.cli_system import cmd_mobile_desktop_sync, cmd_self_heal
     from jarvis_engine.cli_ops import cmd_ops_autopilot
 
-    _set_process_title("jarvis-daemon")
+    set_process_title("jarvis-daemon")
     root = repo_root()
     from jarvis_engine.ops.process_manager import remove_pid_file
 

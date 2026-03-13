@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from typing import TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 from jarvis_engine.learning.trust import classify_learning_subject
@@ -99,7 +99,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         feedback = self.detect_feedback(user_message)
         if feedback == "neutral":
             return feedback
-        now = _now_iso()
+        now = now_iso()
         snippet = user_message[:200]
         with self._write_lock:
             cur = self._db.execute(
@@ -148,7 +148,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
             raise ValueError(
                 f"quality must be 'positive', 'negative', or 'neutral', got {quality!r}"
             )
-        now_str = _now_iso()
+        now_str = now_iso()
         snippet = comment[:200] if comment else ""
         with self._write_lock:
             cur = self._db.execute(

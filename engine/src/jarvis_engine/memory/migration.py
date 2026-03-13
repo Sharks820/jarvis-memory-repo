@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
+from jarvis_engine._shared import now_iso, sha256_hex, sha256_short
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.classify import BranchClassifier
@@ -176,7 +176,7 @@ def _transform_brain_record(
     content_hash = str(record_data.get("content_hash", "")) or sha256_hex(summary)
     record_id = _derive_record_id(record_data, content_hash)
 
-    ts = str(record_data.get("ts", _now_iso()))
+    ts = str(record_data.get("ts", now_iso()))
     confidence = 0.72
     try:
         confidence = float(record_data.get("confidence", 0.72))
@@ -436,14 +436,14 @@ def migrate_facts(
                         value = {
                             "value": str(value),
                             "confidence": 0.5,
-                            "updated_utc": _now_iso(),
+                            "updated_utc": now_iso(),
                         }
                     else:
                         value = dict(value)
                     value.setdefault("value", "")
                     value.setdefault("confidence", 0.0)
                     value.setdefault("locked", 0)
-                    value.setdefault("updated_utc", _now_iso())
+                    value.setdefault("updated_utc", now_iso())
                     sources = value.get("sources", [])
                     history = value.get("history", [])
                     value["sources"] = sources if isinstance(sources, list) else []
@@ -459,7 +459,7 @@ def migrate_facts(
                             str(value.get("value", "")),
                             float(value.get("confidence", 0.0)),
                             int(value.get("locked", 0)),
-                            str(value.get("updated_utc", _now_iso())),
+                            str(value.get("updated_utc", now_iso())),
                             json.dumps(value.get("sources", [])),
                             json.dumps(value.get("history", [])),
                         ),
@@ -512,7 +512,7 @@ def _build_event_record(
     branch = classifier.classify(embedding)
 
     content_hash = sha256_hex(summary)
-    ts = str(event.get("ts", _now_iso()))
+    ts = str(event.get("ts", now_iso()))
     id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
     record_id = sha256_short(id_material)
 
