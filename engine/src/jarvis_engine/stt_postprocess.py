@@ -20,6 +20,7 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+from jarvis_engine.stt_contracts import TranscriptionSegment
 
 logger = logging.getLogger(__name__)
 
@@ -613,3 +614,46 @@ def postprocess_transcription(
         text = correct_entities(text, entity_list)
 
     return normalize_sentence_text(text)
+
+
+def postprocess_transcription_segments(
+    segments: list[TranscriptionSegment] | None,
+    *,
+    entity_list: list[str] | None = None,
+) -> list[TranscriptionSegment] | None:
+    """Apply deterministic cleanup to timed transcript spans."""
+    if not segments:
+        return None
+
+    cleaned_segments: list[TranscriptionSegment] = []
+    for segment in segments:
+        segment_text = str(segment["text"]).strip()
+        if not segment_text:
+            continue
+
+        kind = str(segment.get("kind", "")).strip().lower()
+        if kind == "word":
+            cleaned_text = segment_text
+            if entity_list:
+                cleaned_text = correct_entities(cleaned_text, entity_list)
+            cleaned_text = cleaned_text.strip()
+        else:
+            cleaned_text = postprocess_transcription(
+                segment_text,
+                confidence=0.9,
+                gateway=None,
+                entity_list=entity_list,
+            )
+
+        if not cleaned_text:
+            continue
+
+        cleaned_segment: TranscriptionSegment = {
+            "start": segment["start"],
+            "end": segment["end"],
+            "text": cleaned_text,
+        }
+        if kind:
+            cleaned_segment["kind"] = kind
+        cleaned_segments.append(cleaned_segment)
+    return cleaned_segments if cleaned_segments else None

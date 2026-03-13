@@ -518,6 +518,35 @@ def test_transcribe_smart_calls_postprocess() -> None:
         assert result.text == "Hello, Conner!"
 
 
+def test_transcribe_smart_postprocesses_segments() -> None:
+    """transcribe_smart keeps cleaned segment text alongside the final transcript."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    backend_result = TranscriptionResult(
+        text="hello conner brain status",
+        language="en",
+        confidence=0.96,
+        duration_seconds=0.5,
+        backend="parakeet-tdt",
+        segments=[
+            {"start": 0.0, "end": 1.0, "text": "hello conner", "kind": "utterance"},
+            {"start": 1.1, "end": 2.0, "text": "brain status", "kind": "utterance"},
+        ],
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=backend_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+        result = transcribe_smart(fake_audio, entity_list=["Conner"])
+
+    assert result.text == "Hello Conner brain status"
+    assert result.segments is not None
+    assert [segment["text"] for segment in result.segments] == ["Hello Conner", "Brain status"]
+
+
 def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
     """transcribe_smart does NOT preprocess when audio is a file path string."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
@@ -1113,7 +1142,37 @@ def test_caller_voice_handler_integration():
     assert result.text == "set timer for five minutes"
     assert result.confidence == 0.93
     assert result.duration_seconds == 2.1
+    assert result.segments == [
+        {"start": 0.0, "end": 2.0, "text": "set timer for five minutes"}
+    ]
     assert result.message == ""
+
+
+def test_apply_postprocessing_cleans_segments_with_text() -> None:
+    """Segment spans should be cleaned alongside the top-level transcript."""
+    from jarvis_engine.stt import TranscriptionResult, _apply_postprocessing
+
+    result = _apply_postprocessing(
+        TranscriptionResult(
+            text="um hello conner",
+            language="en",
+            confidence=0.8,
+            duration_seconds=1.5,
+            backend="deepgram-nova3",
+            segments=[
+                {"start": 0.0, "end": 0.8, "text": "um hello"},
+                {"start": 0.8, "end": 1.5, "text": "conner"},
+            ],
+        ),
+        gateway=None,
+        entity_list=["Conner"],
+    )
+
+    assert result.text == "Hello Conner"
+    assert result.segments == [
+        {"start": 0.0, "end": 0.8, "text": "Hello"},
+        {"start": 0.8, "end": 1.5, "text": "Conner"},
+    ]
 
 
 # ---------------------------------------------------------------------------

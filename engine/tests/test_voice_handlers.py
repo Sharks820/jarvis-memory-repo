@@ -421,6 +421,7 @@ class TestVoiceListenHandler:
             text="hello world",
             confidence=0.95,
             duration_seconds=3.2,
+            segments=[{"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}],
         )
 
         with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
@@ -430,6 +431,7 @@ class TestVoiceListenHandler:
         assert result.text == "hello world"
         assert result.confidence == 0.95
         assert result.duration_seconds == 3.2
+        assert result.segments == [{"start": 0.0, "end": 1.0, "text": "hello world"}]
 
     def test_parameters_forwarded(self, tmp_path: Path) -> None:
         mock_stt = MagicMock()

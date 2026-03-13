@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 
 from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine.stt_contracts import TranscriptionSegment
 from jarvis_engine.stt_backends import (  # noqa: F401 -- re-exports
     _load_keyterms,
     _numpy_to_wav_bytes,
@@ -48,7 +49,7 @@ class TranscriptionResult:
     duration_seconds: float = 0.0
     backend: str = ""
     retried: bool = False
-    segments: list[dict] | None = None
+    segments: list[TranscriptionSegment] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -95,18 +96,18 @@ def _build_default_entity_list(
 ) -> list[str]:
     """Return a deduplicated entity list biased toward Jarvis-specific terms."""
     if entity_list:
-        merged: list[str] = []
-        seen: set[str] = set()
+        explicit_entities: list[str] = []
+        explicit_seen: set[str] = set()
         for value in entity_list:
             cleaned = str(value).strip()
             if not cleaned:
                 continue
             lowered = cleaned.lower()
-            if lowered in seen:
+            if lowered in explicit_seen:
                 continue
-            seen.add(lowered)
-            merged.append(cleaned)
-        return merged
+            explicit_seen.add(lowered)
+            explicit_entities.append(cleaned)
+        return explicit_entities
 
     merged: list[str] = []
     seen: set[str] = set()
@@ -270,7 +271,7 @@ def _groq_api_call(
 def _groq_parse_response(
     data: dict,
     language: str,
-) -> tuple[str, str, float, list[dict] | None]:
+) -> tuple[str, str, float, list[TranscriptionSegment] | None]:
     """Parse Groq API JSON response into (text, language, confidence, segments).
 
     Computes real confidence from segment-level avg_logprob and no_speech_prob.
@@ -279,7 +280,7 @@ def _groq_parse_response(
     detected_lang = data.get("language", language)
 
     raw_segments = data.get("segments", [])
-    parsed_segments: list[dict] | None = None
+    parsed_segments: list[TranscriptionSegment] | None = None
 
     if raw_segments and isinstance(raw_segments, list):
         logprobs: list[float] = []
@@ -484,7 +485,7 @@ class SpeechToText:
         )
         segments = list(segments_gen)
         texts: list[str] = []
-        parsed_segments: list[dict] = []
+        parsed_segments: list[TranscriptionSegment] = []
         for segment in segments:
             texts.append(segment.text.strip())
             seg_start = getattr(segment, "start", None)
@@ -885,12 +886,19 @@ def _apply_postprocessing(
     if not result.text.strip():
         return result
     try:
-        from jarvis_engine.stt_postprocess import postprocess_transcription
+        from jarvis_engine.stt_postprocess import (
+            postprocess_transcription,
+            postprocess_transcription_segments,
+        )
 
         processed = postprocess_transcription(
             result.text,
             result.confidence,
             gateway=gateway,
+            entity_list=entity_list,
+        )
+        processed_segments = postprocess_transcription_segments(
+            result.segments,
             entity_list=entity_list,
         )
         return TranscriptionResult(
@@ -899,7 +907,7 @@ def _apply_postprocessing(
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
             backend=result.backend,
-            segments=result.segments,
+            segments=processed_segments,
             retried=result.retried,
         )
     except (ImportError, OSError, RuntimeError, ValueError) as exc:

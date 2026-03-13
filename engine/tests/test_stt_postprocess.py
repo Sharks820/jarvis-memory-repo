@@ -195,6 +195,25 @@ def test_normalize_sentence_text_restores_sentence_case() -> None:
     assert result == "I need jarvis to remind me tomorrow"
 
 
+def test_postprocess_transcription_segments_preserves_utterance_structure() -> None:
+    """Utterance spans are cleaned while word spans stay token-level."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription_segments
+
+    result = postprocess_transcription_segments(
+        [
+            {"start": 0.0, "end": 1.0, "text": "hello conner", "kind": "utterance"},
+            {"start": 1.1, "end": 1.3, "text": "jarvis", "kind": "word"},
+        ],
+        entity_list=["Conner", "Jarvis"],
+    )
+
+    assert result is not None
+    assert result[0]["text"] == "Hello Conner"
+    assert result[0]["kind"] == "utterance"
+    assert result[1]["text"] == "Jarvis"
+    assert result[1]["kind"] == "word"
+
+
 # ---------------------------------------------------------------------------
 # 4. correct_with_llm
 # ---------------------------------------------------------------------------
@@ -381,6 +400,24 @@ def test_postprocess_no_gateway_still_cleans() -> None:
     assert "um" not in result
     assert "uh" not in result
     assert "Jarvis" in result
+
+
+def test_postprocess_segments_preserves_sentence_boundaries() -> None:
+    """Timed segments should keep sentence structure after cleanup."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription_segments
+
+    result = postprocess_transcription_segments(
+        [
+            {"start": 0.0, "end": 1.2, "text": "um hello jarvis"},
+            {"start": 1.3, "end": 2.7, "text": "i need conner on the call"},
+        ],
+        entity_list=["Jarvis", "Conner"],
+    )
+
+    assert result == [
+        {"start": 0.0, "end": 1.2, "text": "Hello Jarvis"},
+        {"start": 1.3, "end": 2.7, "text": "I need Conner on the call"},
+    ]
 
 
 # ---------------------------------------------------------------------------

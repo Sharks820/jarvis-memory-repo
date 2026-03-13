@@ -16,6 +16,7 @@ import httpx
 
 from jarvis_engine.stt_backends import (
     _load_keyterms,
+    _parse_deepgram_response,
     _numpy_to_wav_bytes,
     _try_deepgram,
     record_from_microphone,
@@ -143,6 +144,47 @@ class TestLoadKeyterms:
 
 
 class TestTryDeepgram:
+    def test_parse_response_prefers_utterance_segments(self) -> None:
+        transcript, confidence, segments = _parse_deepgram_response(
+            {
+                "results": {
+                    "utterances": [
+                        {
+                            "start": 0.0,
+                            "end": 1.2,
+                            "transcript": "Hello Jarvis.",
+                            "confidence": 0.97,
+                        },
+                        {
+                            "start": 1.3,
+                            "end": 2.4,
+                            "transcript": "Check brain status.",
+                            "confidence": 0.95,
+                        },
+                    ],
+                    "channels": [{
+                        "alternatives": [{
+                            "transcript": "Hello Jarvis. Check brain status.",
+                            "confidence": 0.0,
+                            "words": [
+                                {"word": "Hello", "start": 0.0, "end": 0.2},
+                                {"word": "Jarvis", "start": 0.2, "end": 0.5},
+                            ],
+                        }]
+                    }],
+                }
+            }
+        )
+
+        assert transcript == "Hello Jarvis. Check brain status."
+        assert confidence == 0.96
+        assert segments is not None
+        assert [segment["text"] for segment in segments] == [
+            "Hello Jarvis.",
+            "Check brain status.",
+        ]
+        assert all(segment["kind"] == "utterance" for segment in segments)
+
     def test_returns_none_without_api_key(self) -> None:
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": ""}, clear=False):
             result = _try_deepgram(np.zeros(1000, dtype=np.float32), language="en")
@@ -193,6 +235,7 @@ class TestTryDeepgram:
         assert result.backend == "deepgram-nova3"
         assert result.segments is not None
         assert len(result.segments) == 2
+        assert all(segment["kind"] == "word" for segment in result.segments)
 
     def test_non_200_returns_none(self) -> None:
         mock_response = MagicMock(spec=httpx.Response)

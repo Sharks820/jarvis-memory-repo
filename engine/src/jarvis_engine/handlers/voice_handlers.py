@@ -203,6 +203,7 @@ class VoiceListenHandler:
             text=result.text,
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
+            segments=getattr(result, "segments", None),
         )
 
 

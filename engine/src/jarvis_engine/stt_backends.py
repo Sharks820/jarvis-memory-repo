@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from jarvis_engine.stt_contracts import TranscriptionSegment
+
 if TYPE_CHECKING:
     from jarvis_engine.stt import TranscriptionResult
 
@@ -157,7 +159,72 @@ def _build_deepgram_params(
     return params
 
 
-def _parse_deepgram_response(data: dict) -> tuple[str, float, list[dict] | None]:
+def _parse_deepgram_utterances(data: dict) -> tuple[list[TranscriptionSegment] | None, float | None]:
+    """Extract utterance-level segments from a Deepgram response."""
+    raw_utterances = data.get("results", {}).get("utterances", [])
+    if not isinstance(raw_utterances, list) or not raw_utterances:
+        return None, None
+
+    parsed_segments: list[TranscriptionSegment] = []
+    confidences: list[float] = []
+    for utterance in raw_utterances:
+        if not isinstance(utterance, dict):
+            continue
+        seg_start = utterance.get("start")
+        seg_end = utterance.get("end")
+        seg_text = utterance.get("transcript", utterance.get("text", ""))
+        if isinstance(seg_start, (int, float)) and isinstance(seg_end, (int, float)):
+            cleaned = str(seg_text).strip()
+            if cleaned:
+                parsed_segments.append(
+                    {
+                        "start": float(seg_start),
+                        "end": float(seg_end),
+                        "text": cleaned,
+                        "kind": "utterance",
+                    }
+                )
+        seg_confidence = utterance.get("confidence")
+        if isinstance(seg_confidence, (int, float)):
+            confidences.append(float(seg_confidence))
+
+    if not parsed_segments:
+        return None, None
+    if not confidences:
+        return parsed_segments, None
+    return parsed_segments, round(sum(confidences) / len(confidences), 4)
+
+
+def _parse_deepgram_words(best: dict) -> list[TranscriptionSegment] | None:
+    """Extract fallback word-level timing spans from Deepgram output."""
+    words = best.get("words", [])
+    if not isinstance(words, list) or not words:
+        return None
+
+    parsed_segments: list[TranscriptionSegment] = []
+    for word_info in words:
+        if not isinstance(word_info, dict):
+            continue
+        w_start = word_info.get("start")
+        w_end = word_info.get("end")
+        w_word = word_info.get("word", "")
+        if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
+            cleaned = str(w_word).strip()
+            if cleaned:
+                parsed_segments.append(
+                    {
+                        "start": float(w_start),
+                        "end": float(w_end),
+                        "text": cleaned,
+                        "kind": "word",
+                    }
+                )
+    return parsed_segments if parsed_segments else None
+
+
+def _parse_deepgram_response(
+    data: dict,
+) -> tuple[str, float, list[TranscriptionSegment] | None]:
     """Extract transcript, confidence, and segments from Deepgram JSON.
 
     Returns ``("", 0.0, None)`` and logs a warning when the response
@@ -174,26 +241,16 @@ def _parse_deepgram_response(data: dict) -> tuple[str, float, list[dict] | None]
         return "", 0.0, None
 
     best = alternatives[0]
-    transcript = best.get("transcript", "").strip()
-    confidence = best.get("confidence", 0.0)
+    transcript = str(best.get("transcript", "")).strip()
+    confidence = float(best.get("confidence", 0.0) or 0.0)
 
-    # Extract per-word data for segments if available
-    words = best.get("words", [])
-    parsed_segments: list[dict] | None = None
-    if words:
-        parsed_segments = []
-        for word_info in words:
-            w_start = word_info.get("start")
-            w_end = word_info.get("end")
-            w_word = word_info.get("word", "")
-            if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
-                parsed_segments.append(
-                    {
-                        "start": float(w_start),
-                        "end": float(w_end),
-                        "text": str(w_word),
-                    }
-                )
+    parsed_segments, utterance_confidence = _parse_deepgram_utterances(data)
+    if parsed_segments is None:
+        parsed_segments = _parse_deepgram_words(best)
+    if not transcript and parsed_segments:
+        transcript = " ".join(segment["text"] for segment in parsed_segments).strip()
+    if confidence <= 0.0 and utterance_confidence is not None:
+        confidence = utterance_confidence
 
     return transcript, confidence, parsed_segments if parsed_segments else None
 
