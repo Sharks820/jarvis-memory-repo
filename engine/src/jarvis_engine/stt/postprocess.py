@@ -536,8 +536,9 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
 
     corrected_text = text
     for entity in sorted((value for value in cleaned_entities if " " in value), key=len, reverse=True):
+        escaped = re.escape(entity).replace(r"\ ", r"\s+")
         pattern = re.compile(
-            rf"(?<!\w){re.escape(entity).replace(r'\ ', r'\s+')}(?!\w)",
+            rf"(?<!\w){escaped}(?!\w)",
             re.IGNORECASE,
         )
         corrected_text = pattern.sub(entity, corrected_text)
