@@ -106,12 +106,12 @@ def _parse_token_usage(text: str) -> tuple[int, int]:
 
 def _default_cli_timeout() -> int:
     """Return CLI timeout seconds from env with safe bounds."""
-    raw = os.environ.get("JARVIS_CLI_TIMEOUT_S", "240").strip()
+    raw = os.environ.get("JARVIS_CLI_TIMEOUT_S", "90").strip()
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        return 240
-    return max(60, min(value, 900))
+        return 90
+    return max(30, min(value, 300))
 
 
 # Timeout for CLI calls (seconds).  LLM completions can take a while.

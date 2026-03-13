@@ -295,7 +295,7 @@ class ModelGateway:
             self._anthropic = None
 
         if _ensure_ollama():
-            self._ollama = OllamaClient(host=ollama_host, timeout=120.0)
+            self._ollama = OllamaClient(host=ollama_host, timeout=45.0)
         else:
             self._ollama = None
         self._cost_tracker = cost_tracker

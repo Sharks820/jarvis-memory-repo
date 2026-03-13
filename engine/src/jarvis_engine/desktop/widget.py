@@ -91,9 +91,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     WARN = "#d15a5a"
     LAUNCHER_TRANSPARENT = "#010203"
     PANEL_DEFAULT_WIDTH = 470
-    PANEL_DEFAULT_HEIGHT = 960
+    PANEL_DEFAULT_HEIGHT = 820
     PANEL_MIN_WIDTH = 340
-    PANEL_MIN_HEIGHT = 560
+    PANEL_MIN_HEIGHT = 480
 
     # Model rotation: (alias, display_name, best_use_title, accent_color)
     # "auto" lets IntentClassifier decide; others override the model choice.

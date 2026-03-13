@@ -264,8 +264,16 @@ class ConversationMixin:
         """Create the pop-out conversation window with display and input areas."""
         win = tk.Toplevel(cast(tk.Misc, self))
         win.title("Jarvis \u2014 Conversation")
-        win.geometry("750x600")
+        # Responsive sizing: fit to 80% of screen, clamped to reasonable bounds
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+        pop_w = max(500, min(900, int(screen_w * 0.5)))
+        pop_h = max(400, min(screen_h - 100, int(screen_h * 0.75)))
+        pop_x = max(0, (screen_w - pop_w) // 2)
+        pop_y = max(0, (screen_h - pop_h) // 2)
+        win.geometry(f"{pop_w}x{pop_h}+{pop_x}+{pop_y}")
         win.minsize(500, 400)
+        win.maxsize(screen_w, screen_h)
         win.configure(bg=self.BG)
         win.attributes("-topmost", True)
         self._popout_win = win

@@ -421,12 +421,12 @@ def _mark_routed_model(model: str, provider: str) -> None:
 # LLM token budget and web search detection
 
 _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
-    "math_logic": 2048,
-    "complex": 2048,
-    "creative": 1024,
-    "routine": 1024,
-    "simple_private": 1024,
-    "web_research": 1024,
+    "math_logic": 1024,
+    "complex": 1024,
+    "creative": 512,
+    "routine": 256,
+    "simple_private": 256,
+    "web_research": 768,
 }
 
 # Web search need detection — identifies queries requiring current information
