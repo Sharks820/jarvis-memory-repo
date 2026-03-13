@@ -18,15 +18,12 @@ from pathlib import Path
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import DEFAULT_API_PORT
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
 from jarvis_engine._shared import make_task_id
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine._shared import set_process_title
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.config import repo_root
 from jarvis_engine.gaming_mode import gaming_processes_path
-from jarvis_engine.voice.extractors import escape_response
 
 from jarvis_engine.commands.memory_commands import (
     IngestCommand,

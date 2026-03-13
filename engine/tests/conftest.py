@@ -204,7 +204,6 @@ def mock_bus(monkeypatch):
         def _get_bus_fn():
             return bus
 
-        monkeypatch.setattr(main_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_ops_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_knowledge_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_helpers_mod, "_get_bus", _get_bus_fn)

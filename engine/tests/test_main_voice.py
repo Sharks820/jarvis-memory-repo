@@ -14,6 +14,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import cli_voice as cli_voice_mod
+from jarvis_engine import cli_voice as cli_voice_mod
 from jarvis_engine.memory import brain as brain_memory_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine.voice import context as voice_context_mod
@@ -106,7 +107,7 @@ def test_cmd_voice_say_sanitizes_urls_before_dispatch(capsys, monkeypatch) -> No
             captured["text"] = getattr(cmd, "text", "")
             return VoiceSayResult(voice_name="David", output_wav="", message="Spoken.")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     rc = main_mod.cmd_voice_say(
         text="source https://www.openai.com/research/latest",
@@ -128,7 +129,7 @@ def test_cmd_voice_listen_emits_state_transitions(monkeypatch, capsys) -> None:
         def dispatch(self, _cmd):
             return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
@@ -149,7 +150,7 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
         def dispatch(self, _cmd):
             return VoiceListenResult(text="", confidence=0.0, duration_seconds=0.0, message="error: microphone unavailable")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
@@ -169,7 +170,7 @@ def test_cmd_voice_listen_dispatches_conversation_mode_when_not_executing(monkey
             captured["mode"] = getattr(cmd, "utterance_mode", "")
             return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
@@ -187,7 +188,7 @@ def test_cmd_voice_listen_dispatches_command_mode_when_executing(monkeypatch) ->
             captured["mode"] = getattr(cmd, "utterance_mode", "")
             return VoiceListenResult(text="brain status", confidence=0.91, duration_seconds=1.2, message="ok")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(main_mod, "cmd_voice_run", lambda **_: 0)
     monkeypatch.setattr(cli_voice_mod, "cmd_voice_run", lambda **_: 0)
@@ -226,7 +227,7 @@ def test_cmd_voice_listen_forwards_utterance_when_executing(monkeypatch) -> None
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(main_mod, "cmd_voice_run", _fake_voice_run)
     monkeypatch.setattr(cli_voice_mod, "cmd_voice_run", _fake_voice_run)
@@ -245,7 +246,7 @@ def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
         def dispatch(self, cmd):
             return VoiceRunResult(return_code=0, intent="web_research", message="ok")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
     monkeypatch.setattr(cli_voice_mod, "_get_bus", lambda: _Bus())
 
     rc = main_mod.cmd_voice_run(

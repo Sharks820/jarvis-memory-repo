@@ -7,9 +7,6 @@ from pathlib import Path
 
 from jarvis_engine.config import repo_root
 
-# Command Bus factory — delegated to jarvis_engine._bus
-from jarvis_engine._bus import get_bus as _get_bus  # noqa: E402
-
 # ---------------------------------------------------------------------------
 # Imports from split CLI modules
 # ---------------------------------------------------------------------------
@@ -57,6 +54,7 @@ from jarvis_engine.cli_voice import (  # noqa: E402
 )
 from jarvis_engine.cli_system import (  # noqa: E402
     cmd_gaming_mode,
+    cmd_open_web,
     cmd_status,
     cmd_log,
     cmd_ingest,
@@ -70,9 +68,8 @@ from jarvis_engine.cli_system import (  # noqa: E402
     cmd_mobile_desktop_sync,
     cmd_self_heal,
     cmd_memory_eval,
-    cmd_weather,
-    cmd_open_web,
     cmd_daemon_run,
+    cmd_weather,
 )
 from jarvis_engine.cli_security import (  # noqa: E402
     cmd_owner_guard,

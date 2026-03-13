@@ -13,6 +13,7 @@ from pathlib import Path
 from conftest import http_request, signed_headers
 from jarvis_engine import mobile_api
 from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.mobile_routes._helpers import _parse_bool
 from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
 from jarvis_engine.command_bus import CommandBus
@@ -1607,7 +1608,7 @@ class TestNoncePersistence:
 )
 def test_parse_bool_true_values(value) -> None:
     """_parse_bool returns True for truthy inputs."""
-    assert mobile_api._parse_bool(value) is True
+    assert _parse_bool(value) is True
 
 
 @pytest.mark.parametrize(
@@ -1627,7 +1628,7 @@ def test_parse_bool_true_values(value) -> None:
 )
 def test_parse_bool_false_values(value) -> None:
     """_parse_bool returns False for falsy inputs."""
-    assert mobile_api._parse_bool(value) is False
+    assert _parse_bool(value) is False
 
 
 # ---------------------------------------------------------------------------

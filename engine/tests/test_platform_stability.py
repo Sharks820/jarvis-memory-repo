@@ -582,8 +582,8 @@ class TestProactiveDiagnostics:
         mock_result.diagnostics = "medication_reminder: no medications data available; bill_due_alert: no bills data available"
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
-            from jarvis_engine.main import cmd_proactive_check
+        with patch("jarvis_engine._cli_helpers._get_bus", return_value=mock_bus):
+            from jarvis_engine.cli_proactive import cmd_proactive_check
             rc = cmd_proactive_check(snapshot_path="")
 
         assert rc == 0

@@ -3,13 +3,11 @@ from __future__ import annotations
 import gzip as _gzip_mod
 import hashlib
 import hmac
-import io
 import json
 import logging
 import os
 import re
 import socket
-import ssl
 import subprocess
 import sys
 import threading
@@ -37,7 +35,6 @@ from jarvis_engine._constants import (
     MAX_COMMAND_RESPONSE_CHUNKS,
     MAX_COMMAND_STDOUT_LINE_CHARS,
     MAX_COMMAND_STDOUT_TAIL_LINES,
-    MAX_COMMAND_TEXT_CHARS,
     MAX_NONCES,
     REPLAY_WINDOW_SECONDS,
     SUBSYSTEM_ERRORS,
@@ -45,7 +42,6 @@ from jarvis_engine._constants import (
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine._shared import runtime_dir
 from jarvis_engine.ingest import IngestionPipeline
-from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
     AuthRoutesMixin,
@@ -58,15 +54,6 @@ from jarvis_engine.mobile_routes import (
     SyncRoutesMixin,
     VoiceCommandMixin,
 )
-# Thread-local storage — shared single instance lives in mobile_routes._helpers
-# so route mixin modules (e.g. command.py) and this file see the same object.
-from jarvis_engine.mobile_routes._helpers import (
-    _thread_local,
-    _parse_bool,
-    _ThreadCapturingStdout,
-    THREAD_CAPTURE_MAX_CHARS,
-)
-
 logger = logging.getLogger(__name__)
 
 # Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
