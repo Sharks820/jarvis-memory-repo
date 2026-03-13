@@ -123,7 +123,7 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=False, reason="auto", auto_detect="on")
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -173,7 +173,7 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
         reason="pause test",
     )
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -223,7 +223,7 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
         reason="safe",
     )
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
     observed: dict[str, bool] = {"execute": True, "approve_privileged": True}
 

@@ -15,7 +15,6 @@ from typing import Any
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso
 from jarvis_engine._constants import (
     DEFAULT_API_PORT,
     KG_METRICS_LOG,
@@ -23,14 +22,16 @@ from jarvis_engine._constants import (
     SUBSYSTEM_ERRORS,
     SUBSYSTEM_ERRORS_DB,
 )
-from jarvis_engine._shared import (
-    memory_db_path,
-    runtime_dir,
-)
-from jarvis_engine._shared import set_process_title
+from jarvis_engine._shared import memory_db_path, now_iso, runtime_dir, set_process_title
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.ops_commands import MissionRunCommand
 from jarvis_engine.config import repo_root
+from jarvis_engine.gaming_mode import (
+    _windows_idle_seconds,
+    detect_active_game_process,
+    read_gaming_mode_state,
+)
+from jarvis_engine.harvest_discovery import discover_harvest_topics
 from jarvis_engine.learning_missions import load_missions
 from jarvis_engine.ops.runtime_control import (
     capture_runtime_resource_snapshot,
@@ -39,18 +40,7 @@ from jarvis_engine.ops.runtime_control import (
     write_resource_pressure_state,
 )
 
-from jarvis_engine.gaming_mode import (
-    _windows_idle_seconds,
-    detect_active_game_process as _detect_active_game_process,
-    read_gaming_mode_state as _read_gaming_mode_state,
-)
-from jarvis_engine.harvest_discovery import (
-    discover_harvest_topics as _discover_harvest_topics,
-)
-
 logger = logging.getLogger(__name__)
-
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 def _emit(line: str) -> None:
@@ -307,7 +297,7 @@ def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
 
         cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
         log_activity(cat, message, metadata)
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.debug("Activity feed log failed: %s", exc)
 
 
@@ -411,7 +401,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
         return
     try:
         mission_rc = _run_next_pending_mission()
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         mission_rc = 2
         _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
         _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
@@ -438,7 +428,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
                 if generated:
                     topics = ", ".join(m.get("topic", "") for m in generated)
                     _emit(f"mission_auto_generated={len(generated)} topics=[{topics}]")
-            except _SUBSYSTEM_ERRORS_DB as exc:
+            except SUBSYSTEM_ERRORS_DB as exc:
                 _emit_cycle_failure("mission_autogen", exc, message="Daemon mission auto-generation failed")
 
 
@@ -446,7 +436,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
     """Run mobile-desktop sync (never raises)."""
     try:
         sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         sync_rc = 2
         _emit_cycle_failure("sync_cycle", exc, message="Daemon sync cycle failed")
     else:
@@ -474,7 +464,7 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
             snapshot_note="daemon-self-heal",
             as_json=False,
         )
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         heal_rc = 2
         _emit_cycle_failure("self_heal_cycle", exc, message="Daemon self-heal cycle failed")
     else:
@@ -524,7 +514,7 @@ def _collect_kg_metrics(root: Path) -> None:
         history_path = runtime_dir(root) / KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
         _emit(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_metrics", exc, message="Daemon KG metrics collection failed")
 
 
@@ -548,7 +538,7 @@ def _run_self_test_cycle(root: Path) -> None:
                 _emit(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
         else:
             _emit("self_test_skipped=engine_not_initialized")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("self_test", exc, message="Daemon self-test failed")
 
 
@@ -567,7 +557,7 @@ def _run_db_optimize_cycle(cycles: int) -> None:
                 _emit(f"db_optimize_errors={len(opt_result['errors'])}")
         else:
             _emit("db_optimize_skipped=engine_not_initialized")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("db_optimize", exc, message="Daemon DB optimize failed")
 
 
@@ -611,7 +601,7 @@ def _run_kg_regression_cycle(root: Path) -> None:
                             )
         else:
             _emit("kg_regression_skipped=kg_not_initialized")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_regression", exc, message="Daemon KG regression check failed")
 
 
@@ -645,7 +635,7 @@ def _run_memory_consolidation_cycle() -> None:
         _emit(f"consolidation_new_facts={result.new_facts_created}")
         if result.errors:
             _emit(f"consolidation_errors={len(result.errors)}")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("consolidation", exc, message="Daemon memory consolidation failed")
 
 
@@ -686,7 +676,7 @@ def _run_entity_resolution_cycle() -> None:
             )
         else:
             _emit("entity_resolve_skipped=kg_not_initialized")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("entity_resolve", exc, message="Daemon entity resolution failed")
 
 
@@ -702,7 +692,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
         )
         from jarvis_engine.harvesting.budget import BudgetManager
 
-        harvest_topics = _discover_harvest_topics(root)
+        harvest_topics = discover_harvest_topics(root)
         if harvest_topics:
             # Build harvester with ingest pipeline so results are stored
             harvest_db_path = memory_db_path(root)
@@ -758,7 +748,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                     h_budget.close()
         else:
             _emit("auto_harvest_skipped=no_topics_discovered")
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
 
@@ -787,13 +777,13 @@ def _gather_cycle_state(
     pressure_level = str(throttle.get("pressure_level", "none"))
     skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
 
-    gaming_state = _read_gaming_mode_state()
+    gaming_state = read_gaming_mode_state()
     control_state = read_control_state(repo_root())
     auto_detect = bool(gaming_state.get("auto_detect", False))
     auto_detect_hit = False
     detected_process = ""
     if auto_detect:
-        auto_detect_hit, detected_process = _detect_active_game_process()
+        auto_detect_hit, detected_process = detect_active_game_process()
 
     return CycleState(
         idle_seconds=idle_seconds,
@@ -953,7 +943,7 @@ def _run_core_autopilot(
             approve_privileged=approve_cycle,
             auto_open_connectors=auto_open_connectors,
         )
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("cycle", exc, message="Daemon autopilot cycle failed")
         return 2
 

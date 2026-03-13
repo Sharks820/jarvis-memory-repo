@@ -32,7 +32,7 @@ from jarvis_engine.gaming_mode import (
     write_gaming_mode_state,
 )
 from jarvis_engine.harvest_discovery import (
-    discover_harvest_topics as _discover_harvest_topics,
+    discover_harvest_topics,
     _try_add_candidate,
     _add_phrases,
     _collect_from_recent_memories,
@@ -290,14 +290,14 @@ class TestCollectFromLearningMissions:
 
 
 class TestDiscoverHarvestTopics:
-    """Tests for _discover_harvest_topics() — end-to-end discovery."""
+    """Tests for discover_harvest_topics() — end-to-end discovery."""
 
     def test_returns_list_up_to_3(self, root) -> None:
         """Should return at most 3 topics."""
         with patch("jarvis_engine.harvest_discovery.memory_db_path") as mock_db_path, \
              patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             mock_db_path.return_value = root / "nonexistent.db"
-            topics = _discover_harvest_topics(root)
+            topics = discover_harvest_topics(root)
         assert isinstance(topics, list)
         assert len(topics) <= 3
 
@@ -307,7 +307,7 @@ class TestDiscoverHarvestTopics:
              patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             # Point to a nonexistent DB so the path.exists() check returns False
             mock_db_path.return_value = root / "nonexistent.db"
-            topics = _discover_harvest_topics(root)
+            topics = discover_harvest_topics(root)
         assert topics == [] or isinstance(topics, list)
 
 
@@ -598,7 +598,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 120, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",
@@ -624,7 +624,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 120, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",
@@ -645,7 +645,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 300, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",

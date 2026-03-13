@@ -38,7 +38,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         call_count = 0
@@ -80,7 +80,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         def always_failing_autopilot(*args, **kwargs) -> int:
@@ -120,7 +120,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         autopilot_calls = 0
@@ -433,7 +433,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
     monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
     # Bypass expensive per-cycle I/O (filesystem snapshots, resource checks)
@@ -870,7 +870,7 @@ class TestDaemonAutoHarvest:
         with patch("jarvis_engine.learning_missions.load_missions", side_effect=lambda r: json.loads(
             (r / ".planning" / "missions.json").read_text(encoding="utf-8")
         )):
-            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
         assert len(topics) <= 3
@@ -882,7 +882,7 @@ class TestDaemonAutoHarvest:
         self, tmp_path: Path
     ) -> None:
         """_discover_harvest_topics should return [] when no data sources exist."""
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
         assert len(topics) <= 3
 
@@ -953,7 +953,7 @@ class TestDaemonAutoHarvest:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
         # Should have found multi-word topics from sparse KG nodes
         assert len(topics) >= 1
@@ -980,7 +980,7 @@ class TestDaemonAutoHarvest:
             kg=MagicMock(spec=KnowledgeGraph),
         )
 
-        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["test topic"]), \
+        with patch.object(daemon_loop_mod, "discover_harvest_topics", return_value=["test topic"]), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.harvesting.providers.MiniMaxProvider",
@@ -1046,7 +1046,7 @@ class TestDaemonAutoHarvest:
         """Auto-harvest exceptions should be isolated from the daemon."""
         # Force _discover_harvest_topics to raise
         with patch.object(
-            daemon_loop_mod, "_discover_harvest_topics",
+            daemon_loop_mod, "discover_harvest_topics",
             side_effect=RuntimeError("Discovery exploded"),
         ), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
@@ -1062,7 +1062,7 @@ class TestDaemonAutoHarvest:
         self, tmp_path: Path, capsys
     ) -> None:
         """When no topics are discovered, auto-harvest should be skipped gracefully."""
-        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=[]), \
+        with patch.object(daemon_loop_mod, "discover_harvest_topics", return_value=[]), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
@@ -1087,7 +1087,7 @@ class TestDaemonAutoHarvest:
         mock_bus = MagicMock(spec=CommandBus)
         mock_bus.ctx = AppContext(engine=MagicMock(), kg=MagicMock(), embed_service=MagicMock())
 
-        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["some topic"]), \
+        with patch.object(daemon_loop_mod, "discover_harvest_topics", return_value=["some topic"]), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.harvesting.providers.MiniMaxProvider",
@@ -1204,7 +1204,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert len(topics) >= 1
         assert len(topics) <= 3
         for t in topics:
@@ -1232,7 +1232,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         for t in topics:
             assert len(t.split()) >= 2, f"Single-word topic not allowed: {t!r}"
 
@@ -1260,7 +1260,7 @@ class TestImprovedTopicDiscovery:
             harvest_discovery_mod, "_get_recently_harvested_topics",
             return_value={"python async patterns"},
         ):
-            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
 
         # The exact phrase "Python async patterns" should be deduplicated
         for t in topics:
@@ -1300,7 +1300,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert len(topics) >= 1
         # All should be multi-word
         for t in topics:
@@ -1333,7 +1333,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         # Should find at least one complementary topic with a suffix
         found_expanded = False
         for t in topics:
@@ -1377,7 +1377,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert len(topics) <= 3, f"Expected at most 3 topics, got {len(topics)}: {topics}"
         assert len(topics) >= 1, "Expected at least 1 topic from rich data"
 
@@ -1386,7 +1386,7 @@ class TestImprovedTopicDiscovery:
     ) -> None:
         """When all data sources are empty, should return [] without errors."""
         # tmp_path has no brain directory, no missions, no activity feed
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert topics == []
 
     def test_fallback_chain_only_missions_available(
@@ -1397,7 +1397,7 @@ class TestImprovedTopicDiscovery:
         with patch("jarvis_engine.learning_missions.load_missions", return_value=[
             {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
         ]):
-            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
         assert "quantum computing fundamentals" in topics
@@ -1423,7 +1423,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         # The old memory topic should not appear (it's beyond 7-day window)
         for t in topics:
             assert "sumerian" not in t.lower(), \
@@ -1458,7 +1458,7 @@ class TestImprovedTopicDiscovery:
             {"mission_id": "m-1", "topic": "Python", "status": "completed"},
             {"mission_id": "m-2", "topic": "AI", "status": "done"},
         ]):
-            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
 
         # Single-word topics should be skipped
         for t in topics:
@@ -1474,5 +1474,5 @@ class TestImprovedTopicDiscovery:
         db_path.write_bytes(b"not a real sqlite database")
 
         # Should NOT raise
-        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
