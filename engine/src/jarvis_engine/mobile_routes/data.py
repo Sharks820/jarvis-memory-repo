@@ -132,4 +132,4 @@ class DataRoutesMixin:
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Alert queue drain failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "alerts": []})
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Alert queue unavailable."})

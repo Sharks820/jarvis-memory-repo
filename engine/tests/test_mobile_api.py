@@ -2321,7 +2321,7 @@ def test_scam_report_call_returns_enhanced_score(mobile_server) -> None:
          patch("jarvis_engine.scam_hunter.compute_enhanced_spam_score", return_value=0.75), \
          patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=None), \
          patch("jarvis_engine.scam_hunter.score_time_of_day", return_value=0.3), \
-         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"), \
+         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"), \
          patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[]):
         mock_create.return_value = MagicMock(normalized="+15551234567")
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
@@ -2381,7 +2381,7 @@ def test_scam_lookup_returns_carrier_info(mobile_server) -> None:
 
     with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=mock_carrier), \
          patch("jarvis_engine.scam_hunter.load_campaigns", return_value=[]), \
-         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"):
+         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
 
     assert code == 200
@@ -2403,7 +2403,7 @@ def test_scam_lookup_handles_internal_error(mobile_server) -> None:
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
     with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", side_effect=OSError("boom")), \
-         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"):
+         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
 
     assert code == 500

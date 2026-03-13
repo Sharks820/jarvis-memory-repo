@@ -24,7 +24,7 @@ from typing import Any
 
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso, safe_float
-from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
+from jarvis_engine.phone_guard import area_key, normalize_number, _parse_ts
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +95,13 @@ def _group_reports_by_prefix(
     """Group call reports by NPA-NXX prefix, filtering out old entries."""
     prefix_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for report in call_reports:
-        number = _normalize_number(str(report.get("number", "")))
+        number = normalize_number(str(report.get("number", "")))
         if not number:
             continue
         ts = _parse_ts(report.get("timestamp_utc", ""))
         if ts and ts < lookback:
             continue
-        prefix = _area_key(number)
+        prefix = area_key(number)
         if not prefix:
             continue
         entry = dict(report)
@@ -725,8 +725,8 @@ def create_call_intel_report(
     direction: str = "incoming",
 ) -> CallIntelReport:
     """Create a call intelligence report from screening data."""
-    normalized = _normalize_number(number)
-    prefix = _area_key(normalized)
+    normalized = normalize_number(number)
+    prefix = area_key(normalized)
     return CallIntelReport(
         number=number,
         normalized=normalized,

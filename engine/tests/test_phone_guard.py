@@ -14,8 +14,8 @@ from jarvis_engine._compat import UTC
 from jarvis_engine.phone_guard import (
     PhoneAction,
     SpamCandidate,
-    _area_key,
-    _normalize_number,
+    area_key,
+    normalize_number,
     _parse_ts,
     append_phone_actions,
     build_phone_action,
@@ -27,38 +27,38 @@ from jarvis_engine.phone_guard import (
 
 
 # ---------------------------------------------------------------------------
-# _normalize_number tests
+# normalize_number tests
 # ---------------------------------------------------------------------------
 
 class TestNormalizeNumber:
     def test_us_10_digit(self):
-        assert _normalize_number("4155551234") == "+14155551234"
+        assert normalize_number("4155551234") == "+14155551234"
 
     def test_us_11_digit_with_leading_1(self):
-        assert _normalize_number("14155551234") == "+14155551234"
+        assert normalize_number("14155551234") == "+14155551234"
 
     def test_plus_prefix_preserved(self):
-        assert _normalize_number("+14155551234") == "+14155551234"
+        assert normalize_number("+14155551234") == "+14155551234"
 
     def test_international_00_prefix(self):
-        assert _normalize_number("004412345678") == "+4412345678"
+        assert normalize_number("004412345678") == "+4412345678"
 
     def test_strips_non_digit_chars(self):
-        assert _normalize_number("(415) 555-1234") == "+14155551234"
+        assert normalize_number("(415) 555-1234") == "+14155551234"
 
     def test_short_number_returns_empty(self):
-        assert _normalize_number("12345") == ""
+        assert normalize_number("12345") == ""
 
     def test_empty_string_returns_empty(self):
-        assert _normalize_number("") == ""
+        assert normalize_number("") == ""
 
     def test_international_8_digits(self):
-        result = _normalize_number("12345678")
+        result = normalize_number("12345678")
         assert result.startswith("+")
         assert len(result) >= 9
 
     def test_international_plus_long_number(self):
-        result = _normalize_number("+442012345678")
+        result = normalize_number("+442012345678")
         assert result == "+442012345678"
 
 
@@ -92,29 +92,29 @@ class TestParseTs:
 
 
 # ---------------------------------------------------------------------------
-# _area_key tests
+# area_key tests
 # ---------------------------------------------------------------------------
 
 class TestAreaKey:
     def test_us_number(self):
         # NPA-NXX precision: +1 + NPA(415) + NXX(555) = 8 chars
-        assert _area_key("+14155551234") == "+1415555"
+        assert area_key("+14155551234") == "+1415555"
 
     def test_international_number(self):
-        result = _area_key("+442012345678")
+        result = area_key("+442012345678")
         assert result == "+44201"
 
     def test_short_us_number_falls_through(self):
         # US numbers shorter than 8 chars fall through to international match
-        assert _area_key("+1415") == ""  # only 5 chars, < 6 required for intl
-        assert _area_key("+14155") == "+14155"  # 6 chars, meets intl threshold
-        assert _area_key("+141555") == "+14155"  # 7 chars, uses 6-char intl match
+        assert area_key("+1415") == ""  # only 5 chars, < 6 required for intl
+        assert area_key("+14155") == "+14155"  # 6 chars, meets intl threshold
+        assert area_key("+141555") == "+14155"  # 7 chars, uses 6-char intl match
 
     def test_short_number_returns_empty(self):
-        assert _area_key("+123") == ""
+        assert area_key("+123") == ""
 
     def test_no_plus_returns_empty(self):
-        assert _area_key("4155551234") == ""
+        assert area_key("4155551234") == ""
 
 
 # ---------------------------------------------------------------------------

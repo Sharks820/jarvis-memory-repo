@@ -51,7 +51,7 @@ def _group_calls_by_number(
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in call_log:
         raw_number = str(item.get("number", "")).strip()
-        number = _normalize_number(raw_number)
+        number = normalize_number(raw_number)
         if not number:
             continue
         ts = _parse_ts(
@@ -73,7 +73,7 @@ def _build_area_stats(
     area_distinct: dict[str, set[str]] = defaultdict(set)
     area_suspicious: dict[str, int] = defaultdict(int)
     for number, records in grouped.items():
-        area = _area_key(number)
+        area = area_key(number)
         if not area:
             continue
         area_distinct[area].add(number)
@@ -159,7 +159,7 @@ def _score_number(
         score += 0.35
         reasons.append("spam_or_scam_label")
 
-    area = _area_key(number)
+    area = area_key(number)
     if area and len(area_distinct.get(area, set())) >= 6 and area_suspicious.get(area, 0) >= 8:
         score += 0.18
         reasons.append("rotating_number_area_pattern")
@@ -239,7 +239,7 @@ def build_phone_action(
         "silence_unknown_callers",
     }:
         raise ValueError(f"Unsupported action: {action}")
-    normalized = _normalize_number(number)
+    normalized = normalize_number(number)
     if action == "silence_unknown_callers":
         normalized = ""
     elif not normalized:
@@ -282,7 +282,7 @@ def write_spam_report(
     atomic_write_json(path, payload)
 
 
-def _normalize_number(number: str) -> str:
+def normalize_number(number: str) -> str:
     if not number:
         return ""
     cleaned = re.sub(r"[^\d+]", "", number)
@@ -303,7 +303,7 @@ def _normalize_number(number: str) -> str:
 _parse_ts = parse_iso_timestamp
 
 
-def _area_key(number: str) -> str:
+def area_key(number: str) -> str:
     if number.startswith("+1") and len(number) >= 8:
         # US/Canada: country + NPA-NXX (exchange-level precision)
         return number[:8]

@@ -26,8 +26,7 @@ from jarvis_engine._shared import get_fast_local_model
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    import numpy as np
+import numpy as np
 
 class FeedbackTrackerProtocol(Protocol):
     def get_route_quality(self, route_name: str) -> dict[str, Any]:
@@ -220,7 +219,6 @@ class IntentClassifier:
         On subsequent loads, skips re-embedding if cache is valid.
         """
         import hashlib
-        import numpy as np
 
         # Build hash of all exemplar texts + embed service class to detect changes
         hasher = hashlib.sha256()
@@ -339,8 +337,6 @@ class IntentClassifier:
         Privacy keywords force local routing with confidence 1.0.
         Low-confidence results default to local routing (privacy-safe).
         """
-        import numpy as np
-
         from jarvis_engine._shared import get_local_model
         local_model = get_local_model()
 
@@ -395,8 +391,6 @@ class IntentClassifier:
         If *norm_a* is provided and non-zero, it is reused to avoid
         recomputing ``np.linalg.norm(a)`` on every call.
         """
-        import numpy as np
-
         dot = float(np.dot(a, b))
         if norm_a == 0.0:
             norm_a = float(np.linalg.norm(a))

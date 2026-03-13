@@ -114,9 +114,9 @@ class ScamRoutesMixin:
             compute_enhanced_spam_score,
             score_time_of_day,
         )
-        from jarvis_engine.phone_guard import _normalize_number, detect_spam_candidates
+        from jarvis_engine.phone_guard import normalize_number, detect_spam_candidates
 
-        normalized = _normalize_number(fields["number"])
+        normalized = normalize_number(fields["number"])
 
         # Find campaign membership
         campaign_id = ""
@@ -199,7 +199,15 @@ class ScamRoutesMixin:
             })
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam report-call failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "ok": False,
+                    "enhanced_score": 0.0,
+                    "recommended_action": "voicemail",
+                    "error": "Scam report processing failed.",
+                },
+            )
 
     def _handle_post_scam_lookup(self: _ScamRoutesHandlerProtocol) -> None:
         """Lookup carrier and VoIP status for a phone number.
@@ -215,10 +223,10 @@ class ScamRoutesMixin:
                 lookup_carrier_cached,
                 load_campaigns,
             )
-            from jarvis_engine.phone_guard import _normalize_number
+            from jarvis_engine.phone_guard import normalize_number
 
             number = str(body.get("number", ""))
-            normalized = _normalize_number(number)
+            normalized = normalize_number(number)
 
             # Check carrier cache
             carrier_cache_path = runtime_dir(self._root) / "carrier_cache.json"
@@ -251,10 +259,17 @@ class ScamRoutesMixin:
             self._write_json(HTTPStatus.OK, result)
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam lookup failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
-                "ok": False, "number": str(body.get("number", "")),
-                "carrier": "", "line_type": "", "is_voip": False, "error": "Scam lookup processing failed.",
-            })
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "ok": False,
+                    "number": str(body.get("number", "")),
+                    "carrier": "",
+                    "line_type": "",
+                    "is_voip": False,
+                    "error": "Scam lookup processing failed.",
+                },
+            )
 
     def _handle_get_scam_campaigns(self: _ScamRoutesHandlerProtocol) -> None:
         """Return detected scam campaigns."""
@@ -277,7 +292,10 @@ class ScamRoutesMixin:
             })
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam campaigns fetch failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "campaigns": [], "block_actions": []})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Scam campaign data unavailable."},
+            )
 
     def _handle_get_scam_stats(self: _ScamRoutesHandlerProtocol) -> None:
         """Return scam detection statistics."""
@@ -328,4 +346,7 @@ class ScamRoutesMixin:
             })
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Scam stats fetch failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "total_screened": 0, "active_campaigns": 0})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Scam statistics unavailable."},
+            )
