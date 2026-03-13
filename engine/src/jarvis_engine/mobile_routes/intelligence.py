@@ -254,7 +254,9 @@ class IntelligenceRoutesMixin:
             self._write_json(HTTPStatus.OK, csm.get_state_snapshot(full=full))
         except SUBSYSTEM_ERRORS as exc:
             logger.debug("conversation state endpoint failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Conversation state unavailable.",
+            })
 
     def _handle_get_learning_summary(self: _IntelligenceRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
@@ -440,12 +442,6 @@ class IntelligenceRoutesMixin:
             self._write_json(HTTPStatus.OK, dict(telemetry.get_endpoint_response()))
         except SUBSYSTEM_ERRORS as exc:
             logger.debug("voice/latency endpoint failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {
-                "p50_ms": 0.0,
-                "p95_ms": 0.0,
-                "p99_ms": 0.0,
-                "sample_count": 0,
-                "slo_violations": [],
-                "backend_distribution": {},
-                "health": {"utterances_total": 0, "success_rate": 0.0, "avg_confidence": 0.0},
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Voice latency data unavailable.",
             })
