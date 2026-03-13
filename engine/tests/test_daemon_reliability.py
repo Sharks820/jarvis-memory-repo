@@ -784,10 +784,8 @@ class TestDaemonEntityResolution:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()
@@ -808,10 +806,8 @@ class TestDaemonEntityResolution:
             # Should not raise
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
     def test_entity_resolution_skipped_when_kg_not_initialized(
@@ -825,10 +821,8 @@ class TestDaemonEntityResolution:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()
@@ -1023,10 +1017,8 @@ class TestDaemonAutoHarvest:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()
@@ -1041,10 +1033,8 @@ class TestDaemonAutoHarvest:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=199, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()
@@ -1064,10 +1054,8 @@ class TestDaemonAutoHarvest:
             # Should not raise
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
     def test_auto_harvest_skipped_when_no_topics(
@@ -1079,10 +1067,8 @@ class TestDaemonAutoHarvest:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()
@@ -1122,10 +1108,8 @@ class TestDaemonAutoHarvest:
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
-                run_missions=False, cmd_mobile_desktop_sync=None,
-                cmd_self_heal=None, sync_every_cycles=0,
-                self_heal_every_cycles=0, self_test_every_cycles=0,
-                watchdog_every_cycles=0,
+                cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
+                cmd_mobile_desktop_sync=None, cmd_self_heal=None,
             )
 
         captured = capsys.readouterr()

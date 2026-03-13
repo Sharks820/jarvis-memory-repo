@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
@@ -146,17 +147,17 @@ class IntentClassifier:
     # Cloud CLIs (Claude, Codex, Gemini) are fallbacks only — used when local
     # models detect they can't handle the query or for web grounding.
     # All routes resolved at runtime via _get_local_model / _get_fast_local_model.
-    MODEL_MAP: dict[str, str] = {}  # All routes resolved dynamically in _resolve_model_for_route
+    MODEL_MAP: MappingProxyType[str, str] = MappingProxyType({})  # All routes resolved dynamically in _resolve_model_for_route
 
     # Fallback preferences per route — cloud CLIs as escalation only.
     # Tried in order when local model fails or returns low-quality response.
-    MODEL_FALLBACKS: dict[str, tuple[str, ...]] = {
+    MODEL_FALLBACKS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType({
         "math_logic": ("codex-cli", "claude-cli", "gemini-cli"),
         "complex": ("claude-cli", "codex-cli", "gemini-cli"),
         "routine": ("gemini-cli", "claude-cli"),
         "creative": ("gemini-cli", "claude-cli"),
         "web_research": ("gemini-cli", "claude-cli"),
-    }
+    })
 
     PRIVACY_KEYWORDS: frozenset[str] = _CANONICAL_PRIVACY_KEYWORDS
 

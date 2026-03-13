@@ -7,6 +7,7 @@ import math
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from types import MappingProxyType
 from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
@@ -18,23 +19,23 @@ logger = logging.getLogger(__name__)
 class PreferenceTracker(LearningTrackerBase):
     """Extracts and stores user preferences from interactions."""
 
-    PREFERENCE_PATTERNS: dict[str, dict[str, tuple[str, ...]]] = {
-        "communication_style": {
+    PREFERENCE_PATTERNS: MappingProxyType[str, MappingProxyType[str, tuple[str, ...]]] = MappingProxyType({
+        "communication_style": MappingProxyType({
             "verbose": ("explain in detail", "tell me more", "elaborate"),
             "concise": ("briefly", "tldr", "short version", "quick answer"),
-        },
-        "time_preferences": {
+        }),
+        "time_preferences": MappingProxyType({
             "morning_person": ("morning routine", "early", "first thing"),
             "night_owl": ("late night", "evening", "after hours"),
-        },
-        "format_preferences": {
+        }),
+        "format_preferences": MappingProxyType({
             "lists": ("list", "bullet points", "enumerate"),
             "prose": ("paragraph", "explain", "narrative"),
             "code": ("show me code", "code example", "implementation"),
-        },
-    }
+        }),
+    })
 
-    _NEGATIVE_PATTERNS: dict[str, tuple[str, ...]] = {
+    _NEGATIVE_PATTERNS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType({
         "communication_style": (
             "don't be",
             "stop being",
@@ -48,7 +49,7 @@ class PreferenceTracker(LearningTrackerBase):
             "don't remind me",
             "stop scheduling",
         ),
-    }
+    })
 
     # Maximum score to prevent unbounded growth
     _MAX_SCORE: float = 10.0
