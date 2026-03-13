@@ -366,11 +366,19 @@ class TestVoiceRunHandler:
         """All VoiceRunCommand fields are forwarded to cmd_voice_run_impl."""
         snap = Path("snap.json")
         actions = Path("actions.json")
+        utterance = {
+            "raw_text": "Jarvis schedule meeting",
+            "command_text": "schedule meeting",
+            "language": "en",
+            "confidence": 0.9,
+            "backend": "deepgram-nova3",
+        }
 
         handler = VoiceRunHandler(root=tmp_path)
-        handler.handle(
+        result = handler.handle(
             VoiceRunCommand(
                 text="schedule meeting",
+                utterance=utterance,
                 execute=True,
                 approve_privileged=True,
                 speak=False,
@@ -387,6 +395,7 @@ class TestVoiceRunHandler:
 
         mock_impl.assert_called_once_with(
             text="schedule meeting",
+            utterance=utterance,
             execute=True,
             approve_privileged=True,
             speak=False,
@@ -399,6 +408,7 @@ class TestVoiceRunHandler:
             model_override="kimi-k2",
             skip_voice_auth_guard=True,
         )
+        assert result.utterance == utterance
 
 
 # ---------------------------------------------------------------------------
@@ -419,8 +429,10 @@ class TestVoiceListenHandler:
         mock_stt = MagicMock()
         mock_stt.listen_and_transcribe.return_value = SimpleNamespace(
             text="hello world",
+            language="en",
             confidence=0.95,
             duration_seconds=3.2,
+            backend="deepgram-nova3",
             segments=[{"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}],
         )
 
@@ -434,6 +446,16 @@ class TestVoiceListenHandler:
         assert result.segments == [
             {"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}
         ]
+        assert result.utterance == {
+            "raw_text": "hello world",
+            "command_text": "hello world",
+            "language": "en",
+            "confidence": 0.95,
+            "backend": "deepgram-nova3",
+            "segments": [
+                {"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}
+            ],
+        }
 
     def test_parameters_forwarded(self, tmp_path: Path) -> None:
         mock_stt = MagicMock()

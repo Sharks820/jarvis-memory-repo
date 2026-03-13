@@ -31,6 +31,34 @@ from jarvis_engine.commands.voice_commands import (
     VoiceVerifyCommand,
     VoiceVerifyResult,
 )
+from jarvis_engine.stt_contracts import VoiceUtterance
+
+
+def _build_voice_utterance(
+    *,
+    raw_text: str,
+    command_text: str,
+    language: str,
+    confidence: float,
+    backend: str,
+    segments: object,
+) -> VoiceUtterance | None:
+    """Normalize STT metadata into the shared utterance sidecar contract."""
+    cleaned_raw = raw_text.strip()
+    cleaned_command = command_text.strip()
+    if not cleaned_raw and not cleaned_command:
+        return None
+
+    utterance: VoiceUtterance = {
+        "raw_text": cleaned_raw or cleaned_command,
+        "command_text": cleaned_command or cleaned_raw,
+        "language": language,
+        "confidence": confidence,
+        "backend": backend,
+    }
+    if isinstance(segments, list) and segments:
+        utterance["segments"] = segments
+    return utterance
 
 
 class VoiceListHandler:
@@ -158,6 +186,7 @@ class VoiceRunHandler:
 
         rc = _voice_intents_mod.cmd_voice_run_impl(
             text=cmd.text,
+            utterance=cmd.utterance,
             execute=cmd.execute,
             approve_privileged=cmd.approve_privileged,
             speak=cmd.speak,
@@ -170,7 +199,7 @@ class VoiceRunHandler:
             model_override=cmd.model_override,
             skip_voice_auth_guard=cmd.skip_voice_auth_guard,
         )
-        return VoiceRunResult(return_code=rc)
+        return VoiceRunResult(return_code=rc, utterance=cmd.utterance)
 
 
 class VoiceListenHandler:
@@ -204,6 +233,14 @@ class VoiceListenHandler:
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
             segments=getattr(result, "segments", None),
+            utterance=_build_voice_utterance(
+                raw_text=result.text,
+                command_text=result.text,
+                language=getattr(result, "language", cmd.language),
+                confidence=result.confidence,
+                backend=getattr(result, "backend", ""),
+                segments=getattr(result, "segments", None),
+            ),
         )
 
 

@@ -189,6 +189,44 @@ def test_cmd_voice_listen_dispatches_command_mode_when_executing(monkeypatch) ->
     assert captured["mode"] == "command"
 
 
+def test_cmd_voice_listen_forwards_utterance_when_executing(monkeypatch) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    utterance = {
+        "raw_text": "Jarvis brain status",
+        "command_text": "brain status",
+        "language": "en",
+        "confidence": 0.93,
+        "backend": "deepgram-nova3",
+        "segments": [
+            {"start": 0.0, "end": 1.1, "text": "Jarvis brain status", "kind": "utterance"},
+        ],
+    }
+    captured: dict[str, object] = {}
+
+    class _Bus:
+        def dispatch(self, cmd):
+            return VoiceListenResult(
+                text="brain status",
+                confidence=0.91,
+                duration_seconds=1.2,
+                utterance=utterance,
+                message="ok",
+            )
+
+    def _fake_voice_run(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(main_mod, "cmd_voice_run", _fake_voice_run)
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=True)
+    assert rc == 0
+    assert captured["text"] == "brain status"
+    assert captured["utterance"] == utterance
+
+
 def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
     """Web search queries route through LLM with web augmentation."""
     from jarvis_engine.commands.voice_commands import VoiceRunResult

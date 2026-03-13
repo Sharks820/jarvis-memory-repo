@@ -33,6 +33,7 @@ def _call_impl(
     voice_user: str = "conner",
     voice_auth_wav: str = "",
     voice_threshold: float = 0.5,
+    utterance: dict | None = None,
     # Extra mocks
     owner_guard: dict | None = None,
     web_aug_rc: int = 0,
@@ -114,6 +115,7 @@ def _call_impl(
 
         rc = cmd_voice_run_impl(
             text=text,
+            utterance=utterance,
             execute=execute,
             approve_privileged=approve_privileged,
             speak=speak,
@@ -230,6 +232,25 @@ class TestBrainStatusIntent:
         assert "cmd_brain_status" in calls
         output = capsys.readouterr().out
         assert "voice_auth_required" not in output
+
+    def test_optional_utterance_sidecar_does_not_change_routing(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        rc, calls = _call_impl(
+            "brain status",
+            tmp_path=tmp_path,
+            utterance={
+                "raw_text": "Jarvis brain status",
+                "command_text": "brain status",
+                "language": "en",
+                "confidence": 0.92,
+                "backend": "deepgram-nova3",
+            },
+        )
+        assert rc == 0
+        assert "cmd_brain_status" in calls
+        output = capsys.readouterr().out
+        assert "intent=brain_status" in output
 
 
 class TestMemoryIntent:

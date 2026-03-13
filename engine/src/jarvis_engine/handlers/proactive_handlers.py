@@ -28,6 +28,7 @@ from jarvis_engine.commands.proactive_commands import (
     WakeWordStartCommand,
     WakeWordStartResult,
 )
+from jarvis_engine.stt_contracts import VoiceUtterance
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class WakeWordStartHandler:
                 if not text:
                     logger.info("No speech detected after wake word.")
                     return
+                raw_text = text
                 # Strip "jarvis" prefix if present
                 from jarvis_engine.voice_extractors import strip_wake_word
 
@@ -197,8 +199,19 @@ class WakeWordStartHandler:
                     from jarvis_engine.config import repo_root
 
                     _root = repo_root()
+                    utterance: VoiceUtterance = {
+                        "raw_text": raw_text,
+                        "command_text": text,
+                        "language": getattr(result, "language", "en"),
+                        "confidence": float(getattr(result, "confidence", 0.0) or 0.0),
+                        "backend": str(getattr(result, "backend", "")),
+                    }
+                    raw_segments = getattr(result, "segments", None)
+                    if isinstance(raw_segments, list) and raw_segments:
+                        utterance["segments"] = raw_segments
                     cmd_voice_run_impl(
                         text=text,
+                        utterance=utterance,
                         execute=True,
                         approve_privileged=False,
                         speak=True,
@@ -327,7 +340,7 @@ class SelfTestHandler:
         )
 
         result = tester.run_memory_quiz()
-        tester.save_quiz_result(result, history_path)
+        tester.save_quiz_result(dict(result), history_path)
         regression = tester.check_regression(history_path)
 
         return SelfTestResult(

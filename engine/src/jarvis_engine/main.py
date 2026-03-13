@@ -128,6 +128,7 @@ from jarvis_engine.voice_extractors import (  # noqa: E402
     shorten_urls_for_speech,
 )
 from jarvis_engine.gaming_mode import gaming_processes_path  # noqa: E402
+from jarvis_engine.stt_contracts import VoiceUtterance  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -910,6 +911,7 @@ def cmd_voice_listen(
         print("executing transcribed command...")
         return cmd_voice_run(
             text=result.text,
+            utterance=result.utterance,
             execute=True,
             approve_privileged=False,
             speak=False,
@@ -928,6 +930,8 @@ def cmd_voice_listen(
 
 def cmd_voice_run(
     text: str,
+    *,
+    utterance: VoiceUtterance | None = None,
     execute: bool,
     approve_privileged: bool,
     speak: bool,
@@ -941,7 +945,7 @@ def cmd_voice_run(
     skip_voice_auth_guard: bool = False,
 ) -> int:
     result = _get_bus().dispatch(VoiceRunCommand(
-        text=text, execute=execute, approve_privileged=approve_privileged,
+        text=text, utterance=utterance, execute=execute, approve_privileged=approve_privileged,
         speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
         voice_user=voice_user, voice_auth_wav=voice_auth_wav,
         voice_threshold=voice_threshold, master_password=master_password,
@@ -1054,7 +1058,7 @@ def _dispatch_gaming_mode(args: argparse.Namespace) -> int:
 def _dispatch_voice_run(args: argparse.Namespace) -> int:
     """Resolve master password from env var with CLI fallback."""
     return cmd_voice_run(
-        text=args.text, execute=args.execute, approve_privileged=args.approve_privileged,
+        text=args.text, utterance=None, execute=args.execute, approve_privileged=args.approve_privileged,
         speak=args.speak, snapshot_path=Path(args.snapshot_path),
         actions_path=Path(args.actions_path), voice_user=args.voice_user,
         voice_auth_wav=args.voice_auth_wav, voice_threshold=args.voice_threshold,
