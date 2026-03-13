@@ -22,8 +22,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso
-from jarvis_engine._shared import runtime_dir
+from jarvis_engine._shared import now_iso, runtime_dir
 from jarvis_engine.config import repo_root
 
 if TYPE_CHECKING:

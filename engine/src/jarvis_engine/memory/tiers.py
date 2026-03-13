@@ -16,8 +16,7 @@ from jarvis_engine._compat import UTC
 from enum import Enum
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import parse_iso_timestamp, safe_float
-from jarvis_engine._shared import safe_int
+from jarvis_engine._shared import parse_iso_timestamp, safe_float, safe_int
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine

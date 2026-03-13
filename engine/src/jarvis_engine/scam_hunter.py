@@ -23,8 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso
-from jarvis_engine._shared import safe_float
+from jarvis_engine._shared import now_iso, safe_float
 from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
 
 logger = logging.getLogger(__name__)

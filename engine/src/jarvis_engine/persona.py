@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from jarvis_engine._shared import atomic_write_json
-from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import atomic_write_json, now_iso
 
 # Tone profiles: map branch domains to personality instructions
 

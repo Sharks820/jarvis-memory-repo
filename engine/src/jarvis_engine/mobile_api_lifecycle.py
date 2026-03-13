@@ -18,8 +18,7 @@ from pathlib import Path
 import sqlite3 as _sqlite3
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
-from jarvis_engine._shared import memory_db_path
-from jarvis_engine._shared import make_thread_aware_repo_root
+from jarvis_engine._shared import make_thread_aware_repo_root, memory_db_path
 from jarvis_engine.mobile_routes._helpers import _thread_local
 
 logger = logging.getLogger(__name__)

@@ -13,8 +13,7 @@ import logging
 from jarvis_engine.gateway.ollama_client import (
     call_ollama_generate as _call_ollama_generate,
 )
-from jarvis_engine._shared import now_iso
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso, sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol

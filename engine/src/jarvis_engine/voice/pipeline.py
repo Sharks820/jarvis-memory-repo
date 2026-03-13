@@ -18,19 +18,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from jarvis_engine._bus import get_bus
-from jarvis_engine._shared import env_int
+from jarvis_engine._constants import ENV_MODEL_PRIORITY
+from jarvis_engine._shared import env_int, get_local_model, is_privacy_sensitive, make_task_id
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
 from jarvis_engine.config import repo_root
-
-from jarvis_engine._constants import ENV_MODEL_PRIORITY
-from jarvis_engine._shared import (
-    get_local_model,
-    is_privacy_sensitive,
-    make_task_id,
-)
 
 # Imports from sub-modules used internally in this file
 from jarvis_engine.voice.extractors import escape_response

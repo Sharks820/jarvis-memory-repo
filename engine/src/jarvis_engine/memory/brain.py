@@ -21,7 +21,14 @@ import re
 import threading
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import (
+    atomic_write_json,
+    now_iso,
+    recency_weight as _recency_weight_core,
+    safe_float,
+    sha256_hex,
+    sha256_short,
+)
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -87,11 +94,6 @@ class BrainStatusResult(TypedDict):
     regression: RegressionReport
     branches: list[dict[str, Any]]
 
-
-from jarvis_engine._shared import atomic_write_json
-from jarvis_engine._shared import safe_float
-from jarvis_engine._shared import sha256_hex, sha256_short
-from jarvis_engine._shared import recency_weight as _recency_weight_core
 
 logger = logging.getLogger(__name__)
 

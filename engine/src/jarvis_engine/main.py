@@ -94,9 +94,7 @@ from jarvis_engine.cli_proactive import (  # noqa: E402
 from jarvis_engine.mobile_api_lifecycle import run_mobile_server  # noqa: F401, E402
 
 # Imports from _constants (used by argparse registrations)
-from jarvis_engine._constants import DEFAULT_API_PORT  # noqa: E402
-from jarvis_engine._constants import ACTIONS_FILENAME  # noqa: E402
-from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME  # noqa: E402
+from jarvis_engine._constants import ACTIONS_FILENAME, DEFAULT_API_PORT, OPS_SNAPSHOT_FILENAME  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

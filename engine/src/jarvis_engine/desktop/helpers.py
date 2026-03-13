@@ -36,8 +36,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT
-from jarvis_engine._shared import env_int
-from jarvis_engine._shared import win_hidden_subprocess_kwargs
+from jarvis_engine._shared import env_int, win_hidden_subprocess_kwargs
 
 logger = logging.getLogger(__name__)
 
