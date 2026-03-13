@@ -18,7 +18,6 @@ from jarvis_engine.mobile_routes._helpers import (
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class DataRoutesMixin:
@@ -89,7 +88,7 @@ class DataRoutesMixin:
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("Feedback recording failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
         finally:

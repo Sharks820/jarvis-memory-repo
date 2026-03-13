@@ -24,9 +24,6 @@ from jarvis_engine.mobile_routes._helpers import _thread_local
 
 logger = logging.getLogger(__name__)
 
-# Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
-_SUBSYSTEM_ERRORS = SUBSYSTEM_ERRORS
-
 
 # ---------------------------------------------------------------------------
 # TLS helpers
@@ -119,7 +116,7 @@ def _init_auto_sync_config(
         except OSError as exc:
             logger.debug("LAN IP detection for auto-sync failed: %s", exc)
         logger.info("Auto-sync config initialized")
-    except _SUBSYSTEM_ERRORS as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.warning("Failed to initialize auto-sync config: %s", exc)
 
 
@@ -166,7 +163,7 @@ def _init_sync_engine(
             logger.info("Sync engine and transport initialized for mobile API")
         else:
             logger.warning("No signing key; sync transport not initialized")
-    except _SUBSYSTEM_ERRORS as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.warning("Failed to initialize sync for mobile API: %s", exc)
 
 
@@ -228,7 +225,7 @@ def _start_bus_prewarm(repo_root: Path) -> None:
             # Install thread-capturing stdout for concurrent request handling
             _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
-        except _SUBSYSTEM_ERRORS as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
 
     import threading as _threading

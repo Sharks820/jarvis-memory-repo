@@ -33,7 +33,6 @@ except ImportError:  # cryptography not installed
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class SyncPullHandler:
@@ -59,7 +58,7 @@ class SyncPullHandler:
 
         try:
             outgoing = self._sync_engine.compute_outgoing(cmd.device_id)
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncPull compute_outgoing failed: %s", exc)
             return SyncPullResult(message="error: sync pull failed")
 
@@ -129,7 +128,7 @@ class SyncPushHandler:
 
         try:
             result = self._sync_engine.apply_incoming(payload, cmd.device_id)
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncPush apply_incoming failed: %s", exc)
             return SyncPushResult(message="error: apply failed")
 
@@ -156,7 +155,7 @@ class SyncStatusHandler:
 
         try:
             status = self._sync_engine.sync_status()
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncStatus failed: %s", exc)
             return SyncStatusResult(message="error: sync status failed")
 

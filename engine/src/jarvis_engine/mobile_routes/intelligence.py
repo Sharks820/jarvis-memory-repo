@@ -14,7 +14,6 @@ from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, Mob
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class _IntelligenceRouteServerProtocol(MobileRouteServerProtocol, Protocol):
@@ -282,14 +281,14 @@ class IntelligenceRoutesMixin:
 
                 pt = PreferenceTracker(lrn_db)
                 summary["preferences"] = pt.get_preferences()
-            except _SUBSYSTEM_ERRORS_DB as exc:
+            except SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: preferences unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
                 ft = ResponseFeedbackTracker(lrn_db)
                 summary["route_quality"] = ft.get_all_route_quality()
-            except _SUBSYSTEM_ERRORS_DB as exc:
+            except SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: route quality unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.usage_patterns import UsagePatternTracker
@@ -299,9 +298,9 @@ class IntelligenceRoutesMixin:
                 summary["hourly_distribution"] = ut.get_hourly_distribution()
                 now = datetime.now(UTC)
                 summary["current_context"] = ut.predict_context(now.hour, now.weekday())
-            except _SUBSYSTEM_ERRORS_DB as exc:
+            except SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: usage patterns unavailable: %s", exc)
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.debug("Learning summary: DB unavailable: %s", exc)
         finally:
             if lrn_db is not None:
@@ -337,7 +336,7 @@ class IntelligenceRoutesMixin:
                         content=f"[phone-intelligence:{category}] {content}",
                     )
                     merged += 1
-                except _SUBSYSTEM_ERRORS_DB as exc:
+                except SUBSYSTEM_ERRORS_DB as exc:
                     logger.debug("Phone intelligence merge failed: %s", exc)
 
             self._write_json(HTTPStatus.OK, {
@@ -346,7 +345,7 @@ class IntelligenceRoutesMixin:
                 "total_received": len(items),
             })
             logger.info("Intelligence merge: %d items from phone", merged)
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("intelligence/merge failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence merge failed.",
@@ -381,7 +380,7 @@ class IntelligenceRoutesMixin:
                                 "category": "knowledge",
                                 "confidence": row["confidence"],
                             })
-                    except _SUBSYSTEM_ERRORS_DB as exc:
+                    except SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("KG nodes export failure: %s", exc)
 
                     # Memory records
@@ -398,7 +397,7 @@ class IntelligenceRoutesMixin:
                                 "category": row["kind"] or "memory",
                                 "confidence": row["confidence"],
                             })
-                    except _SUBSYSTEM_ERRORS_DB as exc:
+                    except SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("Memory records export failure: %s", exc)
 
                     # User preferences
@@ -414,7 +413,7 @@ class IntelligenceRoutesMixin:
                                 "category": "preference",
                                 "confidence": min(row["score"] / 10.0, 1.0),
                             })
-                    except _SUBSYSTEM_ERRORS_DB as exc:
+                    except SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("Preferences export failure: %s", exc)
                 finally:
                     db.close()
@@ -425,7 +424,7 @@ class IntelligenceRoutesMixin:
                 "total": len(items),
             })
             logger.info("Intelligence export: %d items for phone", len(items))
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("intelligence/export failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",

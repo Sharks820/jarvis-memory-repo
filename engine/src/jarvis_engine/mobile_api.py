@@ -56,9 +56,6 @@ from jarvis_engine.mobile_routes import (
 )
 logger = logging.getLogger(__name__)
 
-# Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
-_SUBSYSTEM_ERRORS = SUBSYSTEM_ERRORS
-
 
 class CLIResult(TypedDict, total=False):
     """Typed return value for ``_run_main_cli``."""
@@ -332,7 +329,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 on_credential_rotate=_rotate_signing_key,
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
-        except _SUBSYSTEM_ERRORS as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.error("SecurityOrchestrator init FAILED — server will reject non-essential requests: %s", exc)
             self.security = None
             self._security_degraded = True
@@ -350,7 +347,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             # Share with SecurityOrchestrator to avoid duplicate instances
             if self.security is not None:
                 self.security.owner_session = self.owner_session
-        except _SUBSYSTEM_ERRORS as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
             self._session_degraded = True
@@ -594,7 +591,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                     logger.debug("Sync engine/transport init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
-            except _SUBSYSTEM_ERRORS as exc:
+            except SUBSYSTEM_ERRORS as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
                 # Do NOT set _sync_init_attempted so future calls can retry.
             return self._sync_engine
@@ -617,7 +614,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 from jarvis_engine.memory.engine import MemoryEngine
                 self._memory_engine = MemoryEngine(db_path)
                 logger.info("MemoryEngine lazy-initialized for mobile API metrics")
-            except _SUBSYSTEM_ERRORS as exc:
+            except SUBSYSTEM_ERRORS as exc:
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
@@ -846,7 +843,7 @@ class MobileIngestHandler(
                 f"Command {lifecycle_state}",
                 details,
             )
-        except _SUBSYSTEM_ERRORS as exc:
+        except SUBSYSTEM_ERRORS as exc:
             # Activity feed must never break command execution.
             logger.debug("Activity feed logging failed: %s", exc)
 

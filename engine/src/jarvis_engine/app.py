@@ -122,7 +122,6 @@ from jarvis_engine.commands.sync_commands import (
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 def _register_with_fallback(
@@ -138,7 +137,7 @@ def _register_with_fallback(
     """
     try:
         handler = handler_factory()
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Handler factory for %s failed, using fallback: %s",
             command_type.__name__,
@@ -170,7 +169,7 @@ def _init_memory_subsystem(
             from jarvis_engine.learning.temporal import migrate_temporal_metadata
 
             migrate_temporal_metadata(engine.db, engine.write_lock)
-        except _SUBSYSTEM_ERRORS_DB as exc_tm:
+        except SUBSYSTEM_ERRORS_DB as exc_tm:
             logger.warning("Temporal metadata migration skipped: %s", exc_tm)
         pipeline = EnrichedIngestPipeline(
             engine,
@@ -179,7 +178,7 @@ def _init_memory_subsystem(
             knowledge_graph=kg,
         )
         return engine, embed_service, pipeline, kg
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc
         )
@@ -211,7 +210,7 @@ def _init_gateway(
             audit_path=runtime_dir(root) / GATEWAY_AUDIT_LOG,
         )
         return gateway, None, cost_tracker
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Intelligence Gateway, continuing without: %s", exc
         )
@@ -461,7 +460,7 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
                 write_lock=_sec_lock,
                 log_dir=_sec_log_dir,
             )
-        except _SUBSYSTEM_ERRORS_DB as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.warning(
                 "Shared SecurityOrchestrator init failed (handlers will retry): %s", exc
             )
@@ -521,7 +520,7 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
                 bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
             except TypeError as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning("Failed to import defense commands: %s", exc)
 
 
@@ -598,7 +597,7 @@ def _init_learning_subsystem(
 
         if intent_classifier is not None:
             intent_classifier.set_feedback_tracker(feedback_tracker)
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Learning subsystem, continuing without: %s", exc
         )
@@ -762,7 +761,7 @@ def _init_harvesting_subsystem(
             cost_tracker=cost_tracker,
             budget_manager=budget_manager,
         )
-    except _SUBSYSTEM_ERRORS_DB as exc:
+    except SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Harvesting subsystem, continuing without: %s", exc
         )
