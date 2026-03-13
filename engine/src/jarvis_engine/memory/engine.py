@@ -620,10 +620,23 @@ class MemoryEngine:
         # VACUUM: rebuild the database file (expensive, reclaims space)
         if vacuum:
             try:
-                with self._write_lock, self._db_lock:
-                    self._db.execute("VACUUM")
-                result["vacuumed"] = True
-                logger.info("VACUUM completed successfully")
+                db_size_mb = (
+                    self._db_path.stat().st_size / (1024 * 1024)
+                    if self._db_path.exists()
+                    else 0.0
+                )
+                if db_size_mb > 200:
+                    logger.warning(
+                        "Skipping VACUUM: database is %.0f MB (>200 MB threshold). "
+                        "Run VACUUM manually during a maintenance window.",
+                        db_size_mb,
+                    )
+                    result["vacuumed"] = False
+                else:
+                    with self._write_lock, self._db_lock:
+                        self._db.execute("VACUUM")
+                    result["vacuumed"] = True
+                    logger.info("VACUUM completed successfully")
             except sqlite3.Error as exc:
                 result["errors"].append(f"VACUUM failed: {exc}")
                 logger.warning("VACUUM failed: %s", exc)

@@ -121,6 +121,13 @@ class BudgetEnforcer:
         self._last_day: str = ""
         self._last_month: str = ""
 
+        # In-memory running totals to avoid full-table SUM() on every LLM call.
+        # None means "not yet initialised" — first access triggers a DB query.
+        self._cached_daily: float | None = None
+        self._cached_monthly: float | None = None
+        self._cached_day: str = ""
+        self._cached_month: str = ""
+
         from jarvis_engine._db_pragmas import connect_db
 
         self._db = connect_db(db_path, check_same_thread=False)
@@ -151,21 +158,39 @@ class BudgetEnforcer:
         return datetime.now(UTC).strftime("%Y-%m")
 
     def _daily_spend(self) -> float:
-        """Sum of costs for the current UTC day."""
-        row = self._db.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0.0) AS total FROM budget_tracking WHERE day_key = ?",
-            (self._today(),),
-        ).fetchone()
-        return float(row["total"])
+        """Sum of costs for the current UTC day.
+
+        Returns the cached running total when the day has not rolled over,
+        otherwise re-queries SQLite to get an accurate baseline.
+        Caller MUST hold ``_lock``.
+        """
+        today = self._today()
+        if today != self._cached_day or self._cached_daily is None:
+            row = self._db.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) AS total FROM budget_tracking WHERE day_key = ?",
+                (today,),
+            ).fetchone()
+            self._cached_daily = float(row["total"])
+            self._cached_day = today
+        return self._cached_daily
 
     def _monthly_spend(self) -> float:
-        """Sum of costs for the current UTC month."""
-        prefix = self._this_month()
-        row = self._db.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0.0) AS total FROM budget_tracking WHERE day_key LIKE ?",
-            (prefix + "%",),
-        ).fetchone()
-        return float(row["total"])
+        """Sum of costs for the current UTC month.
+
+        Returns the cached running total when the month has not rolled over,
+        otherwise re-queries SQLite to get an accurate baseline.
+        Caller MUST hold ``_lock``.
+        """
+        month = self._this_month()
+        if month != self._cached_month or self._cached_monthly is None:
+            prefix = month
+            row = self._db.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) AS total FROM budget_tracking WHERE day_key LIKE ?",
+                (prefix + "%",),
+            ).fetchone()
+            self._cached_monthly = float(row["total"])
+            self._cached_month = month
+        return self._cached_monthly
 
     def _reset_alerts_if_needed(self) -> None:
         """Clear fired alerts when the day or month rolls over."""
@@ -243,6 +268,11 @@ class BudgetEnforcer:
                 (self._today(), cost_usd, model, provider),
             )
             self._db.commit()
+            # Update in-memory cache incrementally instead of re-querying
+            if self._cached_daily is not None and self._cached_day == self._today():
+                self._cached_daily += cost_usd
+            if self._cached_monthly is not None and self._cached_month == self._this_month():
+                self._cached_monthly += cost_usd
             daily = self._daily_spend()
             monthly = self._monthly_spend()
             self._emit_alerts(daily, monthly)
