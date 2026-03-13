@@ -48,7 +48,7 @@ def _check_silero() -> bool:
         with _availability_lock:
             if _silero_available is None:
                 try:
-                    import silero_vad  # noqa: F401
+                    import silero_vad  # type: ignore[import-not-found]  # noqa: F401
 
                     _silero_available = True
                 except ImportError:
