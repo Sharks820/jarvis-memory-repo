@@ -4,7 +4,6 @@ import binascii
 import logging
 import time
 from http import HTTPStatus
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
