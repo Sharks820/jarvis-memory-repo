@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.wakeword import WakeWordDetector
+from jarvis_engine.voice.wakeword import WakeWordDetector
 
 from jarvis_engine.proactive.triggers import (
     DEFAULT_TRIGGER_RULES,
@@ -263,7 +263,7 @@ class TestProactiveEngine:
 class TestWakeWordDetector:
     def test_graceful_no_openwakeword(self):
         """openwakeword not installed should not crash."""
-        from jarvis_engine.wakeword import WakeWordDetector
+        from jarvis_engine.voice.wakeword import WakeWordDetector
 
         detector = WakeWordDetector()
         callback = MagicMock()
@@ -347,7 +347,7 @@ class TestWakeWordStartHandler:
 
         from pathlib import Path
 
-        with patch("jarvis_engine.wakeword.WakeWordDetector") as mock_cls:
+        with patch("jarvis_engine.voice.wakeword.WakeWordDetector") as mock_cls:
             mock_detector = MagicMock(spec=WakeWordDetector)
             mock_cls.return_value = mock_detector
             handler = WakeWordStartHandler(Path("."))

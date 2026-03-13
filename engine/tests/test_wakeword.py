@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from jarvis_engine.stt_vad import SileroVADDetector
-from jarvis_engine.wakeword import WakeWordDetector
+from jarvis_engine.voice.wakeword import WakeWordDetector
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ from jarvis_engine._shared import make_task_id as _make_task_id
 
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 
-from jarvis_engine.voice_extractors import (
+from jarvis_engine.voice.extractors import (
     escape_response,
     _extract_first_phone_number,
     _extract_weather_location,
@@ -1031,7 +1031,7 @@ def _import_voice_commands():
         cmd_automation_run, cmd_mission_cancel, cmd_mission_status,
     )
     from jarvis_engine.cli_knowledge import cmd_brain_context, cmd_brain_status
-    import jarvis_engine.voice_pipeline as _vp
+    import jarvis_engine.voice.pipeline as _vp
 
     cmd_fns: dict[str, _CommandFn] = {
         "cmd_voice_say": cmd_voice_say,

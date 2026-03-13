@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import main as main_mod
-from jarvis_engine import voice_pipeline as voice_pipeline_mod
-from jarvis_engine import voice_context as voice_context_mod
-from jarvis_engine import voice_extractors as voice_extractors_mod
+from jarvis_engine.voice import pipeline as voice_pipeline_mod
+from jarvis_engine.voice import context as voice_context_mod
+from jarvis_engine.voice import extractors as voice_extractors_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
 from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -473,7 +473,7 @@ class TestBuildSmartContext:
             {"summary": "User takes metformin daily"},
         ]
 
-        with patch("jarvis_engine.voice_pipeline.hybrid_search", create=True) as mock_hs:
+        with patch("jarvis_engine.voice.pipeline.hybrid_search", create=True) as mock_hs:
             # hybrid_search is imported inside _build_smart_context, so patch the import target
             with patch.dict("sys.modules", {}):
                 pass

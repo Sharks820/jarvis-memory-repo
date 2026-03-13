@@ -123,7 +123,7 @@ from jarvis_engine._shared import set_process_title as _set_process_title  # noq
 # ---------------------------------------------------------------------------
 # Imports from extracted modules (only symbols used by cmd_* in this file)
 # ---------------------------------------------------------------------------
-from jarvis_engine.voice_extractors import (  # noqa: E402
+from jarvis_engine.voice.extractors import (  # noqa: E402
     escape_response,
     shorten_urls_for_speech,
 )

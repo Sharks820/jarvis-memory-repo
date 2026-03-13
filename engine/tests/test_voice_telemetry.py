@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jarvis_engine.voice_telemetry import (
+from jarvis_engine.voice.telemetry import (
     ALL_STAGES,
     STAGE_COMMAND_DISPATCH,
     STAGE_INTENT_CLASSIFICATION,
@@ -331,7 +331,7 @@ class TestSLOViolations:
         # Should have violations since injected latency exceeds targets
         assert len(stats["slo_violations"]) > 0
 
-    @patch("jarvis_engine.voice_telemetry.VoiceTelemetry._emit_slo_alert")
+    @patch("jarvis_engine.voice.telemetry.VoiceTelemetry._emit_slo_alert")
     def test_sustained_breach_triggers_alert(self, mock_alert, telemetry: VoiceTelemetry):
         """10 consecutive SLO breaches should trigger an alert."""
         with telemetry._lock:
@@ -360,7 +360,7 @@ class TestSLOViolations:
 class TestHealthEvents:
     """Tests for periodic health event emission."""
 
-    @patch("jarvis_engine.voice_telemetry.VoiceTelemetry._emit_health_event")
+    @patch("jarvis_engine.voice.telemetry.VoiceTelemetry._emit_health_event")
     def test_health_emitted_at_interval(self, mock_emit, telemetry: VoiceTelemetry):
         """Health event should fire every health_interval utterances."""
         # telemetry has health_interval=5
@@ -375,7 +375,7 @@ class TestHealthEvents:
         # Should have emitted at utterance 5 and 10
         assert mock_emit.call_count == 2
 
-    @patch("jarvis_engine.voice_telemetry.VoiceTelemetry._emit_health_event")
+    @patch("jarvis_engine.voice.telemetry.VoiceTelemetry._emit_health_event")
     def test_health_not_emitted_before_interval(self, mock_emit, telemetry: VoiceTelemetry):
         """Health event should NOT fire before reaching the interval."""
         for _ in range(4):  # 4 < 5 (health_interval)

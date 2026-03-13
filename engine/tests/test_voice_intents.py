@@ -16,8 +16,8 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 _MAIN = "jarvis_engine.main"
-_VI = "jarvis_engine.voice_intents"
-_VP = "jarvis_engine.voice_pipeline"
+_VI = "jarvis_engine.voice.intents"
+_VP = "jarvis_engine.voice.pipeline"
 
 
 def _call_impl(
@@ -43,7 +43,7 @@ def _call_impl(
 
     Returns (return_code, captured_mock_calls_dict).
     """
-    from jarvis_engine.voice_intents import cmd_voice_run_impl
+    from jarvis_engine.voice.intents import cmd_voice_run_impl
 
     root = tmp_path or Path("C:/fake/jarvis")
     snapshot = root / ".planning" / "ops_snapshot.json"

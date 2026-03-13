@@ -30,7 +30,7 @@ from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.proactive import ProactiveEngine
 from jarvis_engine.proactive.self_test import AdversarialSelfTest
-from jarvis_engine.wakeword import WakeWordDetector
+from jarvis_engine.voice.wakeword import WakeWordDetector
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ class TestWakeWordStartHandler:
     def test_import_error_returns_not_available(self, tmp_path: Path) -> None:
         """When wakeword module can't be imported, returns started=False."""
         handler = WakeWordStartHandler(root=tmp_path)
-        with patch.dict("sys.modules", {"jarvis_engine.wakeword": None}):
+        with patch.dict("sys.modules", {"jarvis_engine.voice.wakeword": None}):
             result = handler.handle(WakeWordStartCommand())
         assert result.started is False
         assert "not available" in result.message.lower()
@@ -170,7 +170,7 @@ class TestWakeWordStartHandler:
             # We also need to mock the lazy import of WakeWordDetector
             mock_wakeword_module = MagicMock()
             mock_wakeword_module.WakeWordDetector.return_value = mock_detector
-            with patch.dict("sys.modules", {"jarvis_engine.wakeword": mock_wakeword_module}):
+            with patch.dict("sys.modules", {"jarvis_engine.voice.wakeword": mock_wakeword_module}):
                 handler = WakeWordStartHandler(root=tmp_path)
                 result = handler.handle(WakeWordStartCommand(threshold=0.6))
 
@@ -216,7 +216,7 @@ class TestWakeWordStartHandler:
         mock_wakeword = MagicMock()
         mock_wakeword.WakeWordDetector = mock_detector_cls
 
-        with patch.dict("sys.modules", {"jarvis_engine.wakeword": mock_wakeword}):
+        with patch.dict("sys.modules", {"jarvis_engine.voice.wakeword": mock_wakeword}):
             handler = WakeWordStartHandler(root=tmp_path)
             handler.handle(WakeWordStartCommand(threshold=0.75))
 
@@ -258,7 +258,7 @@ class TestWakeWordStartHandler:
             ],
         )
 
-        with patch("jarvis_engine.wakeword.WakeWordDetector", MockDetector):
+        with patch("jarvis_engine.voice.wakeword.WakeWordDetector", MockDetector):
             handler = WakeWordStartHandler(root=tmp_path)
             handler.handle(WakeWordStartCommand(threshold=0.5))
 
@@ -266,7 +266,7 @@ class TestWakeWordStartHandler:
              patch("jarvis_engine.stt.transcribe_smart", return_value=mock_result), \
              patch("jarvis_engine.stt_postprocess._load_personal_vocab", return_value=["Jarvis"]), \
              patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time, \
-             patch("jarvis_engine.voice_intents.cmd_voice_run_impl") as mock_run, \
+             patch("jarvis_engine.voice.intents.cmd_voice_run_impl") as mock_run, \
              patch("jarvis_engine.config.repo_root", return_value=tmp_path):
             mock_time.sleep = MagicMock()
             mock_time.time.return_value = 0.0

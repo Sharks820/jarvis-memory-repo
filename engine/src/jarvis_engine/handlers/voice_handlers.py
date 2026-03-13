@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
-    from jarvis_engine.voice_auth import VoiceEnrollResult as _VoiceEnrollResultAuth
-    from jarvis_engine.voice_auth import VoiceVerifyResult as _VoiceVerifyResultAuth
+    from jarvis_engine.voice.auth import VoiceEnrollResult as _VoiceEnrollResultAuth
+    from jarvis_engine.voice.auth import VoiceVerifyResult as _VoiceVerifyResultAuth
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 
@@ -182,7 +182,7 @@ class VoiceRunHandler:
         # identical behaviour.  The cmd_voice_run function will internally
         # call other cmd_* functions which may themselves dispatch through
         # the bus -- that is fine because the bus is module-level singleton.
-        from jarvis_engine import voice_intents as _voice_intents_mod
+        from jarvis_engine.voice import intents as _voice_intents_mod
 
         rc = _voice_intents_mod.cmd_voice_run_impl(
             text=cmd.text,
@@ -319,7 +319,7 @@ def _load_voice_auth_impl() -> tuple[
     str,
 ]:
     try:
-        from jarvis_engine.voice_auth import enroll_voiceprint, verify_voiceprint
+        from jarvis_engine.voice.auth import enroll_voiceprint, verify_voiceprint
     except ModuleNotFoundError as exc:
         return None, None, str(exc)
     return enroll_voiceprint, verify_voiceprint, ""

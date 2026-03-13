@@ -33,8 +33,8 @@ from jarvis_engine._shared import (
 )
 
 # Imports from sub-modules used internally in this file
-from jarvis_engine.voice_extractors import escape_response
-from jarvis_engine.voice_context import _build_smart_context, _build_system_parts
+from jarvis_engine.voice.extractors import escape_response
+from jarvis_engine.voice.context import _build_smart_context, _build_system_parts
 
 logger = logging.getLogger(__name__)
 
@@ -711,7 +711,7 @@ def _dispatch_and_handle_response(
 
     # Telemetry: mark command dispatch
     try:
-        from jarvis_engine.voice_telemetry import (
+        from jarvis_engine.voice.telemetry import (
             STAGE_COMMAND_DISPATCH,
             get_voice_telemetry,
         )
@@ -734,7 +734,7 @@ def _dispatch_and_handle_response(
 
         # Telemetry: mark response ready
         try:
-            from jarvis_engine.voice_telemetry import (
+            from jarvis_engine.voice.telemetry import (
                 STAGE_RESPONSE_READY,
                 get_voice_telemetry,
             )
@@ -946,7 +946,7 @@ def _web_augmented_llm_conversation(
 
     # Telemetry: mark intent classification complete
     try:
-        from jarvis_engine.voice_telemetry import (
+        from jarvis_engine.voice.telemetry import (
             STAGE_INTENT_CLASSIFICATION,
             get_voice_telemetry,
         )

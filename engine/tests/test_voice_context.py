@@ -12,17 +12,17 @@ from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.learning.preferences import PreferenceTracker
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
-from jarvis_engine.voice_context import (
+from jarvis_engine.voice.context import (
     _build_smart_context,
     _build_system_parts,
     _current_datetime_prompt_line,
 )
 
 # Patch targets:
-#   _build_smart_context lazily does `import jarvis_engine.voice_pipeline as _vp`
+#   _build_smart_context lazily does `import jarvis_engine.voice.pipeline as _vp`
 #   then reads _vp.repo_root and _vp.build_context_packet.
 #   We patch the voice_pipeline module attributes directly.
-_VP = "jarvis_engine.voice_pipeline"
+_VP = "jarvis_engine.voice.pipeline"
 
 
 # ===========================================================================
@@ -245,7 +245,7 @@ class TestBuildSmartContext:
 class TestBuildSystemParts:
     def test_returns_list_of_strings(self, tmp_path: Path) -> None:
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Be helpful."):
             result = _build_system_parts([], [], [], [])
 
@@ -255,7 +255,7 @@ class TestBuildSystemParts:
     def test_includes_datetime_and_persona(self, tmp_path: Path) -> None:
         """System parts always include datetime and persona prompt."""
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="I am Jarvis."):
             result = _build_system_parts([], [], [], [])
 
@@ -264,7 +264,7 @@ class TestBuildSystemParts:
 
     def test_includes_facts_section(self, tmp_path: Path) -> None:
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], ["User likes coffee"], [], [])
 
@@ -274,7 +274,7 @@ class TestBuildSystemParts:
 
     def test_includes_memories_section(self, tmp_path: Path) -> None:
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts(["Recent coding session"], [], [], [])
 
@@ -284,7 +284,7 @@ class TestBuildSystemParts:
 
     def test_includes_cross_domain_section(self, tmp_path: Path) -> None:
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], ["work -> hobby connection"], [])
 
@@ -293,7 +293,7 @@ class TestBuildSystemParts:
 
     def test_includes_preferences_section(self, tmp_path: Path) -> None:
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], [], ["tone: casual"])
 
@@ -304,7 +304,7 @@ class TestBuildSystemParts:
     def test_empty_sections_excluded(self, tmp_path: Path) -> None:
         """Empty lists produce no extra sections beyond datetime+persona."""
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], [], [], [])
 
@@ -315,7 +315,7 @@ class TestBuildSystemParts:
         """At most 6 fact lines are included."""
         facts = [f"Fact {i}" for i in range(10)]
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], facts, [], [])
 
@@ -327,7 +327,7 @@ class TestBuildSystemParts:
         """At most 8 memory lines are included."""
         memories = [f"Memory {i}" for i in range(12)]
         with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch("jarvis_engine.voice_context.load_persona_config", return_value={}), \
+             patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts(memories, [], [], [])
 

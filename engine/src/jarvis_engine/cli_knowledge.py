@@ -13,7 +13,7 @@ import json
 
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
-from jarvis_engine.voice_extractors import escape_response
+from jarvis_engine.voice.extractors import escape_response
 
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-_VP = "jarvis_engine.voice_pipeline"
+_VP = "jarvis_engine.voice.pipeline"
 
 
 # ===========================================================================
@@ -30,7 +30,7 @@ class TestConversationState:
     """Tests for the ConversationState class directly."""
 
     def _make_state(self, tmp_path: Path):
-        from jarvis_engine.voice_pipeline import ConversationState
+        from jarvis_engine.voice.pipeline import ConversationState
         return ConversationState(history_file=tmp_path / "conv.json")
 
     def test_add_to_history_appends_and_caps(self, tmp_path: Path) -> None:
@@ -61,7 +61,7 @@ class TestConversationState:
             lambda: csm,
         )
 
-        from jarvis_engine.voice_pipeline import _CONVERSATION_MAX_TURNS
+        from jarvis_engine.voice.pipeline import _CONVERSATION_MAX_TURNS
 
         for i in range((_CONVERSATION_MAX_TURNS * 2) + 1):
             state.add_to_history("user", f"msg-{i}")
@@ -76,7 +76,7 @@ class TestConversationState:
         state.add_to_history("assistant", "hi there")
         state.save_conversation_history(force=True)
 
-        from jarvis_engine.voice_pipeline import ConversationState
+        from jarvis_engine.voice.pipeline import ConversationState
         state2 = ConversationState(history_file=tmp_path / "conv.json")
         state2.load_conversation_history()
         history = state2.get_history_messages()
@@ -100,7 +100,7 @@ class TestConversationState:
         hfile = tmp_path / "conv.json"
         hfile.write_text(json.dumps([{"role": "user", "content": "persisted"}]))
 
-        from jarvis_engine.voice_pipeline import ConversationState
+        from jarvis_engine.voice.pipeline import ConversationState
         state = ConversationState(history_file=hfile)
         msgs = state.get_history_messages()
         assert len(msgs) == 1
@@ -113,7 +113,7 @@ class TestConversationState:
 
     def test_mark_routed_model_logs_switch(self, tmp_path: Path) -> None:
         state = self._make_state(tmp_path)
-        with patch("jarvis_engine.voice_pipeline.ConversationState.mark_routed_model.__module__", create=True):
+        with patch("jarvis_engine.voice.pipeline.ConversationState.mark_routed_model.__module__", create=True):
             state.mark_routed_model("model-a", "provider-a")
             assert state._last_routed_model == "model-a"
             # Switch model — should log activity
@@ -158,7 +158,7 @@ class TestNeedsWebSearch:
     """Tests for _needs_web_search() pattern matching."""
 
     def _call(self, query: str) -> bool:
-        from jarvis_engine.voice_pipeline import _needs_web_search
+        from jarvis_engine.voice.pipeline import _needs_web_search
         return _needs_web_search(query)
 
     def test_current_events_trigger(self) -> None:
@@ -204,7 +204,7 @@ class TestRequiresFreshWebConfirmation:
     """Tests for _requires_fresh_web_confirmation() strict marker matching."""
 
     def _call(self, query: str) -> bool:
-        from jarvis_engine.voice_pipeline import _requires_fresh_web_confirmation
+        from jarvis_engine.voice.pipeline import _requires_fresh_web_confirmation
         return _requires_fresh_web_confirmation(query)
 
     def test_latest_triggers(self) -> None:
@@ -260,7 +260,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_classifier_routes_routine(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus(classifier_result=("routine", "kimi-k2", 0.85))
         route, model = _classify_and_route(bus, "tell me a joke")
         assert route == "routine"
@@ -268,7 +268,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_classifier_routes_complex(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus(classifier_result=("complex", "claude-opus", 0.92))
         route, model = _classify_and_route(bus, "explain quantum entanglement in detail")
         assert route == "complex"
@@ -276,7 +276,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_classifier_routes_web_research(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus(classifier_result=("web_research", "gemini-2.5-flash", 0.88))
         route, model = _classify_and_route(bus, "search for latest news")
         assert route == "web_research"
@@ -284,7 +284,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_privacy_fallback_when_classifier_absent(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus()  # No classifier
         route, model = _classify_and_route(bus, "what is my bank account balance")
         assert route == "simple_private"
@@ -293,7 +293,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "key123", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_env_model_fallback_non_private(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus()  # No classifier
         route, model = _classify_and_route(bus, "tell me about dinosaurs")
         assert route == "routine"  # default_route
@@ -301,7 +301,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_classifier_error_falls_through(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus(classifier_error=RuntimeError("embedding fail"))
         # Non-private query, no cloud keys -> local model
         route, model = _classify_and_route(bus, "tell me a joke")
@@ -310,7 +310,7 @@ class TestClassifyAndRoute:
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "mk", "ZAI_API_KEY": ""})
     def test_mistral_fallback_priority(self) -> None:
-        from jarvis_engine.voice_pipeline import _classify_and_route
+        from jarvis_engine.voice.pipeline import _classify_and_route
         bus = self._make_bus()  # No classifier
         route, model = _classify_and_route(bus, "explain gravity")
         assert model == "devstral-2"
@@ -326,7 +326,7 @@ class TestPerformWebSearch:
 
     @patch(f"{_VP}._needs_web_search", return_value=False)
     def test_skips_when_not_needed(self, mock_nws) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         parts = ["existing"]
         searched, attempted, result = _perform_web_search(
             "hello", parts, force=False, route="routine",
@@ -338,7 +338,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research")
     def test_force_triggers_search(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
             "summary_lines": ["Result 1", "Result 2"],
             "scanned_urls": ["https://example.com"],
@@ -355,7 +355,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research")
     def test_web_research_route_triggers(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
             "summary_lines": ["Line 1"],
             "scanned_urls": [],
@@ -370,7 +370,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research")
     def test_empty_summary_lines(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {"summary_lines": [], "scanned_urls": []}
         parts = []
         searched, attempted, result = _perform_web_search(
@@ -381,7 +381,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research", side_effect=RuntimeError("network down"))
     def test_error_handling(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         parts = []
         searched, attempted, result = _perform_web_search(
             "test", parts, force=True, route="routine",
@@ -392,7 +392,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research", side_effect=ImportError("web_research not installed"))
     def test_import_error_handling(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         parts = []
         searched, attempted, result = _perform_web_search(
             "test", parts, force=True, route="routine",
@@ -402,7 +402,7 @@ class TestPerformWebSearch:
 
     @patch("jarvis_engine.web_research.run_web_research")
     def test_sources_appended_to_context(self, mock_research) -> None:
-        from jarvis_engine.voice_pipeline import _perform_web_search
+        from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
             "summary_lines": ["AI is evolving"],
             "scanned_urls": ["https://ai.com", "https://ml.org"],
@@ -447,7 +447,7 @@ class TestDispatchAndHandleResponse:
     @patch(f"{_VP}._add_to_history")
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_success_path(self, mock_say, mock_hist, mock_mark, mock_learn, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result()
         rc = _dispatch_and_handle_response(
             bus, "hello", "system prompt", 512, "kimi-k2",
@@ -468,7 +468,7 @@ class TestDispatchAndHandleResponse:
     @patch(f"{_VP}._add_to_history")
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_speak_calls_tts(self, mock_say, mock_hist, mock_mark, mock_learn) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result()
         rc = _dispatch_and_handle_response(
             bus, "hello", "sys", 512, "kimi-k2",
@@ -483,7 +483,7 @@ class TestDispatchAndHandleResponse:
     @patch(f"{_VP}._add_to_history")
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_web_searched_flag_printed(self, mock_say, mock_hist, mock_mark, mock_learn, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result()
         rc = _dispatch_and_handle_response(
             bus, "hello", "sys", 512, "kimi-k2",
@@ -499,7 +499,7 @@ class TestDispatchAndHandleResponse:
     @patch(f"{_VP}._add_to_history")
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_response_callback_invoked(self, mock_say, mock_hist, mock_mark, mock_learn) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result()
         callback = MagicMock()
         rc = _dispatch_and_handle_response(
@@ -512,7 +512,7 @@ class TestDispatchAndHandleResponse:
 
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_llm_failure_returns_1(self, mock_say, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result(return_code=1, response_text="model not loaded")
         rc = _dispatch_and_handle_response(
             bus, "hello", "sys", 512, "kimi-k2",
@@ -525,7 +525,7 @@ class TestDispatchAndHandleResponse:
 
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_llm_failure_with_web_fallback(self, mock_say, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result(return_code=1)
         web_result = {"summary_lines": ["AI breakthrough announced"]}
         rc = _dispatch_and_handle_response(
@@ -543,7 +543,7 @@ class TestDispatchAndHandleResponse:
     @patch(f"{_VP}._add_to_history")
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_empty_response_returns_1(self, mock_say, mock_hist, mock_mark, mock_learn, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = self._make_bus_and_result(response_text="   ")
         rc = _dispatch_and_handle_response(
             bus, "hello", "sys", 512, "kimi-k2",
@@ -556,7 +556,7 @@ class TestDispatchAndHandleResponse:
 
     @patch("jarvis_engine.main.cmd_voice_say")
     def test_exception_returns_1_and_speaks_error(self, mock_say, capsys) -> None:
-        from jarvis_engine.voice_pipeline import _dispatch_and_handle_response
+        from jarvis_engine.voice.pipeline import _dispatch_and_handle_response
         bus = MagicMock()
         bus.dispatch.side_effect = RuntimeError("connection refused")
         rc = _dispatch_and_handle_response(
@@ -580,7 +580,7 @@ class TestLearnConversation:
     """Tests for _learn_conversation() — dispatches LearnInteractionCommand."""
 
     def test_dispatches_learn_command(self) -> None:
-        from jarvis_engine.voice_pipeline import _learn_conversation
+        from jarvis_engine.voice.pipeline import _learn_conversation
         from jarvis_engine.commands.learning_commands import LearnInteractionCommand
         bus = MagicMock()
         _learn_conversation(bus, "hello", "hi there", "routine", "kimi-k2")
@@ -592,7 +592,7 @@ class TestLearnConversation:
         assert cmd.route == "routine"
 
     def test_truncates_long_messages(self) -> None:
-        from jarvis_engine.voice_pipeline import _learn_conversation
+        from jarvis_engine.voice.pipeline import _learn_conversation
         bus = MagicMock()
         long_text = "x" * 5000
         _learn_conversation(bus, long_text, long_text, "routine", "kimi-k2")
@@ -602,7 +602,7 @@ class TestLearnConversation:
 
     @patch(f"{_VP}._auto_ingest_memory")
     def test_fallback_to_auto_ingest(self, mock_ingest) -> None:
-        from jarvis_engine.voice_pipeline import _learn_conversation
+        from jarvis_engine.voice.pipeline import _learn_conversation
         bus = MagicMock()
         bus.dispatch.side_effect = RuntimeError("handler not registered")
         _learn_conversation(bus, "hello", "hi", "routine", "kimi-k2")
@@ -616,7 +616,7 @@ class TestLearnConversation:
     @patch(f"{_VP}._auto_ingest_memory", side_effect=OSError("disk full"))
     def test_both_learning_paths_fail_gracefully(self, mock_ingest) -> None:
         """If both LearnInteraction and auto_ingest fail, no exception raised."""
-        from jarvis_engine.voice_pipeline import _learn_conversation
+        from jarvis_engine.voice.pipeline import _learn_conversation
         bus = MagicMock()
         bus.dispatch.side_effect = RuntimeError("handler not registered")
         # Should not raise
@@ -632,7 +632,7 @@ class TestPrepareHistory:
         mock_add_to_history,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from jarvis_engine.voice_pipeline import _prepare_history
+        from jarvis_engine.voice.pipeline import _prepare_history
 
         monkeypatch.setattr(
             f"{_VP}._get_history_messages",
@@ -674,7 +674,7 @@ class TestPrepareHistory:
         mock_add_to_history,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from jarvis_engine.voice_pipeline import _prepare_history
+        from jarvis_engine.voice.pipeline import _prepare_history
 
         monkeypatch.setattr(f"{_VP}._get_history_messages", lambda: [])
         monkeypatch.setattr(f"{_VP}._conversation_continuity_instruction", lambda *_args: None)

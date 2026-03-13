@@ -1219,7 +1219,7 @@ def test_caller_proactive_handler_integration():
         def resume(self, sd_module=None):
             self.resume_called = True
 
-    with patch("jarvis_engine.wakeword.WakeWordDetector", MockDetector):
+    with patch("jarvis_engine.voice.wakeword.WakeWordDetector", MockDetector):
         handler.handle(WakeWordStartCommand(threshold=0.5))
 
     # Now invoke the captured callback with mocked STT functions
@@ -1232,7 +1232,7 @@ def test_caller_proactive_handler_integration():
         mock_time.sleep = MagicMock()
         mock_time.time.return_value = 0.0
         # The callback will try to dispatch via cmd_voice_run_impl
-        with patch("jarvis_engine.voice_intents.cmd_voice_run_impl"):
+        with patch("jarvis_engine.voice.intents.cmd_voice_run_impl"):
             with patch("jarvis_engine.config.repo_root", return_value=Path(".")):
                 captured_callback["fn"]()
 

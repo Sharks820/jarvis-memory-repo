@@ -1,4 +1,4 @@
-"""Comprehensive tests for jarvis_engine.voice_auth module.
+"""Comprehensive tests for jarvis_engine.voice.auth module.
 
 Covers enrollment, verification, WAV reading, normalization, edge cases,
 multi-sample averaging, resampling, and profile persistence.
@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from jarvis_engine.voice_auth import (
+from jarvis_engine.voice.auth import (
     VoiceEnrollResult,
     VoiceVerifyResult,
     _extract_embedding,

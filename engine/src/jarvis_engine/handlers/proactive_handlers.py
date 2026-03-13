@@ -138,7 +138,7 @@ class WakeWordStartHandler:
             )
 
         try:
-            from jarvis_engine.wakeword import WakeWordDetector
+            from jarvis_engine.voice.wakeword import WakeWordDetector
         except ImportError:
             return WakeWordStartResult(
                 started=False,
@@ -181,7 +181,7 @@ class WakeWordStartHandler:
                     return
                 raw_text = text
                 # Strip "jarvis" prefix if present
-                from jarvis_engine.voice_extractors import strip_wake_word
+                from jarvis_engine.voice.extractors import strip_wake_word
 
                 text = strip_wake_word(text)
                 if not text:
@@ -195,7 +195,7 @@ class WakeWordStartHandler:
                 )
                 # Dispatch through voice-run pipeline
                 try:
-                    from jarvis_engine.voice_intents import cmd_voice_run_impl
+                    from jarvis_engine.voice.intents import cmd_voice_run_impl
                     from jarvis_engine.config import repo_root
 
                     _root = repo_root()

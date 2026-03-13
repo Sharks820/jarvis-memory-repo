@@ -436,7 +436,7 @@ class IntelligenceRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.voice_telemetry import get_voice_telemetry
+            from jarvis_engine.voice.telemetry import get_voice_telemetry
 
             telemetry = get_voice_telemetry()
             self._write_json(HTTPStatus.OK, dict(telemetry.get_endpoint_response()))

@@ -339,7 +339,7 @@ class TestVoiceVerifyHandler:
 class TestVoiceRunHandler:
     """Tests for VoiceRunHandler."""
 
-    @patch("jarvis_engine.voice_intents.cmd_voice_run_impl", return_value=0)
+    @patch("jarvis_engine.voice.intents.cmd_voice_run_impl", return_value=0)
     def test_delegates_to_main(self, mock_impl: MagicMock, tmp_path: Path) -> None:
         """VoiceRunHandler delegates to voice_pipeline.cmd_voice_run_impl."""
         handler = VoiceRunHandler(root=tmp_path)
@@ -354,14 +354,14 @@ class TestVoiceRunHandler:
         assert result.return_code == 0
         mock_impl.assert_called_once()
 
-    @patch("jarvis_engine.voice_intents.cmd_voice_run_impl", return_value=1)
+    @patch("jarvis_engine.voice.intents.cmd_voice_run_impl", return_value=1)
     def test_nonzero_return_code(self, mock_impl: MagicMock, tmp_path: Path) -> None:
         handler = VoiceRunHandler(root=tmp_path)
         result = handler.handle(VoiceRunCommand(text="bad command"))
 
         assert result.return_code == 1
 
-    @patch("jarvis_engine.voice_intents.cmd_voice_run_impl", return_value=0)
+    @patch("jarvis_engine.voice.intents.cmd_voice_run_impl", return_value=0)
     def test_all_parameters_forwarded(self, mock_impl: MagicMock, tmp_path: Path) -> None:
         """All VoiceRunCommand fields are forwarded to cmd_voice_run_impl."""
         snap = Path("snap.json")
@@ -732,7 +732,7 @@ class TestLoadVoiceAuthImpl:
     """Tests for the _load_voice_auth_impl helper function."""
 
     def test_module_not_found(self) -> None:
-        with patch.dict("sys.modules", {"jarvis_engine.voice_auth": None}):
+        with patch.dict("sys.modules", {"jarvis_engine.voice.auth": None}):
             enroll, verify, err = _load_voice_auth_impl()
         assert enroll is None
         assert verify is None
@@ -743,7 +743,7 @@ class TestLoadVoiceAuthImpl:
         mock_module.enroll_voiceprint = MagicMock(name="enroll")
         mock_module.verify_voiceprint = MagicMock(name="verify")
 
-        with patch.dict("sys.modules", {"jarvis_engine.voice_auth": mock_module}):
+        with patch.dict("sys.modules", {"jarvis_engine.voice.auth": mock_module}):
             enroll, verify, err = _load_voice_auth_impl()
 
         assert enroll is not None

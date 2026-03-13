@@ -168,7 +168,7 @@ class CommandRoutesMixin:
         if payload is None:
             return
         try:
-            import jarvis_engine.voice_pipeline as _vp_mod
+            import jarvis_engine.voice.pipeline as _vp_mod
             from jarvis_engine.conversation_state import get_conversation_state
 
             _vp_mod._state.clear_history()

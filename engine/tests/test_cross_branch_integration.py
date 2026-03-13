@@ -143,7 +143,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_returns_four_tuple(self):
         """_build_smart_context returns (memory, facts, cross_branch, preferences)."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
 
         from jarvis_engine.command_bus import AppContext
         bus = MagicMock(spec=[])  # No engine attribute
@@ -164,7 +164,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_lines_populated_when_connections_found(self):
         """Cross-branch connections are formatted and included when available."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock(spec=EmbeddingService)
@@ -202,7 +202,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_empty_when_no_connections(self):
         """Cross-branch lines are empty when no connections found."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock(spec=EmbeddingService)
@@ -228,7 +228,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_query_failure_returns_empty_lines(self):
         """When cross_branch_query raises, cross_branch_lines is empty (graceful degradation)."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock(spec=EmbeddingService)
@@ -251,7 +251,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_skipped_when_no_engine(self):
         """Cross-branch query is not attempted when engine is unavailable."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock(spec=[])
@@ -270,7 +270,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_skipped_when_no_embed_service(self):
         """Cross-branch query is not attempted when embed_service is unavailable."""
-        import jarvis_engine.voice_pipeline as voice_pipeline_mod
+        import jarvis_engine.voice.pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock(spec=CommandBus)

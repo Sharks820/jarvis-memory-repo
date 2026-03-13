@@ -130,50 +130,50 @@ class TestFuzzyMatching:
 
     def test_exact_match_is_not_fuzzy(self):
         """Exact substring match should be recognized (baseline)."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("pause jarvis", "pause jarvis") is True
 
     def test_fuzzy_detects_close_match(self):
         """'paws jarvis' (STT misheard) should match 'pause jarvis'."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("paws jarvis", "pause jarvis") is True
 
     def test_fuzzy_detects_resume_misheard(self):
         """'resum jarvis' should match 'resume jarvis'."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("resum jarvis", "resume jarvis") is True
 
     def test_fuzzy_rejects_distant_string(self):
         """Completely unrelated text should not match."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("check the weather today", "pause jarvis") is False
 
     def test_fuzzy_rejects_short_partial(self):
         """Short partial overlap should not match if ratio is below threshold."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("play some music please", "pause jarvis") is False
 
     def test_fuzzy_match_embedded_in_longer_text(self):
         """Fuzzy match should work when target is embedded in longer text."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("hey paws jarvis now", "pause jarvis") is True
 
     def test_fuzzy_empty_inputs(self):
         """Empty text or target should return False."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         assert _fuzzy_match("", "pause jarvis") is False
         assert _fuzzy_match("pause jarvis", "") is False
 
     def test_fuzzy_custom_threshold(self):
         """Custom threshold parameter should be respected."""
-        from jarvis_engine.voice_intents import _fuzzy_match
+        from jarvis_engine.voice.intents import _fuzzy_match
 
         # "paws jarvis" vs "pause jarvis" ratio is ~0.83
         # With a very high threshold it should fail
@@ -186,7 +186,7 @@ class TestFuzzyMatching:
 
         Verifies that 'pause jarvis' hits the exact path, not the fuzzy path.
         """
-        from jarvis_engine.voice_intents import _DISPATCH_RULES
+        from jarvis_engine.voice.intents import _DISPATCH_RULES
 
         lowered = "pause jarvis"
         exact_matched = False
@@ -199,7 +199,7 @@ class TestFuzzyMatching:
 
     def test_fuzzy_fallback_fires_when_exact_fails(self):
         """Fuzzy targets should be checked when no exact rule matches."""
-        from jarvis_engine.voice_intents import (
+        from jarvis_engine.voice.intents import (
             _DISPATCH_RULES,
             _CRITICAL_FUZZY_TARGETS,
             _fuzzy_match,
@@ -225,7 +225,7 @@ class TestFuzzyMatching:
 
     def test_critical_fuzzy_targets_populated(self):
         """_CRITICAL_FUZZY_TARGETS should contain entries for key commands."""
-        from jarvis_engine.voice_intents import _CRITICAL_FUZZY_TARGETS
+        from jarvis_engine.voice.intents import _CRITICAL_FUZZY_TARGETS
 
         target_phrases = [phrase for phrase, _handler in _CRITICAL_FUZZY_TARGETS]
         assert "pause jarvis" in target_phrases
@@ -236,7 +236,7 @@ class TestFuzzyMatching:
 
     def test_natural_aliases_expand_brain_status_sentence(self):
         """Sentence-shaped memory/brain questions should map to brain status."""
-        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+        from jarvis_engine.voice.intents import _expand_natural_command_aliases
 
         expanded = _expand_natural_command_aliases(
             "hey jarvis can you check how your memory is holding up today"
@@ -246,7 +246,7 @@ class TestFuzzyMatching:
 
     def test_natural_aliases_expand_system_status_sentence(self):
         """Sentence-shaped health checks should map to system status."""
-        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+        from jarvis_engine.voice.intents import _expand_natural_command_aliases
 
         expanded = _expand_natural_command_aliases(
             "jarvis are you still running okay right now"
@@ -256,7 +256,7 @@ class TestFuzzyMatching:
 
     def test_natural_aliases_expand_pause_sentence(self):
         """Natural pause requests should map to the canonical runtime pause phrase."""
-        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+        from jarvis_engine.voice.intents import _expand_natural_command_aliases
 
         expanded = _expand_natural_command_aliases(
             "jarvis please pause yourself for a minute"
@@ -266,7 +266,7 @@ class TestFuzzyMatching:
 
     def test_dispatch_uses_natural_alias_for_brain_status(self):
         """Dispatch should honor expanded aliases for sentence-shaped requests."""
-        from jarvis_engine.voice_intents import _dispatch_voice_intent
+        from jarvis_engine.voice.intents import _dispatch_voice_intent
 
         responses: list[str] = []
         ctx = types.SimpleNamespace(
@@ -290,7 +290,7 @@ class TestFuzzyMatching:
 
     def test_dispatch_uses_natural_alias_for_system_status(self):
         """Dispatch should map sentence-shaped health checks to system status."""
-        from jarvis_engine.voice_intents import _dispatch_voice_intent
+        from jarvis_engine.voice.intents import _dispatch_voice_intent
 
         responses: list[str] = []
         ctx = types.SimpleNamespace(

@@ -71,7 +71,7 @@ def _retrieve_memories_legacy(
 
     Returns a list of summary strings.  Returns empty list on failure.
     """
-    import jarvis_engine.voice_pipeline as _vp
+    import jarvis_engine.voice.pipeline as _vp
 
     repo_root = _vp.repo_root
 
@@ -321,7 +321,7 @@ def _build_system_parts(
     the LLM system prompt.
     """
     from jarvis_engine.persona import get_persona_prompt
-    import jarvis_engine.voice_pipeline as _vp
+    import jarvis_engine.voice.pipeline as _vp
 
     repo_root = _vp.repo_root
     persona = load_persona_config(repo_root())
