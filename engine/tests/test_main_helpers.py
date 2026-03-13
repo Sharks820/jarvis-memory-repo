@@ -80,6 +80,13 @@ class TestHelperFunctions:
             True,
             id="sentence_brain_status_execute_stays_read_only",
         ),
+        pytest.param(
+            "Jarvis, sync my calendar and inbox",
+            True,
+            False,
+            False,
+            id="sync_calendar_and_inbox_execute_stays_mutating",
+        ),
     ])
     def test_is_read_only_voice_request(self, text, execute, approve, expected):
         assert voice_extractors_mod._is_read_only_voice_request(

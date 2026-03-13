@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing tranches shipped; repo runtime green at 5602 passed, repo-wide mypy improved to 105/29, ruff clean)
+Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing tranches shipped; repo runtime green at 5609 passed, repo-wide mypy improved to 105/29, ruff clean)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-12): 5602 passing, 15 skipped, 0 failures
+- Latest full test run (2026-03-12): 5609 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 29 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
@@ -126,7 +126,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-12: completed the follow-on STT semantic-repair tranche. `stt_postprocess.py` now applies phrase-aware entity correction before token-level cleanup, strips simple wrapper labels from safe LLM corrections, and rejects commentary-style or overly divergent LLM rewrite output instead of trusting any non-empty response. Added regression coverage for wrapper stripping, commentary rejection, and multi-word entity correction. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_stt_postprocess.py`, `test_stt_smart.py`, and `test_voice_medium_fixes.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5596 passed, 15 skipped, 15 warnings` in 5m43s.
 - 2026-03-12: completed the follow-on voice-understanding tranche. `stt_postprocess.py` now treats outro-style hallucination phrases as junk only when they dominate the utterance, preventing longer legitimate sentences from being discarded, and `voice_intents.py` now expands sentence-shaped status/pause requests into canonical command aliases before exact/fuzzy dispatch. Added regression coverage in `test_stt_postprocess.py` and `test_voice_medium_fixes.py`. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_stt_postprocess.py` and `test_voice_medium_fixes.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5601 passed, 15 skipped, 15 warnings` in 5m33s.
 - 2026-03-12: completed the wakeword follow-up + STT typing tranche. `WakeWordStartHandler` now captures the post-wake utterance in `conversation` mode so natural sentence pauses do not clip the follow-up request, and `stt.py` / `stt_backends.py` now use explicit HTTP-response, audio-stream, and VAD typing contracts with stricter dynamic import annotations. Verification snapshot: focused `mypy --follow-imports=silent` now clean on `stt.py` and `stt_backends.py`; repo-wide `mypy engine/src` improved from `118 errors / 31 files` to `105 errors / 29 files`; focused STT pytest gates green plus `test_proactive_handlers.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5602 passed, 15 skipped, 15 warnings` in 5m50s.
-- 2026-03-12: completed the voice-auth read-only alignment follow-up. `_check_voice_auth()` now classifies read-only requests using the expanded natural-command alias surface before auth gates run, so execute-path voice queries like sentence-shaped brain/system status checks stay read-only instead of being blocked for missing voice auth. Added regression coverage in `test_voice_extractors.py` and `test_voice_intents.py`. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_voice_extractors.py` and `test_voice_intents.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5602 passed, 15 skipped, 15 warnings` in 5m49s.
+- 2026-03-12: completed the voice-auth read-only alignment follow-up. `_check_voice_auth()` now classifies read-only requests using the expanded natural-command alias surface before auth gates run, while `voice_extractors.py` now explicitly keeps sync/connect-style spoken requests mutating so phrases like `sync my calendar and inbox` still require voice auth. Added regression coverage in `test_voice_extractors.py`, `test_main_helpers.py`, `test_main_security.py`, and `test_voice_intents.py`. Verification snapshot: focused `ruff` clean; focused pytest gates green for the extractor/main-security/voice-intent slice; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5609 passed, 15 skipped, 15 warnings` in 5m39s.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
