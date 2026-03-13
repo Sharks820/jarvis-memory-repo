@@ -88,7 +88,7 @@ class DataRoutesMixin:
             tracker.record_explicit_feedback(quality, route, comment)
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
         except (ValueError, KeyError, TypeError, OSError, ImportError, sqlite3.Error) as exc:  # narrowed from except Exception
-            logger.error("Feedback recording failed: %s", exc)
+            logger.warning("Feedback recording failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
         finally:
             if fb_db is not None:
@@ -99,7 +99,8 @@ class DataRoutesMixin:
             return
         try:
             from jarvis_engine.activity_feed import get_activity_feed
-        except ImportError:
+        except ImportError as exc:
+            logger.debug("Activity feed module not available: %s", exc)
             self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
             return
         # Parse query params
@@ -117,7 +118,7 @@ class DataRoutesMixin:
                 "stats": stats,
             })
         except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:  # narrowed from except Exception
-            logger.error("activity feed query failed: %s", exc)
+            logger.warning("Activity feed query failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
 
     def _handle_get_alerts_pending(self: MobileRouteHandlerProtocol) -> None:
@@ -129,5 +130,5 @@ class DataRoutesMixin:
             alerts = drain_alerts(self._root, limit=50)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
         except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
-            logger.error("Alert queue drain failed: %s", exc)
+            logger.warning("Alert queue drain failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": []})

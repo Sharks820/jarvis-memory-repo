@@ -183,7 +183,8 @@ class AuthRoutesMixin:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                     s.connect(("8.8.8.8", 80))
                     bind_addr = s.getsockname()[0]
-            except OSError:
+            except OSError as exc:
+                logger.debug("Could not determine bind address: %s", exc)
                 bind_addr = "127.0.0.1"
         _scheme = "https" if getattr(self.server, "tls_active", False) else "http"
         base_url = f"{_scheme}://{bind_addr}:{port}"
@@ -307,7 +308,8 @@ class AuthRoutesMixin:
             reset_control_state(self._root)
             try:
                 self._write_gaming_state(enabled=False, auto_detect=False, reason=reason)
-            except PermissionError:
+            except PermissionError as exc:
+                logger.warning("Gaming state write blocked by permissions: %s", exc)
                 self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
                 return
         else:
@@ -327,7 +329,8 @@ class AuthRoutesMixin:
                         auto_detect=gaming_auto_detect if isinstance(gaming_auto_detect, bool) else None,
                         reason=reason,
                     )
-                except PermissionError:
+                except PermissionError as exc:
+                    logger.warning("Gaming state write blocked by permissions: %s", exc)
                     self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
                     return
 

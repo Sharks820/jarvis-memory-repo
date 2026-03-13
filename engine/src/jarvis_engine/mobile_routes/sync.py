@@ -81,7 +81,7 @@ class SyncRoutesMixin:
             status = sync_engine.sync_status()
             self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/status failed: %s", exc)
+            logger.warning("sync/status failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Sync status query failed."},
@@ -97,7 +97,7 @@ class SyncRoutesMixin:
             config = auto_sync.get_sync_config_for_device(device_id)
             self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/config GET failed: %s", exc)
+            logger.warning("sync/config GET failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Failed to get sync config."},
@@ -120,7 +120,7 @@ class SyncRoutesMixin:
                 },
             )
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/heartbeat failed: %s", exc)
+            logger.warning("sync/heartbeat failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Heartbeat failed."},
@@ -171,7 +171,7 @@ class SyncRoutesMixin:
                 },
             )
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/pull failed: %s", exc)
+            logger.warning("sync/pull failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Sync pull failed."},
@@ -226,7 +226,7 @@ class SyncRoutesMixin:
                 },
             )
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/push failed: %s", exc)
+            logger.warning("sync/push failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Sync push failed."},
@@ -258,7 +258,7 @@ class SyncRoutesMixin:
                 },
             )
         except Exception as exc:  # boundary: catch-all justified
-            logger.error("sync/config POST failed: %s", exc)
+            logger.warning("sync/config POST failed: %s", exc)
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"ok": False, "error": "Failed to update sync config."},

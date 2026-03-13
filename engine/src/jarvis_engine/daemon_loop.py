@@ -470,7 +470,8 @@ def _collect_kg_metrics(root: Path) -> None:
         try:
             bus = _get_daemon_bus()
             kg = getattr(bus.ctx, "kg", None)
-        except Exception:  # noqa: BLE001 — bus may not be initialized yet
+        except Exception as exc:  # noqa: BLE001 — boundary: catch-all justified (bus may not be initialized yet)
+            logger.debug("KG metrics: bus not available yet: %s", exc)
             kg = None
 
         if kg is not None:

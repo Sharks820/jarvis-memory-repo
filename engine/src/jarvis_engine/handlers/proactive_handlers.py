@@ -139,7 +139,8 @@ class WakeWordStartHandler:
 
         try:
             from jarvis_engine.voice.wakeword import WakeWordDetector
-        except ImportError:
+        except ImportError as exc:
+            logger.debug("Wake word module import failed: %s", exc)
             return WakeWordStartResult(
                 started=False,
                 message="Wake word module not available.",

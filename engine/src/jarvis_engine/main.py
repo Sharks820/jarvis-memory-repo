@@ -234,8 +234,8 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
                         f"warning: mobile API credential bundle is {_age_days} days old. "
                         f"Consider rotating via: delete {config_file} and restart"
                     )
-        except (ValueError, OSError, KeyError, TypeError):
-            logger.debug("Non-fatal: could not parse mobile API config for age check")
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            logger.debug("Non-fatal: could not parse mobile API config for age check: %s", exc)
 
     # Set descriptive process title for Task Manager visibility
     _set_process_title("jarvis-mobile-api")

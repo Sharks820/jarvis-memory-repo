@@ -348,13 +348,15 @@ def _run_cli_subprocess(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        logger.debug("CLI provider %s timed out after %ds: %s", provider, timeout, exc)
         return _cli_result(
             provider,
             model,
             error=f"timeout after {timeout}s",
         )
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        logger.debug("CLI provider %s not found: %s", display, exc)
         return _cli_result(
             provider,
             model,
@@ -774,13 +776,15 @@ def call_codex_cli(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        logger.debug("Codex CLI timed out after %ds: %s", timeout, exc)
         return _cli_result(
             "codex-cli",
             "codex-cli",
             error=f"timeout after {timeout}s",
         )
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        logger.debug("Codex CLI not found: %s", exc)
         return _cli_result(
             "codex-cli",
             "codex-cli",

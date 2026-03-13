@@ -61,7 +61,8 @@ class HealthRoutesMixin:
             return "<h1>Jarvis Quick Panel not found.</h1>"
         try:
             return path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Quick panel HTML read failed: %s", exc)
             return "<h1>Jarvis Quick Panel unavailable.</h1>"
 
     def _build_reliability_panel(

@@ -347,7 +347,7 @@ class IntelligenceRoutesMixin:
             })
             logger.info("Intelligence merge: %d items from phone", merged)
         except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:  # narrowed from except Exception
-            logger.error("intelligence/merge failed: %s", exc)
+            logger.warning("intelligence/merge failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence merge failed.",
             })
@@ -426,7 +426,7 @@ class IntelligenceRoutesMixin:
             })
             logger.info("Intelligence export: %d items for phone", len(items))
         except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:  # narrowed from except Exception
-            logger.error("intelligence/export failed: %s", exc)
+            logger.warning("intelligence/export failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",
             })

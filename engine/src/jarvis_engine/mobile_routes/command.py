@@ -184,7 +184,7 @@ class CommandRoutesMixin:
                 logger.debug("Conversation continuity reset failed during clear: %s", reset_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
         except (ValueError, TypeError, OSError, ImportError, RuntimeError, AttributeError) as exc:  # narrowed from except Exception
-            logger.error("Conversation history clear failed: %s", exc)
+            logger.warning("Conversation history clear failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
     def _handle_post_smart_reply(self: _CommandRoutesHandlerProtocol) -> None:
@@ -297,7 +297,7 @@ class CommandRoutesMixin:
             sanitized = str(exc)[:200].replace("\n", " ")
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": sanitized})
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
-            logger.error("Mission create failed: %s", exc)
+            logger.warning("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
 
     def _handle_get_missions_status(self: _CommandRoutesHandlerProtocol) -> None:
@@ -334,7 +334,7 @@ class CommandRoutesMixin:
                 ],
             })
         except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
-            logger.error("Mission status failed: %s", exc)
+            logger.warning("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
 
     def _handle_get_missions_active(self: _CommandRoutesHandlerProtocol) -> None:
@@ -363,7 +363,7 @@ class CommandRoutesMixin:
                 ],
             })
         except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
-            logger.error("Mission active list failed: %s", exc)
+            logger.warning("Mission active list failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Active missions unavailable."})
 
     def _handle_get_missions_steps(self: _CommandRoutesHandlerProtocol) -> None:
@@ -385,7 +385,7 @@ class CommandRoutesMixin:
                 "steps": steps,
             })
         except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
-            logger.error("Mission steps failed: %s", exc)
+            logger.warning("Mission steps failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission steps unavailable."})
 
     def _handle_post_missions_pause(self: _CommandRoutesHandlerProtocol) -> None:
@@ -409,7 +409,7 @@ class CommandRoutesMixin:
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
-            logger.error("Mission pause failed: %s", exc)
+            logger.warning("Mission pause failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission pause failed."})
 
     def _handle_post_missions_resume(self: _CommandRoutesHandlerProtocol) -> None:
@@ -433,7 +433,7 @@ class CommandRoutesMixin:
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
-            logger.error("Mission resume failed: %s", exc)
+            logger.warning("Mission resume failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission resume failed."})
 
     def _handle_post_missions_restart(self: _CommandRoutesHandlerProtocol) -> None:
@@ -457,7 +457,7 @@ class CommandRoutesMixin:
         except ValueError as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
-            logger.error("Mission restart failed: %s", exc)
+            logger.warning("Mission restart failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
 
     def _handle_get_digest(self: _CommandRoutesHandlerProtocol) -> None:
@@ -508,8 +508,8 @@ class CommandRoutesMixin:
                                 "start_time": start_str,
                                 "minutes_until": int(diff_hours * 60),
                             })
-                    except (ValueError, TypeError):
-                        logger.debug("Skipping calendar event with invalid date")
+                    except (ValueError, TypeError) as exc:
+                        logger.debug("Skipping calendar event with invalid date: %s", exc)
                         continue
                 digest["calendar_upcoming"] = upcoming[:5]
         except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
