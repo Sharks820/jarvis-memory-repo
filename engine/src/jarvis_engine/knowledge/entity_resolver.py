@@ -50,6 +50,10 @@ class ResolutionResult:
 
 # Entity resolver
 
+#: Maximum time in seconds allowed for O(N²) string comparison before a
+#: warning is logged recommending the embed_service for vector mode.
+_STRING_COMPARISON_WARNING_THRESHOLD_S: float = 5.0
+
 
 class EntityResolver:
     """Detects and merges near-duplicate nodes in the knowledge graph."""
@@ -386,7 +390,7 @@ class EntityResolver:
                         )
                     )
         elapsed = _time.monotonic() - t0
-        if elapsed > 5.0:
+        if elapsed > _STRING_COMPARISON_WARNING_THRESHOLD_S:
             logger.warning(
                 "String duplicate detection took %.1fs for %d nodes — "
                 "consider providing embed_service for faster vector mode",

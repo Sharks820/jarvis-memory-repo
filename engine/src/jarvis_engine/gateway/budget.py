@@ -268,14 +268,15 @@ class BudgetEnforcer:
                 (self._today(), cost_usd, model, provider),
             )
             self._db.commit()
-            # Update in-memory cache incrementally instead of re-querying
+            # Update in-memory cache incrementally instead of re-querying.
+            # _daily_spend()/_monthly_spend() will return the already-updated
+            # cache value (no DB round-trip) or initialise from DB on first call
+            # (the committed row is already visible to those queries).
             if self._cached_daily is not None and self._cached_day == self._today():
                 self._cached_daily += cost_usd
             if self._cached_monthly is not None and self._cached_month == self._this_month():
                 self._cached_monthly += cost_usd
-            daily = self._daily_spend()
-            monthly = self._monthly_spend()
-            self._emit_alerts(daily, monthly)
+            self._emit_alerts(self._daily_spend(), self._monthly_spend())
 
     def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         return calculate_cost(model, input_tokens, output_tokens)

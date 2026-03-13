@@ -37,7 +37,10 @@ def _normalize_ts(ts: str) -> str:
     if not ts:
         return ""
     ts = ts.replace("+00:00", "Z")
-    ts = re.sub(r"\.\d+", "", ts)
+    # Strip fractional seconds only when immediately followed by a timezone
+    # indicator or end-of-string (avoids accidentally stripping decimal numbers
+    # in any other part of the string).
+    ts = re.sub(r"\.\d+(?=[Z+\-]|$)", "", ts)
     return ts
 
 
