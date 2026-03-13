@@ -222,7 +222,7 @@ class TestAutomationDryRun:
 # ---------------------------------------------------------------------------
 
 class TestAutomationPolicyGate:
-    @patch("jarvis_engine.automation.run_shell_command", return_value=(0, "ok", ""))
+    @patch("jarvis_engine.ops.automation.run_shell_command", return_value=(0, "ok", ""))
     def test_allowed_command_executes(self, mock_shell: MagicMock, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
@@ -253,7 +253,7 @@ class TestAutomationPolicyGate:
         assert outcomes[0].executed is False
         assert "policy allowlist" in outcomes[0].reason.lower()
 
-    @patch("jarvis_engine.automation.run_shell_command", return_value=(1, "", "error msg"))
+    @patch("jarvis_engine.ops.automation.run_shell_command", return_value=(1, "", "error msg"))
     def test_command_failure_captured(self, mock_shell: MagicMock, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
@@ -274,7 +274,7 @@ class TestAutomationPolicyGate:
 # ---------------------------------------------------------------------------
 
 class TestAutomationMultipleActions:
-    @patch("jarvis_engine.automation.run_shell_command", return_value=(0, "", ""))
+    @patch("jarvis_engine.ops.automation.run_shell_command", return_value=(0, "", ""))
     def test_mixed_actions_processed_individually(
         self, mock_shell: MagicMock, executor: AutomationExecutor
     ) -> None:

@@ -8,7 +8,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
-from jarvis_engine import gaming_mode as gaming_mode_mod
+from jarvis_engine.ops import gaming_mode as gaming_mode_mod
 from jarvis_engine.cli import ops as cli_ops_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine import auto_ingest as auto_ingest_mod
