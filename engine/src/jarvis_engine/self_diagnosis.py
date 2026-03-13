@@ -78,7 +78,6 @@ class DiagnosticIssue:
             self.timestamp = datetime.now(UTC).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to a plain dictionary for JSON responses."""
         return dataclasses.asdict(self)
 
 

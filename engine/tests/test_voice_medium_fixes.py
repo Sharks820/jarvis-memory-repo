@@ -333,16 +333,19 @@ class TestWarmupSTTBackends:
         mock_onnx_asr.load_model = MagicMock(return_value=mock_model)
 
         # Reset the global to force re-load
-        original = stt_mod._parakeet_model
-        stt_mod._parakeet_model = None
+        original = stt_mod._singletons.get("parakeet")
+        stt_mod._singletons.pop("parakeet", None)
         try:
             with patch.dict("sys.modules", {"onnx_asr": mock_onnx_asr}):
                 stt_mod.warmup_stt_backends()
 
             mock_onnx_asr.load_model.assert_called_once_with("nemo-parakeet-tdt-0.6b-v2")
-            assert stt_mod._parakeet_model is mock_model
+            assert stt_mod._singletons.get("parakeet") is mock_model
         finally:
-            stt_mod._parakeet_model = original
+            if original is not None:
+                stt_mod._singletons["parakeet"] = original
+            else:
+                stt_mod._singletons.pop("parakeet", None)
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": ""})
     def test_warmup_skips_if_already_loaded(self):
@@ -350,30 +353,36 @@ class TestWarmupSTTBackends:
         import jarvis_engine.stt as stt_mod
 
         sentinel = MagicMock()
-        original = stt_mod._parakeet_model
-        stt_mod._parakeet_model = sentinel
+        original = stt_mod._singletons.get("parakeet")
+        stt_mod._singletons["parakeet"] = sentinel
         try:
             # Should return early without importing onnx_asr
             stt_mod.warmup_stt_backends()
-            assert stt_mod._parakeet_model is sentinel
+            assert stt_mod._singletons.get("parakeet") is sentinel
         finally:
-            stt_mod._parakeet_model = original
+            if original is not None:
+                stt_mod._singletons["parakeet"] = original
+            else:
+                stt_mod._singletons.pop("parakeet", None)
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": ""})
     def test_warmup_handles_import_error(self):
         """warmup_stt_backends should handle ImportError gracefully."""
         import jarvis_engine.stt as stt_mod
 
-        original = stt_mod._parakeet_model
-        stt_mod._parakeet_model = None
+        original = stt_mod._singletons.get("parakeet")
+        stt_mod._singletons.pop("parakeet", None)
         try:
             # Remove onnx_asr from sys.modules so import fails
             with patch.dict("sys.modules", {"onnx_asr": None}):
                 # Should not raise
                 stt_mod.warmup_stt_backends()
-            assert stt_mod._parakeet_model is None
+            assert stt_mod._singletons.get("parakeet") is None
         finally:
-            stt_mod._parakeet_model = original
+            if original is not None:
+                stt_mod._singletons["parakeet"] = original
+            else:
+                stt_mod._singletons.pop("parakeet", None)
 
     def test_warmup_called_in_daemon_startup(self):
         """daemon_loop should spawn warmup thread during startup."""

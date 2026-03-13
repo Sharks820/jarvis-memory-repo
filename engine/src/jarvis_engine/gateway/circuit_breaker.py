@@ -264,7 +264,6 @@ class ProviderHealthTracker:
             return {name: h.to_dict() for name, h in self._providers.items()}
 
     def filter_healthy(self, providers: list[str]) -> list[str]:
-        """Return only providers that are healthy enough for routing."""
         return [p for p in providers if self.is_healthy(p)]
 
     def rank_by_health(self, providers: list[str]) -> list[str]:

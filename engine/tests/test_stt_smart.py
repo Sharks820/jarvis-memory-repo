@@ -803,8 +803,8 @@ def test_try_local_emergency_uses_large_v3():
     import jarvis_engine.stt as stt_mod
 
     # Reset the singleton
-    original = stt_mod._local_emergency_instance
-    stt_mod._local_emergency_instance = None
+    original = stt_mod._singletons.get("local_emergency")
+    stt_mod._singletons.pop("local_emergency", None)
 
     try:
         with patch("jarvis_engine.stt.SpeechToText") as mock_cls:
@@ -822,7 +822,10 @@ def test_try_local_emergency_uses_large_v3():
             # Verify large-v3 model was requested
             mock_cls.assert_called_once_with(model_size="large-v3")
     finally:
-        stt_mod._local_emergency_instance = original
+        if original is not None:
+            stt_mod._singletons["local_emergency"] = original
+        else:
+            stt_mod._singletons.pop("local_emergency", None)
 
 
 # ---------------------------------------------------------------------------

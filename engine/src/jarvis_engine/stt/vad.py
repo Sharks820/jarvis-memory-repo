@@ -21,37 +21,34 @@ logger = logging.getLogger(__name__)
 
 # Availability check (no side-effects on import)
 
-_torch_available: bool | None = None
-_silero_available: bool | None = None
+_availability: dict[str, bool] = {}  # mutable container avoids 'global' keyword
 _availability_lock = threading.Lock()
 
 
 def _check_torch() -> bool:
-    global _torch_available
-    if _torch_available is None:
+    if "torch" not in _availability:
         with _availability_lock:
-            if _torch_available is None:
+            if "torch" not in _availability:
                 try:
                     import torch  # noqa: F401
 
-                    _torch_available = True
+                    _availability["torch"] = True
                 except ImportError:
-                    _torch_available = False
-    return _torch_available
+                    _availability["torch"] = False
+    return _availability["torch"]
 
 
 def _check_silero() -> bool:
-    global _silero_available
-    if _silero_available is None:
+    if "silero" not in _availability:
         with _availability_lock:
-            if _silero_available is None:
+            if "silero" not in _availability:
                 try:
                     import silero_vad  # type: ignore[import-not-found]  # noqa: F401
 
-                    _silero_available = True
+                    _availability["silero"] = True
                 except ImportError:
-                    _silero_available = False
-    return _silero_available
+                    _availability["silero"] = False
+    return _availability["silero"]
 
 
 # SileroVADDetector
@@ -232,9 +229,9 @@ class SileroVADDetector:
         return _check_torch() and _check_silero()
 
 
-# Module-level singleton (same pattern as _local_stt_instance in stt.py)
+# Module-level singleton (same pattern as _singletons in core.py)
 
-_vad_instance: SileroVADDetector | None = None
+_vad_singleton: dict[str, SileroVADDetector] = {}
 _vad_lock = threading.Lock()
 
 
@@ -250,14 +247,13 @@ def get_vad_detector(
     Thread-safe.  The first call creates the detector; subsequent calls
     return the same instance.
     """
-    global _vad_instance
-    if _vad_instance is None:
+    if "vad" not in _vad_singleton:
         with _vad_lock:
-            if _vad_instance is None:
-                _vad_instance = SileroVADDetector(
+            if "vad" not in _vad_singleton:
+                _vad_singleton["vad"] = SileroVADDetector(
                     threshold=threshold,
                     sampling_rate=sampling_rate,
                     onset_threshold=onset_threshold,
                     offset_threshold=offset_threshold,
                 )
-    return _vad_instance
+    return _vad_singleton["vad"]

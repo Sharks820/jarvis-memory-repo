@@ -173,9 +173,7 @@ class SyncTransport:
         return self._fernet_key
 
     def encrypt(self, payload: dict[str, Any]) -> bytes:
-        """Encrypt a sync payload dict."""
         return encrypt_sync_payload(payload, self._ensure_key())
 
     def decrypt(self, token: bytes, ttl: int = 3600) -> dict[str, Any]:
-        """Decrypt a sync payload token."""
         return decrypt_sync_payload(token, self._ensure_key(), ttl=ttl)

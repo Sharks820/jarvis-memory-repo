@@ -449,19 +449,15 @@ class MobileIngestServer(ThreadingHTTPServer):
     # -- Public convenience wrappers (preserve existing call-site API) ------
 
     def check_bootstrap_rate(self, client_ip: str) -> bool:
-        """Return True if this IP is rate-limited for bootstrap attempts."""
         return self.check_rate(_BOOTSTRAP_RATE, client_ip)
 
     def record_bootstrap_attempt(self, client_ip: str) -> None:
-        """Record a failed bootstrap attempt for rate limiting."""
         self.record_attempt(_BOOTSTRAP_RATE, client_ip)
 
     def check_master_pw_rate(self, client_ip: str) -> bool:
-        """Return True if this IP is rate-limited for master password attempts."""
         return self.check_rate(_MASTER_PW_RATE, client_ip)
 
     def record_master_pw_attempt(self, client_ip: str) -> None:
-        """Record a master password attempt for rate limiting."""
         self.record_attempt(_MASTER_PW_RATE, client_ip)
 
     def check_api_rate(self, client_ip: str, path: str) -> bool:
@@ -643,7 +639,6 @@ class MobileIngestHandler(
 
     @property
     def _root(self) -> Path:
-        """Shortcut for the server's repository root."""
         return self.server.repo_root
 
     def _cors_headers(self) -> None:

@@ -11,7 +11,7 @@ import pytest
 def _reset_parakeet_global():
     """Reset the _parakeet_model singleton so each test starts clean."""
     import jarvis_engine.stt as stt_mod
-    stt_mod._parakeet_model = None
+    stt_mod._singletons.pop("parakeet", None)
 
 
 # ---------------------------------------------------------------------------

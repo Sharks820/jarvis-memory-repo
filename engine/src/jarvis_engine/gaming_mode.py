@@ -168,7 +168,7 @@ def load_gaming_processes(processes_path: Path | None = None) -> list[str]:
 
 # Game process detection with cache
 
-_game_detect_cache: tuple[float, bool, str] = (0.0, False, "")
+_game_detect_cache: list[float | bool | str] = [0.0, False, ""]  # [time, found, name]
 _game_detect_lock = threading.Lock()
 _GAME_DETECT_CACHE_TTL = 30.0  # seconds
 
@@ -186,24 +186,24 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
     exists.  Results are cached for ``_GAME_DETECT_CACHE_TTL`` seconds.
     Thread-safe: concurrent callers are serialised via ``_game_detect_lock``.
     """
-    global _game_detect_cache  # mutable TTL cache: avoids re-scanning processes every call
-
     with _game_detect_lock:
         # Return cached result if still fresh
         cached_time, cached_found, cached_name = _game_detect_cache
-        if (time.monotonic() - cached_time) < _GAME_DETECT_CACHE_TTL:
-            return cached_found, cached_name
+        if (time.monotonic() - float(cached_time)) < _GAME_DETECT_CACHE_TTL:
+            return bool(cached_found), str(cached_name)
+
+    def _update_cache(found: bool, name: str) -> None:
+        with _game_detect_lock:
+            _game_detect_cache[:] = [time.monotonic(), found, name]
 
     if os.name != "nt":
-        with _game_detect_lock:
-            _game_detect_cache = (time.monotonic(), False, "")
+        _update_cache(False, "")
         return False, ""
     if processes is None:
         processes = list(DEFAULT_GAMING_PROCESSES)
     patterns = [name.lower() for name in processes]
     if not patterns:
-        with _game_detect_lock:
-            _game_detect_cache = (time.monotonic(), False, "")
+        _update_cache(False, "")
         return False, ""
     try:
         result = subprocess.run(
@@ -215,12 +215,10 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
             timeout=6,
         )
     except (OSError, subprocess.TimeoutExpired):
-        with _game_detect_lock:
-            _game_detect_cache = (time.monotonic(), False, "")
+        _update_cache(False, "")
         return False, ""
     if result.returncode != 0:
-        with _game_detect_lock:
-            _game_detect_cache = (time.monotonic(), False, "")
+        _update_cache(False, "")
         return False, ""
 
     running: list[str] = []
@@ -240,11 +238,9 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
     for proc_name in running:
         for pattern in patterns:
             if proc_name == pattern or pattern in proc_name:
-                with _game_detect_lock:
-                    _game_detect_cache = (time.monotonic(), True, proc_name)
+                _update_cache(True, proc_name)
                 return True, proc_name
-    with _game_detect_lock:
-        _game_detect_cache = (time.monotonic(), False, "")
+    _update_cache(False, "")
     return False, ""
 
 

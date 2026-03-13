@@ -352,11 +352,9 @@ class MemoryEngine:
         return dict(row) if row is not None else None
 
     def get_record(self, record_id: str) -> dict | None:
-        """Fetch a single record by ID."""
         return self._get_record_by("record_id", record_id)
 
     def get_record_by_hash(self, content_hash: str) -> dict | None:
-        """Fetch a single record by content_hash."""
         return self._get_record_by("content_hash", content_hash)
 
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:

@@ -1440,11 +1440,9 @@ class ModelGateway:
             return False
 
     def check_anthropic(self) -> bool:
-        """Check if Anthropic client is configured (has API key)."""
         return self._anthropic is not None
 
     def check_cloud(self) -> dict[str, bool]:
-        """Check which cloud providers have API keys configured."""
         return {k: True for k in self._cloud_keys}
 
     def check_cli(self) -> dict[str, bool]:

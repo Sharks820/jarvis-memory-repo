@@ -126,7 +126,6 @@ class LLMFactExtractor:
         self._embed_service = embed_service
 
     def _contains_privacy_keyword(self, text: str) -> bool:
-        """Return True if any privacy keyword appears in the text."""
         return bool(_PRIVACY_RE.search(text))
 
     def _pick_model(self, text: str) -> tuple[str, bool]:

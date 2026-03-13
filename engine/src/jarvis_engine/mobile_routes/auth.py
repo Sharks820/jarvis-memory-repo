@@ -82,7 +82,6 @@ class AuthRoutesMixin:
         return session
 
     def _gaming_state_path(self: _AuthRoutesHandlerProtocol) -> Path:
-        """Return the gaming mode state file path relative to the server root."""
         return runtime_dir(self._root) / "gaming_mode.json"
 
     def _read_gaming_state(self: _AuthRoutesHandlerProtocol) -> GamingState:

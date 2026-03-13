@@ -546,13 +546,10 @@ def _try_groq(
         return None
 
 
-_local_stt_instance: SpeechToText | None = None
+# Lazy singleton containers (dict avoids 'global' keyword)
+_singletons: dict[str, Any] = {}
 _local_stt_lock = threading.Lock()
-
-_parakeet_model: Any | None = None
 _parakeet_lock = threading.Lock()
-
-_local_emergency_instance: SpeechToText | None = None
 _local_emergency_lock = threading.Lock()
 
 
@@ -560,12 +557,11 @@ def _try_local(
     audio: np.ndarray | str, *, language: str, prompt: str = ""
 ) -> TranscriptionResult | None:
     """Attempt local faster-whisper transcription, returning *None* on failure."""
-    global _local_stt_instance  # lazy singleton: initialized once, reused across calls
     try:
         with _local_stt_lock:
-            if _local_stt_instance is None:
-                _local_stt_instance = SpeechToText()
-            instance = _local_stt_instance
+            if "local_stt" not in _singletons:
+                _singletons["local_stt"] = SpeechToText()
+            instance = _singletons["local_stt"]
         return instance.transcribe_audio(audio, language=language, prompt=prompt)
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local STT attempt failed: %s", exc)
@@ -581,8 +577,6 @@ def _try_parakeet(
     caller can fall back to the next backend.  The model is lazy-loaded on
     first use with double-checked locking to be thread-safe.
     """
-    global _parakeet_model  # lazy singleton: heavy model loaded once, reused across calls
-
     try:
         try:
             import onnx_asr  # type: ignore[import-not-found,import-untyped]
@@ -597,7 +591,7 @@ def _try_parakeet(
 
         # Lazy model load under lock -- guarantees single initialization.
         with _parakeet_lock:
-            if _parakeet_model is None:
+            if "parakeet" not in _singletons:
                 logger.info("Loading Parakeet TDT 0.6B model via onnx-asr...")
                 model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
                 # Try to enable timestamps for log probability access
@@ -606,8 +600,8 @@ def _try_parakeet(
                     logger.debug("Parakeet timestamps model loaded")
                 except (AttributeError, RuntimeError, TypeError):
                     logger.debug("Parakeet timestamps not available, using base model")
-                _parakeet_model = model
-            loaded_model = _parakeet_model
+                _singletons["parakeet"] = model
+            loaded_model = _singletons["parakeet"]
 
         # Transcription: numpy arrays need explicit sample_rate, file paths do not
         if isinstance(audio, np.ndarray):
@@ -672,12 +666,11 @@ def _try_local_emergency(
     used so the standard ``_try_local()`` path (small.en or JARVIS_STT_MODEL)
     is unaffected.
     """
-    global _local_emergency_instance  # lazy singleton: heavy model loaded once, reused across calls
     try:
         with _local_emergency_lock:
-            if _local_emergency_instance is None:
-                _local_emergency_instance = SpeechToText(model_size="large-v3")
-            instance = _local_emergency_instance
+            if "local_emergency" not in _singletons:
+                _singletons["local_emergency"] = SpeechToText(model_size="large-v3")
+            instance = _singletons["local_emergency"]
         return instance.transcribe_audio(audio, language=language, prompt=prompt)
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
@@ -998,7 +991,6 @@ def warmup_stt_backends() -> None:
 
     Handles ``ImportError`` gracefully when ``onnx_asr`` is not installed.
     """
-    global _parakeet_model  # lazy singleton: warm up the shared model instance
     try:
         import onnx_asr  # type: ignore[import-untyped]
     except ImportError:
@@ -1006,7 +998,7 @@ def warmup_stt_backends() -> None:
         return
 
     with _parakeet_lock:
-        if _parakeet_model is not None:
+        if "parakeet" in _singletons:
             logger.debug("Parakeet model already loaded; skipping warmup")
             return
         try:
@@ -1018,8 +1010,7 @@ def warmup_stt_backends() -> None:
                 logger.debug(
                     "Parakeet model does not support with_timestamps(), using without"
                 )
-                pass
-            _parakeet_model = model
+            _singletons["parakeet"] = model
             logger.info("Parakeet TDT 0.6B model warmed up successfully")
         except (RuntimeError, OSError, ValueError) as exc:
             logger.warning("Parakeet warmup failed: %s", exc)

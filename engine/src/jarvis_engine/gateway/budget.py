@@ -248,7 +248,6 @@ class BudgetEnforcer:
             self._emit_alerts(daily, monthly)
 
     def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Estimate the cost of a request before making it."""
         return calculate_cost(model, input_tokens, output_tokens)
 
     def check_budget(self, estimated_cost: float = 0.0) -> None:

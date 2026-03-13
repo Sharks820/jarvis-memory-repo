@@ -37,7 +37,7 @@ _PAGE_CACHE_TTL_SECONDS = 900.0
 _PAGE_CACHE_MAX_BYTES = 50_000_000  # 50 MB soft cap
 _PAGE_CACHE_MAX_ENTRIES = 1200  # max entries before eviction
 _PAGE_CACHE_EVICT_BATCH = 200  # number of stale entries to evict per sweep
-_page_cache_bytes = 0
+_page_cache_bytes = [0]  # mutable container to avoid 'global' keyword
 
 
 class MissionStep(TypedDict, total=False):
@@ -250,7 +250,6 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
 
 
 def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
-    global _page_cache_bytes  # mutable counter: tracks total cache memory usage
     key = (url.strip(), max(1, int(max_bytes)))
     now = time.time()
     with _PAGE_CACHE_LOCK:
@@ -259,22 +258,22 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             ts, value = cached
             if now - ts <= _PAGE_CACHE_TTL_SECONDS:
                 return value
-            _page_cache_bytes -= len(value.encode("utf-8"))
+            _page_cache_bytes[0] -= len(value.encode("utf-8"))
             _PAGE_CACHE.pop(key, None)
     value = _fetch_page_text(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
         # Adjust byte counter if key already exists (concurrent fetch or refresh)
         if key in _PAGE_CACHE:
             _old_ts, old_val = _PAGE_CACHE[key]
-            _page_cache_bytes -= len(old_val.encode("utf-8"))
+            _page_cache_bytes[0] -= len(old_val.encode("utf-8"))
         _PAGE_CACHE[key] = (now, value)
-        _page_cache_bytes += len(value.encode("utf-8"))
-        _page_cache_bytes = max(0, _page_cache_bytes)  # clamp against drift
-        if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
+        _page_cache_bytes[0] += len(value.encode("utf-8"))
+        _page_cache_bytes[0] = max(0, _page_cache_bytes[0])  # clamp against drift
+        if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes[0] > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:_PAGE_CACHE_EVICT_BATCH]
             for stale_key, (_stale_ts, stale_val) in stale:
-                _page_cache_bytes -= len(stale_val.encode("utf-8"))
+                _page_cache_bytes[0] -= len(stale_val.encode("utf-8"))
                 _PAGE_CACHE.pop(stale_key, None)
     return value
 

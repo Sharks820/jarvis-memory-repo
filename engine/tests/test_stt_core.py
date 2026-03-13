@@ -478,8 +478,8 @@ def test_try_local_caches_stt_instance() -> None:
     import jarvis_engine.stt as stt_mod
 
     # Reset the cached instance
-    original_instance = stt_mod._local_stt_instance
-    stt_mod._local_stt_instance = None
+    original_instance = stt_mod._singletons.get("local_stt")
+    stt_mod._singletons.pop("local_stt", None)
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
@@ -489,25 +489,28 @@ def test_try_local_caches_stt_instance() -> None:
     try:
         with patch.object(stt_mod.SpeechToText, "transcribe_audio", return_value=mock_result):
             stt_mod._try_local(fake_audio, language="en")
-            first_instance = stt_mod._local_stt_instance
+            first_instance = stt_mod._singletons.get("local_stt")
 
             stt_mod._try_local(fake_audio, language="en")
-            second_instance = stt_mod._local_stt_instance
+            second_instance = stt_mod._singletons.get("local_stt")
 
         # Both calls should use the same instance
         assert first_instance is not None
         assert first_instance is second_instance
     finally:
         # Restore original state
-        stt_mod._local_stt_instance = original_instance
+        if original_instance is not None:
+            stt_mod._singletons["local_stt"] = original_instance
+        else:
+            stt_mod._singletons.pop("local_stt", None)
 
 
 def test_try_local_does_not_recreate_on_each_call() -> None:
     """_try_local does not construct a new SpeechToText on every invocation."""
     import jarvis_engine.stt as stt_mod
 
-    original_instance = stt_mod._local_stt_instance
-    stt_mod._local_stt_instance = None
+    original_instance = stt_mod._singletons.get("local_stt")
+    stt_mod._singletons.pop("local_stt", None)
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
@@ -524,7 +527,10 @@ def test_try_local_does_not_recreate_on_each_call() -> None:
             # SpeechToText() should only have been called once
             mock_stt_cls.assert_called_once()
     finally:
-        stt_mod._local_stt_instance = original_instance
+        if original_instance is not None:
+            stt_mod._singletons["local_stt"] = original_instance
+        else:
+            stt_mod._singletons.pop("local_stt", None)
 
 
 # ---------------------------------------------------------------------------

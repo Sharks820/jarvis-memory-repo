@@ -304,8 +304,7 @@ def test_available_when_both_installed() -> None:
     from jarvis_engine.stt import vad as stt_vad
 
     # Reset cached values
-    stt_vad._torch_available = None
-    stt_vad._silero_available = None
+    stt_vad._availability.clear()
 
     d = stt_vad.SileroVADDetector()
 
@@ -314,8 +313,7 @@ def test_available_when_both_installed() -> None:
 
     with patch.dict("sys.modules", {"torch": mock_torch, "silero_vad": mock_silero}):
         # Force re-check
-        stt_vad._torch_available = None
-        stt_vad._silero_available = None
+        stt_vad._availability.clear()
         result = d.available
 
     assert result is True
@@ -328,14 +326,13 @@ def test_available_when_torch_missing() -> None:
     d = stt_vad.SileroVADDetector()
 
     # Simulate torch not available
-    stt_vad._torch_available = False
-    stt_vad._silero_available = True
+    stt_vad._availability["torch"] = False
+    stt_vad._availability["silero"] = True
 
     assert d.available is False
 
     # Reset
-    stt_vad._torch_available = None
-    stt_vad._silero_available = None
+    stt_vad._availability.clear()
 
 
 def test_available_when_silero_missing() -> None:
@@ -345,14 +342,13 @@ def test_available_when_silero_missing() -> None:
     d = stt_vad.SileroVADDetector()
 
     # Simulate silero not available
-    stt_vad._torch_available = True
-    stt_vad._silero_available = False
+    stt_vad._availability["torch"] = True
+    stt_vad._availability["silero"] = False
 
     assert d.available is False
 
     # Reset
-    stt_vad._torch_available = None
-    stt_vad._silero_available = None
+    stt_vad._availability.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +360,7 @@ def test_get_vad_detector_returns_singleton() -> None:
     from jarvis_engine.stt import vad as stt_vad
 
     # Reset singleton
-    stt_vad._vad_instance = None
+    stt_vad._vad_singleton.clear()
 
     d1 = stt_vad.get_vad_detector()
     d2 = stt_vad.get_vad_detector()
@@ -372,7 +368,7 @@ def test_get_vad_detector_returns_singleton() -> None:
     assert d1 is d2
 
     # Clean up
-    stt_vad._vad_instance = None
+    stt_vad._vad_singleton.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +482,7 @@ def test_get_vad_detector_onset_offset_params() -> None:
     """get_vad_detector passes onset/offset thresholds to detector."""
     from jarvis_engine.stt import vad as stt_vad
 
-    stt_vad._vad_instance = None
+    stt_vad._vad_singleton.clear()
     try:
         d = stt_vad.get_vad_detector(
             onset_threshold=0.35,
@@ -495,4 +491,4 @@ def test_get_vad_detector_onset_offset_params() -> None:
         assert d._onset_threshold == 0.35
         assert d._offset_threshold == 0.65
     finally:
-        stt_vad._vad_instance = None
+        stt_vad._vad_singleton.clear()
