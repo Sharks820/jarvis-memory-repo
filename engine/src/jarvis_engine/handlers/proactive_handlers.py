@@ -160,6 +160,7 @@ class WakeWordStartHandler:
                     audio = record_from_microphone(
                         max_duration_seconds=8.0,
                         drain_seconds=0.3,
+                        mode="command",
                     )
                 finally:
                     detector.resume()

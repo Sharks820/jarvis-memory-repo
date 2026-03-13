@@ -469,7 +469,7 @@ def record_from_microphone(
         ) from exc
 
     # RC-1: apply mode-specific silence duration if caller used the default
-    if mode == "dictation" and silence_duration == _SILENCE_DURATION_COMMAND:
+    if mode in {"dictation", "conversation"} and silence_duration == _SILENCE_DURATION_COMMAND:
         silence_duration = _SILENCE_DURATION_DICTATION
 
     vad_detector, use_silero = _init_vad(sample_rate)

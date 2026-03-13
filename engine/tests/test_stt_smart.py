@@ -1073,7 +1073,10 @@ def test_listen_and_transcribe_uses_new_pipeline():
         result = listen_and_transcribe(max_duration_seconds=10.0)
 
     # record_from_microphone was called
-    mock_record.assert_called_once_with(max_duration_seconds=10.0)
+    mock_record.assert_called_once_with(
+        max_duration_seconds=10.0,
+        mode="conversation",
+    )
     # transcribe_smart was called with the recorded audio
     mock_smart.assert_called_once()
     call_args = mock_smart.call_args

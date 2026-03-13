@@ -73,6 +73,7 @@ class VoiceVerifyResult:
 class VoiceListenCommand:
     max_duration_seconds: float = 30.0
     language: str = "en"
+    utterance_mode: str = "conversation"
 
 
 @dataclass

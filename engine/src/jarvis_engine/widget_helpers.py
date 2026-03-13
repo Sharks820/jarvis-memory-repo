@@ -614,6 +614,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
         result = listen_and_transcribe(
             max_duration_seconds=float(max(3, timeout_s)),
             language="en",
+            mode="dictation",
         )
         return result.text.strip()
     except RuntimeError as exc:

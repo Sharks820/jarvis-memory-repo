@@ -886,6 +886,7 @@ def cmd_voice_listen(
         VoiceListenCommand(
             max_duration_seconds=duration,
             language=language,
+            utterance_mode="command" if execute else "conversation",
         )
     )
 

@@ -460,6 +460,40 @@ def test_record_microphone_command_mode_stops_faster() -> None:
     assert call_count[0] == 11
 
 
+def test_record_microphone_conversation_mode_allows_longer_pause() -> None:
+    """Conversation mode should use the longer dictation silence window."""
+    from jarvis_engine.stt import record_from_microphone
+
+    call_count = [0]
+
+    def mock_read(n):
+        call_count[0] += 1
+        if call_count[0] <= 3:
+            chunk = np.full((n, 1), 0.5, dtype=np.float32)
+        else:
+            chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
+    mock_stream.read = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock(spec=_SdModuleStub)
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        record_from_microphone(
+            max_duration_seconds=30.0,
+            silence_threshold=0.01,
+            drain_seconds=0.0,
+            mode="conversation",
+        )
+
+    # 3 speech + 20 silence = 23 reads with the 2.0s dictation window.
+    assert call_count[0] == 23
+
+
 # ===========================================================================
 # RC-3: Speech padding tests
 # ===========================================================================

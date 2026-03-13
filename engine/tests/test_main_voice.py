@@ -154,6 +154,41 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
     assert "error: microphone unavailable" in out
 
 
+def test_cmd_voice_listen_dispatches_conversation_mode_when_not_executing(monkeypatch) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    captured: dict[str, object] = {}
+
+    class _Bus:
+        def dispatch(self, cmd):
+            captured["mode"] = getattr(cmd, "utterance_mode", "")
+            return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
+    assert rc == 0
+    assert captured["mode"] == "conversation"
+
+
+def test_cmd_voice_listen_dispatches_command_mode_when_executing(monkeypatch) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    captured: dict[str, object] = {}
+
+    class _Bus:
+        def dispatch(self, cmd):
+            captured["mode"] = getattr(cmd, "utterance_mode", "")
+            return VoiceListenResult(text="brain status", confidence=0.91, duration_seconds=1.2, message="ok")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    monkeypatch.setattr(main_mod, "cmd_voice_run", lambda **_: 0)
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=True)
+    assert rc == 0
+    assert captured["mode"] == "command"
+
+
 def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
     """Web search queries route through LLM with web augmentation."""
     from jarvis_engine.commands.voice_commands import VoiceRunResult

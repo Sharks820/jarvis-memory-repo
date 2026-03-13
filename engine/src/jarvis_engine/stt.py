@@ -1014,6 +1014,7 @@ def listen_and_transcribe(
     *,
     max_duration_seconds: float = 30.0,
     language: str = "en",
+    mode: str = "conversation",
     root_dir: Path | None = None,
     gateway: object | None = None,
     entity_list: list[str] | None = None,
@@ -1023,7 +1024,10 @@ def listen_and_transcribe(
     Uses smart backend selection: Groq Whisper if GROQ_API_KEY is set,
     otherwise falls back to local faster-whisper.
     """
-    audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
+    audio = record_from_microphone(
+        max_duration_seconds=max_duration_seconds,
+        mode=mode,
+    )
     return transcribe_smart(
         audio,
         language=language,
