@@ -13,7 +13,7 @@ from jarvis_engine.automation import (
     PlannedAction,
     load_actions,
 )
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 
 
 # ---------------------------------------------------------------------------

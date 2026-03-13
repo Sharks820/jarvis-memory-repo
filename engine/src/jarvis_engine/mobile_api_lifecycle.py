@@ -209,7 +209,7 @@ def _start_bus_prewarm(repo_root: Path) -> None:
         try:
             import jarvis_engine.main as main_mod
 
-            from jarvis_engine.mobile_api import _ThreadCapturingStdout
+            from jarvis_engine.mobile_routes._helpers import _ThreadCapturingStdout
 
             # Use thread-local override for prewarm thread
             _thread_local.repo_root_override = repo_root

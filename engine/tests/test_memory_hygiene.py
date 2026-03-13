@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.memory_hygiene import (
+from jarvis_engine.memory.hygiene import (
     HygieneReport,
     MemoryHygieneEngine,
     classify_record,

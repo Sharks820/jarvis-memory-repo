@@ -1392,6 +1392,8 @@ class ConversationStateManager:
             logger.warning("Could not load conversation state: %s", exc)
         except (KeyError, AttributeError, RuntimeError) as exc:
             logger.warning("Could not decrypt conversation state: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — catch Fernet InvalidToken and other crypto errors
+            logger.warning("Could not decrypt conversation state (crypto error): %s", exc)
 
     # Reset
 

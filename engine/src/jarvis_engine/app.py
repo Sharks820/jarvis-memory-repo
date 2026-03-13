@@ -1,14 +1,22 @@
-"""Application bootstrap: creates and wires the Command Bus (DI composition root)."""
+"""Application bootstrap: creates and wires the Command Bus (DI composition root).
+
+Error boundary layering (intentional three-layer design):
+- Subsystem init (this module): catch-and-degrade — returns None subsystems on
+  failure so the app starts in reduced mode rather than crashing.
+- CommandBus.dispatch: catch-log-reraise — ensures every command failure is
+  logged before propagating to the caller.
+- CLI helpers (_cli_helpers.py): catch-and-exit — top-level boundary converts
+  unhandled exceptions into user-friendly error messages + exit code 1.
+"""
 
 from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from typing import Any, Callable, cast
 
-from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -114,7 +122,7 @@ from jarvis_engine.commands.sync_commands import (
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 def _register_with_fallback(

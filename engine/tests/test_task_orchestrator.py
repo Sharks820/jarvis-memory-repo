@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest, run_shell_command
 
@@ -95,7 +95,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.memory_store import MemoryStore as _MemoryStore
+from jarvis_engine.memory.store import MemoryStore as _MemoryStore
 from jarvis_engine.task_orchestrator import (
     TaskResult,
     DEFAULT_FALLBACK_MODELS,

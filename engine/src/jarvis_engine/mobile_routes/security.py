@@ -50,19 +50,19 @@ class SecurityRoutesMixin:
         dashboard = {
             "security_status": sec.status(),
             "recent_actions": sec.action_auditor.recent_actions(20)
-            if hasattr(sec, "action_auditor") and sec.action_auditor
+            if sec.action_auditor
             else [],
             "scope_violations": sec.scope_enforcer.recent_violations(10)
-            if hasattr(sec, "scope_enforcer") and sec.scope_enforcer
+            if sec.scope_enforcer
             else [],
             "resource_usage": sec.resource_monitor.status()
-            if hasattr(sec, "resource_monitor") and sec.resource_monitor
+            if sec.resource_monitor
             else {},
             "heartbeat": sec.heartbeat.status()
-            if hasattr(sec, "heartbeat") and sec.heartbeat
+            if sec.heartbeat
             else {},
             "threat_intel": sec.threat_intel.status()
-            if hasattr(sec, "threat_intel") and sec.threat_intel
+            if sec.threat_intel
             else {},
         }
         self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})

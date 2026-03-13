@@ -69,6 +69,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Timeout constants (seconds)
+_OLLAMA_IMPORT_TIMEOUT_S = 3.0
+_OLLAMA_CLIENT_TIMEOUT_S = 45.0
+_ANTHROPIC_CLIENT_TIMEOUT_S = 60.0
+_HTTP_CLIENT_TIMEOUT_S = 60.0  # shared httpx pool for cloud calls
+
+# Rate-limit retry
+_RATE_LIMIT_MAX_RETRY_AFTER_S = 5.0
+
+# Token estimation: approximate 4 chars per token
+_CHARS_PER_TOKEN_ESTIMATE = 4
+
+# Default temperature for LLM completions
+_DEFAULT_TEMPERATURE = 0.7
+
+# Default max tokens for LLM completions
+_DEFAULT_MAX_TOKENS = 1024
+
+# CLI provider refresh bounds (seconds)
+_CLI_REFRESH_MIN_S = 1.0
+_CLI_REFRESH_MAX_S = 300.0
+_CLI_REFRESH_DEFAULT_S = 30.0
+
 # Defer ollama import to avoid blocking when Ollama server isn't running.
 # Some ollama versions attempt a connection check during import/init.
 _HAS_OLLAMA = False
@@ -111,7 +134,7 @@ def _ensure_ollama() -> bool:
 
     t = _th.Thread(target=_try_import, daemon=True, name="ollama-import")
     t.start()
-    t.join(timeout=3.0)
+    t.join(timeout=_OLLAMA_IMPORT_TIMEOUT_S)
 
     if t.is_alive():
         logger.debug("Ollama import timed out (server likely down) — skipping")
@@ -184,12 +207,12 @@ for _alias, (_pk, _) in CLOUD_MODEL_MAP.items():
 
 def _cli_refresh_interval_seconds() -> float:
     """Return CLI provider refresh cadence in seconds."""
-    raw = os.environ.get("JARVIS_CLI_PROVIDER_REFRESH_S", "30").strip()
+    raw = os.environ.get("JARVIS_CLI_PROVIDER_REFRESH_S", str(int(_CLI_REFRESH_DEFAULT_S))).strip()
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        return 30.0
-    return max(1.0, min(value, 300.0))
+        return _CLI_REFRESH_DEFAULT_S
+    return max(_CLI_REFRESH_MIN_S, min(value, _CLI_REFRESH_MAX_S))
 
 
 @dataclass
@@ -283,7 +306,7 @@ class ModelGateway:
         if anthropic_api_key is not None:
             if _HAS_ANTHROPIC:
                 self._anthropic: Anthropic | None = Anthropic(
-                    api_key=anthropic_api_key, timeout=60.0
+                    api_key=anthropic_api_key, timeout=_ANTHROPIC_CLIENT_TIMEOUT_S
                 )
             else:
                 self._anthropic = None
@@ -294,7 +317,7 @@ class ModelGateway:
             self._anthropic = None
 
         if _ensure_ollama():
-            self._ollama = OllamaClient(host=ollama_host, timeout=45.0)
+            self._ollama = OllamaClient(host=ollama_host, timeout=_OLLAMA_CLIENT_TIMEOUT_S)
         else:
             self._ollama = None
         self._cost_tracker = cost_tracker
@@ -311,8 +334,7 @@ class ModelGateway:
                 self._cloud_keys[provider_key] = key
 
         # httpx client for cloud calls (shared, connection pooling)
-        # 60s timeout matches Anthropic SDK; LLM completions can be slow
-        self._http = httpx.Client(timeout=60.0)
+        self._http = httpx.Client(timeout=_HTTP_CLIENT_TIMEOUT_S)
 
         # Detect CLI-based LLM providers (Claude Code, Codex, Gemini, Kimi)
         self._cli_refresh_interval_s = _cli_refresh_interval_seconds()
@@ -463,7 +485,7 @@ class ModelGateway:
         if "gemini" in model_lower:
             return 0.85
 
-        return _ROUTE_TEMPERATURE.get("", 0.7)  # default 0.7
+        return _ROUTE_TEMPERATURE.get("", _DEFAULT_TEMPERATURE)
 
     def _remap_model_if_needed(self, model: str) -> str:
         """Remap Claude API model to best cloud model if Anthropic is unavailable."""
@@ -480,8 +502,8 @@ class ModelGateway:
 
     @staticmethod
     def _estimate_tokens(messages: list[dict[str, str]]) -> int:
-        """Rough token estimate: total chars / 4."""
-        return sum(len(m.get("content", "")) for m in messages) // 4
+        """Rough token estimate: total chars / _CHARS_PER_TOKEN_ESTIMATE."""
+        return sum(len(m.get("content", "")) for m in messages) // _CHARS_PER_TOKEN_ESTIMATE
 
     def _apply_context_guard(
         self,
@@ -542,7 +564,7 @@ class ModelGateway:
 
         # No larger model available — truncate system messages to fit
         excess_tokens = estimated - threshold
-        excess_chars = excess_tokens * 4  # reverse the estimate
+        excess_chars = excess_tokens * _CHARS_PER_TOKEN_ESTIMATE  # reverse the estimate
         truncated = []
         chars_trimmed = 0
         for msg in messages:
@@ -837,7 +859,7 @@ class ModelGateway:
         self,
         messages: list[dict[str, str]],
         model: str = DEFAULT_CLOUD_MODEL,
-        max_tokens: int = 1024,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         route_reason: str = "",
         privacy_routed: bool = False,
         temperature: float | None = None,
@@ -986,7 +1008,7 @@ class ModelGateway:
         model: str,
         max_tokens: int,
         provider_key: str,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
     ) -> GatewayResponse:
         """Call an OpenAI-compatible API (Groq, Mistral, Z.ai)."""
         cfg = OPENAI_COMPAT_PROVIDERS[provider_key]
@@ -1032,7 +1054,7 @@ class ModelGateway:
             except (TypeError, ValueError):
                 retry_after_s = None
 
-            if retry_after_s is not None and 0 < retry_after_s <= 5.0:
+            if retry_after_s is not None and 0 < retry_after_s <= _RATE_LIMIT_MAX_RETRY_AFTER_S:
                 logger.info(
                     "Rate limited by %s (HTTP 429). Retry-After: %.1fs — short wait, retrying once.",
                     cfg["provider_name"],
@@ -1107,7 +1129,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
     ) -> GatewayResponse:
         """Call Anthropic API via the SDK."""
         if not _HAS_ANTHROPIC:
@@ -1167,7 +1189,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
     ) -> tuple[GatewayResponse | None, str]:
         """Attempt an Ollama chat call, returning (response, error_reason).
 
@@ -1210,7 +1232,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
     ) -> GatewayResponse:
         """Call local Ollama server."""
         resp, error = self._try_ollama_chat(messages, model, max_tokens, temperature)
@@ -1260,7 +1282,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         max_tokens: int,
         reason: str,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
         skip_provider: str = "",
         skip_ollama: bool = False,
         privacy_routed: bool = False,
@@ -1378,7 +1400,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         max_tokens: int,
         reason: str,
-        temperature: float = 0.7,
+        temperature: float = _DEFAULT_TEMPERATURE,
     ) -> GatewayResponse:
         """Fall back to local Ollama after all cloud providers fail.
 

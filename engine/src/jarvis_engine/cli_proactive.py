@@ -6,7 +6,7 @@ Contains: proactive-check, cost-reduction, self-test.
 
 from __future__ import annotations
 
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 
 from jarvis_engine.commands.proactive_commands import (
     CostReductionCommand,
@@ -16,7 +16,7 @@ from jarvis_engine.commands.proactive_commands import (
 
 
 def cmd_proactive_check(snapshot_path: str) -> int:
-    result, _ = _dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
+    result, _ = cli_dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
     print(f"alerts_fired={result.alerts_fired}")
     if result.alerts_fired:
         alerts = result.alerts if isinstance(result.alerts, list) else []
@@ -31,7 +31,7 @@ def cmd_proactive_check(snapshot_path: str) -> int:
 
 
 def cmd_cost_reduction(days: int) -> int:
-    result, _ = _dispatch(CostReductionCommand(days=days))
+    result, _ = cli_dispatch(CostReductionCommand(days=days))
     print(f"local_pct={result.local_pct}")
     print(f"cloud_cost_usd={result.cloud_cost_usd}")
     print(f"failed_count={result.failed_count}")
@@ -42,7 +42,7 @@ def cmd_cost_reduction(days: int) -> int:
 
 
 def cmd_self_test(threshold: float) -> int:
-    result, _ = _dispatch(SelfTestCommand(score_threshold=threshold))
+    result, _ = cli_dispatch(SelfTestCommand(score_threshold=threshold))
     print(f"average_score={result.average_score:.4f}")
     print(f"tasks_run={result.tasks_run}")
     print(f"regression_detected={result.regression_detected}")

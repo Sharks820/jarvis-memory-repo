@@ -15,7 +15,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Protocol
 
-from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME, SUBSYSTEM_ERRORS
+from jarvis_engine._constants import (
+    ACTIONS_FILENAME,
+    MAX_COMMAND_STDOUT_TAIL_LINES,
+    MAX_COMMAND_TEXT_CHARS,
+    OPS_SNAPSHOT_FILENAME,
+    SUBSYSTEM_ERRORS,
+)
 from jarvis_engine._shared import make_thread_aware_repo_root
 from jarvis_engine.mobile_routes._helpers import (
     _parse_bool,
@@ -23,12 +29,6 @@ from jarvis_engine.mobile_routes._helpers import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Import constants from mobile_api at module level to avoid circular imports.
-# These are simple integers so the import is cheap and safe.
-MAX_COMMAND_TEXT_CHARS = 2000
-MAX_COMMAND_STDOUT_TAIL_LINES = 30
-THREAD_CAPTURE_MAX_CHARS = 200_000
 
 
 def _unescape_response(text: str) -> str:
@@ -268,8 +268,7 @@ class VoiceCommandMixin:
         """Execute voice command in-process via ``cmd_voice_run``."""
         import sqlite3 as _voice_sqlite3
 
-        # Late import to avoid circular dependency at module load time.
-        from jarvis_engine.mobile_api import _ThreadCapturingStdout
+        from jarvis_engine.mobile_routes._helpers import _ThreadCapturingStdout
 
         root = self._root
         try:

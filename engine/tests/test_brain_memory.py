@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.brain_memory import (
+from jarvis_engine.memory.brain import (
     BrainRecord,
     _extract_fact_candidates,
     _load_records,

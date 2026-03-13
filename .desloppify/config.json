@@ -13,21 +13,25 @@
     ".ruff_cache",
     "MagicMock",
     ".planning/runtime",
-    ".claude/worktrees",
+    ".claude",
     ".factory",
-    "tmp2mdqy4q0.txt",
-    "test_out.txt",
-    "test_results.txt"
+    "tmp*.txt",
+    "test_*.txt",
+    "full_test_*.txt",
+    "bandit_*.json",
+    "tmp_bandit_*.json",
+    "scorecard.png"
   ],
   "ignore": [
-    ".claude/worktrees"
+    ".claude/worktrees",
+    ".claude"
   ],
   "ignore_metadata": {},
   "zone_overrides": {},
   "review_dimensions": [],
   "large_files_threshold": 0,
   "props_threshold": 0,
-  "finding_noise_budget": 10,
+  "finding_noise_budget": 0,
   "finding_noise_global_budget": 0,
   "languages": {}
 }

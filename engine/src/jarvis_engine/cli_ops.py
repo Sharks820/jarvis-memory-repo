@@ -16,7 +16,7 @@ from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import escape_response
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._shared import atomic_write_json
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
@@ -36,7 +36,7 @@ from jarvis_engine.commands.ops_commands import (
 
 
 def cmd_ops_brief(snapshot_path: Path, output_path: Path | None) -> int:
-    result, _ = _dispatch(
+    result, _ = cli_dispatch(
         OpsBriefCommand(snapshot_path=snapshot_path, output_path=output_path)
     )
     print(result.brief)
@@ -46,7 +46,7 @@ def cmd_ops_brief(snapshot_path: Path, output_path: Path | None) -> int:
 
 
 def cmd_ops_export_actions(snapshot_path: Path, actions_path: Path) -> int:
-    result, _ = _dispatch(
+    result, _ = cli_dispatch(
         OpsExportActionsCommand(snapshot_path=snapshot_path, actions_path=actions_path)
     )
     print(f"actions_exported={result.actions_path}")

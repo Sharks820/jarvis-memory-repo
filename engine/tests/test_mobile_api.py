@@ -13,7 +13,7 @@ from pathlib import Path
 from conftest import http_request, signed_headers
 from jarvis_engine import mobile_api
 from jarvis_engine.ingest import IngestionPipeline
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard

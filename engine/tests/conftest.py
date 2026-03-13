@@ -103,7 +103,7 @@ def make_test_db(
 
 
 from jarvis_engine.ingest import IngestionPipeline
-from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory.store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
 
 

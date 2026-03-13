@@ -187,7 +187,7 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
     exists.  Results are cached for ``_GAME_DETECT_CACHE_TTL`` seconds.
     Thread-safe: concurrent callers are serialised via ``_game_detect_lock``.
     """
-    global _game_detect_cache
+    global _game_detect_cache  # mutable TTL cache: avoids re-scanning processes every call
 
     with _game_detect_lock:
         # Return cached result if still fresh

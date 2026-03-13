@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_engine._bus import get_bus as _get_bus
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._compat import UTC
 from jarvis_engine._constants import ACTIONS_FILENAME
 from jarvis_engine._constants import DEFAULT_API_PORT
@@ -322,7 +322,7 @@ def cmd_migrate_memory() -> int:
 
 
 def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
-    bus_result, _ = _dispatch(
+    bus_result, _ = cli_dispatch(
         MobileDesktopSyncCommand(auto_ingest=auto_ingest, as_json=as_json),
         as_json=as_json, json_field="report",
     )
@@ -352,7 +352,7 @@ def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
 
 
 def cmd_self_heal(*, force_maintenance: bool, keep_recent: int, snapshot_note: str, as_json: bool) -> int:
-    bus_result, _ = _dispatch(
+    bus_result, _ = cli_dispatch(
         SelfHealCommand(
             force_maintenance=force_maintenance, keep_recent=keep_recent,
             snapshot_note=snapshot_note, as_json=as_json,
@@ -382,9 +382,7 @@ def cmd_memory_eval() -> int:
         run_memory_eval,
     )
 
-    from jarvis_engine.config import repo_root as _repo_root
-
-    root = _repo_root()
+    root = repo_root()
     db_path = memory_db_path(root)
 
     engine = None
@@ -443,7 +441,7 @@ def cmd_weather(location: str) -> int:
 
 
 def cmd_open_web(url: str) -> int:
-    result, _ = _dispatch(OpenWebCommand(url=url))
+    result, _ = cli_dispatch(OpenWebCommand(url=url))
     if result.return_code != 0:
         print("error=No URL provided or invalid URL.")
         return result.return_code

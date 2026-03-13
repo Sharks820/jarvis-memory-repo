@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 from http import HTTPStatus
 
-from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine.mobile_routes._helpers import (
     ALLOWED_KINDS,
@@ -19,7 +18,7 @@ from jarvis_engine.mobile_routes._helpers import (
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class DataRoutesMixin:

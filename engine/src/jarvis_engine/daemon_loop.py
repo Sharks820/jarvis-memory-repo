@@ -21,6 +21,7 @@ from jarvis_engine._constants import (
     KG_METRICS_LOG,
     SELF_TEST_HISTORY,
     SUBSYSTEM_ERRORS,
+    SUBSYSTEM_ERRORS_DB,
 )
 from jarvis_engine._shared import (
     memory_db_path,
@@ -50,8 +51,7 @@ from jarvis_engine.harvest_discovery import (
 
 logger = logging.getLogger(__name__)
 
-# Extended subsystem errors including sqlite3.Error for DB-touching daemon subsystems.
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 def _emit(line: str) -> None:
@@ -169,7 +169,7 @@ def _get_daemon_bus() -> CommandBus:
     on the GIL for correctness and breaks under free-threaded Python 3.13t+.
     The lock overhead is negligible since daemon cycles run every 30+ seconds.
     """
-    global _daemon_bus
+    global _daemon_bus  # lazy singleton: avoid recreating MemoryEngine per cycle
     with _daemon_bus_lock:
         if _daemon_bus is None:
             _daemon_bus = get_bus()
@@ -240,7 +240,7 @@ def _restart_mobile_api(service_name: str) -> None:
     Only handles ``mobile_api`` — daemon restart is circular and widget is
     optional, so those are intentionally ignored.
     """
-    import sys as _sys
+    import sys
 
     if service_name != "mobile_api":
         return
@@ -249,7 +249,7 @@ def _restart_mobile_api(service_name: str) -> None:
     if not config_path.exists():
         logger.warning("Watchdog: cannot restart mobile_api — config file missing: %s", config_path)
         return
-    python = _sys.executable
+    python = sys.executable
     engine_src = str(root / "engine" / "src")
     cmd = [
         python, "-m", "jarvis_engine.main", "serve-mobile",
@@ -261,7 +261,7 @@ def _restart_mobile_api(service_name: str) -> None:
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = engine_src + (os.pathsep + existing_pp if existing_pp else "")
     try:
-        if _sys.platform == "win32":
+        if sys.platform == "win32":
             # Detach from parent console so it survives daemon restarts
             subprocess.Popen(
                 cmd,
@@ -405,7 +405,7 @@ def _log_resource_pressure(
 
 def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
     """Run pending missions and auto-generate new ones (never raises)."""
-    global _mission_backoff_until_cycle
+    global _mission_backoff_until_cycle  # mutable counter: tracks backoff across cycles
     # Skip if in failure backoff cooldown
     if cycles < _mission_backoff_until_cycle:
         _emit(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
@@ -509,9 +509,9 @@ def _collect_kg_metrics(root: Path) -> None:
             # Fallback: open a temporary connection when bus KG is unavailable
             db_path = memory_db_path(root)
             if db_path.exists():
-                from jarvis_engine._db_pragmas import connect_db as _connect_db
+                from jarvis_engine._db_pragmas import connect_db
 
-                _kg_conn = _connect_db(db_path)
+                _kg_conn = connect_db(db_path)
                 try:
                     class _KGShim:
                         def __init__(self, conn: sqlite3.Connection) -> None:
@@ -582,7 +582,7 @@ def _run_kg_regression_cycle(root: Path) -> None:
         if kg is not None:
             rc_checker = RegressionChecker(kg)
             current_metrics = rc_checker.capture_metrics()
-            global _daemon_kg_prev_metrics
+            global _daemon_kg_prev_metrics  # mutable state: previous metrics for delta comparison
             with _daemon_kg_prev_metrics_lock:
                 prev_metrics = _daemon_kg_prev_metrics
             comparison = rc_checker.compare(prev_metrics, current_metrics)
@@ -622,9 +622,9 @@ def _run_usage_prediction_cycle() -> None:
         bus = _get_daemon_bus()
         usage_tracker = bus.ctx.usage_tracker
         if usage_tracker is not None:
-            from datetime import datetime as _dt
+            from datetime import datetime
 
-            _now = _dt.now(UTC)
+            _now = datetime.now(UTC)
             prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
             if prediction["interaction_count"] > 0:
                 _emit(f"usage_predicted_route={prediction['likely_route']}")
@@ -1055,7 +1055,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     _emit(f"idle_interval_s={idle_interval}")
     _emit(f"idle_after_s={idle_after}")
     try:
-        global _cycle_start  # noqa: PLW0603
+        global _cycle_start  # noqa: PLW0603  -- mutable timestamp read by watchdog from another thread
         while True:
             cycles += 1
             _cycle_start = time.monotonic()

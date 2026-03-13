@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from jarvis_engine._bus import get_bus as _get_bus
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._constants import ACTIONS_FILENAME
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
 from jarvis_engine.config import repo_root
@@ -194,7 +194,7 @@ def cmd_voice_run(
 def cmd_wake_word(threshold: float) -> int:
     import time
 
-    result, _ = _dispatch(WakeWordStartCommand(threshold=threshold))
+    result, _ = cli_dispatch(WakeWordStartCommand(threshold=threshold))
     print(f"started={result.started}")
     print(f"message={result.message}")
     if result.started:

@@ -8,6 +8,8 @@ plain data constants (strings, ints, frozensets, lists).
 
 from __future__ import annotations
 
+import sqlite3
+
 __all__ = [
     "PRIVACY_KEYWORDS",
     "DEFAULT_LOCAL_MODEL",
@@ -23,6 +25,16 @@ __all__ = [
     "OPS_SNAPSHOT_FILENAME",
     "ACTIONS_FILENAME",
     "SUBSYSTEM_ERRORS",
+    "SUBSYSTEM_ERRORS_DB",
+    "REPLAY_WINDOW_SECONDS",
+    "MAX_NONCES",
+    "MAX_AUTH_BODY_SIZE",
+    "MAX_COMMAND_TEXT_CHARS",
+    "MAX_COMMAND_STDOUT_TAIL_LINES",
+    "MAX_COMMAND_STDOUT_LINE_CHARS",
+    "MAX_COMMAND_RESPONSE_CHARS",
+    "MAX_COMMAND_RESPONSE_CHUNK_CHARS",
+    "MAX_COMMAND_RESPONSE_CHUNKS",
 ]
 
 # Privacy keywords -- used by IntentClassifier and manual fallback routing
@@ -257,3 +269,18 @@ SUBSYSTEM_ERRORS: tuple[type[Exception], ...] = (
     KeyError,
     AttributeError,
 )
+
+# Extended subsystem errors including sqlite3.Error for DB-touching subsystems.
+SUBSYSTEM_ERRORS_DB: tuple[type[Exception], ...] = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+
+# Mobile API / voice command limits — shared between mobile_api.py and
+# mobile_routes/voice.py to avoid duplicate definitions.
+REPLAY_WINDOW_SECONDS: float = 120.0
+MAX_NONCES: int = 100_000
+MAX_AUTH_BODY_SIZE: int = 2_000_000  # 2 MB (matches sync/push max_content_length)
+MAX_COMMAND_TEXT_CHARS: int = 2000
+MAX_COMMAND_STDOUT_TAIL_LINES: int = 30
+MAX_COMMAND_STDOUT_LINE_CHARS: int = 1200
+MAX_COMMAND_RESPONSE_CHARS: int = 12_000
+MAX_COMMAND_RESPONSE_CHUNK_CHARS: int = 800
+MAX_COMMAND_RESPONSE_CHUNKS: int = 24

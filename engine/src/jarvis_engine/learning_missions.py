@@ -251,7 +251,7 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
 
 
 def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
-    global _page_cache_bytes
+    global _page_cache_bytes  # mutable counter: tracks total cache memory usage
     key = (url.strip(), max(1, int(max_bytes)))
     now = time.time()
     with _PAGE_CACHE_LOCK:

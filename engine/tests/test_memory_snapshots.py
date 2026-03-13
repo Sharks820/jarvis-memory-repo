@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jarvis_engine.memory_snapshots import (
+from jarvis_engine.memory.snapshots import (
     create_signed_snapshot,
     ensure_snapshot_key,
     run_memory_maintenance,

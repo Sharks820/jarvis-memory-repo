@@ -49,15 +49,27 @@ __all__ = [
     "win_hidden_subprocess_kwargs",
 ]
 
+import hashlib
 import json
 import logging
+import math
 import os
 import re
+import secrets
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
+
+from jarvis_engine._compat import UTC
+from jarvis_engine._constants import (
+    DEFAULT_LOCAL_MODEL,
+    FAST_LOCAL_MODEL,
+    PRIVACY_KEYWORDS,
+    STOP_WORDS,
+)
 
 T = TypeVar("T")
 
@@ -127,6 +139,7 @@ def atomic_write_json(
     path.parent.mkdir(parents=True, exist_ok=True)
     raw = json.dumps(payload, ensure_ascii=True, indent=2)
     last_error: Exception | None = None
+    _RETRY_BACKOFF_BASE_S = 0.06
     for attempt in range(max(1, retries)):
         tmp = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}.{attempt}")
         try:
@@ -140,7 +153,7 @@ def atomic_write_json(
             return
         except PermissionError as exc:
             last_error = exc
-            time.sleep(0.06 * (attempt + 1))
+            time.sleep(_RETRY_BACKOFF_BASE_S * (attempt + 1))
         finally:
             try:
                 if tmp.exists():
@@ -225,8 +238,6 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
     """
     if os.name != "nt":
         return {}
-    import subprocess
-
     kwargs: dict[str, Any] = {}
     creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if creationflags:
@@ -243,7 +254,6 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
 
 def sha256_hex(text: str) -> str:
     """Return the SHA-256 hex digest of *text* (UTF-8 encoded)."""
-    import hashlib
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -257,7 +267,6 @@ def sha256_short(data: bytes, length: int = 32) -> str:
     Returns:
         The first *length* characters of the full SHA-256 hex digest.
     """
-    import hashlib
     return hashlib.sha256(data).hexdigest()[:length]
 
 
@@ -436,7 +445,6 @@ _lazy_cache: dict[str, object] = {}
 def _get_privacy_re() -> re.Pattern[str]:
     """Lazily compile the privacy regex (avoids circular import at load time)."""
     if "privacy_re" not in _lazy_cache:
-        from jarvis_engine._constants import PRIVACY_KEYWORDS
         _lazy_cache["privacy_re"] = re.compile(
             r"\b(?:" + "|".join(
                 re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)
@@ -453,13 +461,11 @@ def is_privacy_sensitive(text: str) -> bool:
 
 def get_local_model() -> str:
     """Return the configured local Ollama model name."""
-    from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
     return os.environ.get("JARVIS_LOCAL_MODEL", DEFAULT_LOCAL_MODEL)
 
 
 def get_fast_local_model() -> str:
     """Return the configured fast local Ollama model name."""
-    from jarvis_engine._constants import FAST_LOCAL_MODEL
     return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
 
 
@@ -486,7 +492,6 @@ def extract_keywords(
         return []
 
     if stop_words is None:
-        from jarvis_engine._constants import STOP_WORDS
         stop_words = STOP_WORDS
 
     words = re.findall(pattern, text.lower())
@@ -506,19 +511,19 @@ def extract_keywords(
 
 def make_task_id(prefix: str) -> str:
     """Generate a timestamped task ID like ``prefix-20260305143000-a1b2``."""
-    import secrets
-
-    from jarvis_engine._compat import UTC
     stamp = datetime.now(UTC).strftime('%Y%m%d%H%M%S')
     suffix = secrets.token_hex(2)
     return f"{prefix}-{stamp}-{suffix}"
+
+
+_RECENCY_DECAY_HOURS = 168.0  # ~1 week half-life for recency scoring
 
 
 def recency_weight(
     ts_text: str,
     *,
     default: float = 0.0,
-    decay_hours: float = 168.0,
+    decay_hours: float = _RECENCY_DECAY_HOURS,
 ) -> float:
     """Compute exponential recency decay for a timestamp string.
 
@@ -526,10 +531,6 @@ def recency_weight(
     created, decaying toward 0.0 with a half-life of approximately
     *decay_hours* hours).  Returns *default* for empty or unparseable input.
     """
-    import math
-
-    from jarvis_engine._compat import UTC
-
     parsed = parse_iso_timestamp(ts_text)
     if parsed is None:
         return default

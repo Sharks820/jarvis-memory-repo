@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
-from jarvis_engine.memory_store import MemoryStore as _MemoryStore
+from jarvis_engine.memory.store import MemoryStore as _MemoryStore
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,
     DesktopWidgetCommand,

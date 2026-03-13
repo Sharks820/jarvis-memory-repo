@@ -7,12 +7,14 @@ mobile_api and the route mixin modules.
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import sqlite3
 import subprocess
+import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict, cast
+from typing import IO, TYPE_CHECKING, Any, Protocol, TypedDict, cast
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
 
@@ -109,6 +111,77 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 # repo_root_override set by command.py is visible to get_bus() in mobile_api.py.
 _thread_local = threading.local()
 
+THREAD_CAPTURE_MAX_CHARS = 200_000
+
+
+class _ThreadCapturingStdout:
+    """Wraps real stdout, routing writes to per-thread StringIO when active.
+
+    Install once at server startup via ``_ThreadCapturingStdout.install()``.
+    Each request thread calls ``start_capture()`` / ``stop_capture()`` to
+    redirect its own prints to a thread-local buffer without affecting other
+    threads.
+    """
+
+    _real_stdout = None  # set by install()
+
+    def __init__(self, real_stdout: IO[str]) -> None:
+        object.__setattr__(self, "_real", real_stdout)
+        _ThreadCapturingStdout._real_stdout = real_stdout
+
+    def write(self, s: str) -> int:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            max_chars = int(getattr(_thread_local, "capture_max_chars", THREAD_CAPTURE_MAX_CHARS))
+            used = int(getattr(_thread_local, "capture_chars", 0))
+            remaining = max_chars - used
+            if remaining <= 0:
+                _thread_local.capture_truncated = True
+                return len(s)
+            if len(s) > remaining:
+                buf.write(s[:remaining])
+                _thread_local.capture_chars = max_chars
+                _thread_local.capture_truncated = True
+                return len(s)
+            buf.write(s)
+            _thread_local.capture_chars = used + len(s)
+            return len(s)
+        return object.__getattribute__(self, "_real").write(s)
+
+    def flush(self) -> None:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            buf.flush()
+        object.__getattribute__(self, "_real").flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_real"), name)
+
+    @staticmethod
+    def start_capture(max_chars: int = THREAD_CAPTURE_MAX_CHARS) -> None:
+        """Begin capturing stdout for the calling thread."""
+        _thread_local.capture_buf = io.StringIO()
+        _thread_local.capture_chars = 0
+        _thread_local.capture_max_chars = max(10_000, int(max_chars))
+        _thread_local.capture_truncated = False
+
+    @staticmethod
+    def stop_capture() -> tuple[str, bool]:
+        """Stop capturing and return `(captured_text, truncated)`."""
+        buf = getattr(_thread_local, "capture_buf", None)
+        truncated = bool(getattr(_thread_local, "capture_truncated", False))
+        _thread_local.capture_buf = None
+        _thread_local.capture_chars = 0
+        _thread_local.capture_max_chars = THREAD_CAPTURE_MAX_CHARS
+        _thread_local.capture_truncated = False
+        return (buf.getvalue() if buf is not None else "", truncated)
+
+    @staticmethod
+    def install() -> None:
+        """Replace sys.stdout once at server startup."""
+        if not isinstance(sys.stdout, _ThreadCapturingStdout):
+            sys.stdout = _ThreadCapturingStdout(sys.stdout)  # type: ignore[assignment]
+
 
 def _configure_db(conn: sqlite3.Connection) -> None:
     """Apply consistent SQLite PRAGMAs and Row factory."""
@@ -188,7 +261,7 @@ def _get_int_param(
 
 def _serialize_activity_event(event: ActivityEvent) -> dict[str, Any]:
     """Serialize an activity feed event to a JSON-safe dict."""
-    details = event.details if isinstance(getattr(event, "details", None), dict) else {}
+    details = event.details
     return dict(
         event_id=event.event_id,
         timestamp=event.timestamp,
@@ -215,28 +288,19 @@ def _compute_command_reliability() -> CommandReliability:
         events = feed.query(limit=200, category=ActivityCategory.COMMAND_LIFECYCLE)
         if events:
             result["sampled_commands"] = len(events)
-            ok_count = sum(
-                1
-                for e in events
-                if isinstance(getattr(e, "details", None), dict) and e.details.get("ok")
-            )
+            ok_count = sum(1 for e in events if e.details.get("ok"))
             result["command_success_rate_pct"] = round(100.0 * ok_count / len(events), 1) if events else 0.0
-            result["retry_count"] = sum(
-                1
-                for e in events
-                if isinstance(getattr(e, "details", None), dict) and e.details.get("retryable")
-            )
+            result["retry_count"] = sum(1 for e in events if e.details.get("retryable"))
             result["timeout_count"] = sum(
                 1
                 for e in events
-                if isinstance(getattr(e, "details", None), dict)
-                and str(e.details.get("error_code", "")).startswith("timeout")
+                if str(e.details.get("error_code", "")).startswith("timeout")
             )
         # Pressure events
         pressure_events = feed.query(limit=50, category=ActivityCategory.RESOURCE_PRESSURE)
         result["memory_pressure_incidents"] = len(pressure_events)
         if pressure_events:
-            latest_details = getattr(pressure_events[0], "details", {})
+            latest_details = pressure_events[0].details
             if isinstance(latest_details, dict):
                 result["last_pressure_level"] = str(latest_details.get("level", "none"))
     except SUBSYSTEM_ERRORS as exc:

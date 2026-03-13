@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass
-from jarvis_engine._shared import now_iso
+from jarvis_engine._shared import atomic_write_json, load_json_file, now_iso
 from pathlib import Path
 from typing import Any
 
@@ -91,8 +91,6 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
 
 
 def load_connector_permissions(repo_root: Path) -> dict[str, Any]:
-    from jarvis_engine._shared import load_json_file
-
     path = _permissions_path(repo_root)
     raw = load_json_file(path, None, expected_type=dict)
     if raw is None:
@@ -122,8 +120,6 @@ def grant_connector_permission(
 
 
 def save_connector_permissions(repo_root: Path, payload: dict[str, Any]) -> None:
-    from jarvis_engine._shared import atomic_write_json
-
     atomic_write_json(_permissions_path(repo_root), payload)
 
 

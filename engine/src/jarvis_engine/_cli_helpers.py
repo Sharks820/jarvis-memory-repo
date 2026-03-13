@@ -2,6 +2,10 @@
 
 Centralises the ``_dispatch()`` boilerplate that was previously
 duplicated across ``main.py``, ``cli_ops.py``, and ``cli_knowledge.py``.
+
+Convention: CLI functions that support ``--json`` use ``cli_dispatch()`` for
+consistent JSON output.  Functions without ``--json`` call
+``_get_bus().dispatch()`` directly (simpler, no JSON overhead).
 """
 
 from __future__ import annotations

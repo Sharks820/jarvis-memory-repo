@@ -38,7 +38,7 @@ _PUBLIC_MODULES = [
     "jarvis_engine.app",
     "jarvis_engine.auto_ingest",
     "jarvis_engine.automation",
-    "jarvis_engine.brain_memory",
+    "jarvis_engine.memory.brain",
     "jarvis_engine.capability",
     "jarvis_engine.command_bus",
     "jarvis_engine.config",
@@ -51,8 +51,8 @@ _PUBLIC_MODULES = [
     "jarvis_engine.learning_missions",
     "jarvis_engine.life_ops",
     "jarvis_engine.main",
-    "jarvis_engine.memory_snapshots",
-    "jarvis_engine.memory_store",
+    "jarvis_engine.memory.snapshots",
+    "jarvis_engine.memory.store",
     "jarvis_engine.mobile_api",
     "jarvis_engine.ops.autopilot",
     "jarvis_engine.ops.sync",
@@ -864,7 +864,7 @@ class TestIntegrationSmoke:
         assert result.echoed == "ECHO:hello world"
 
     def test_activity_feed_and_memory_store_coexist(self, tmp_path):
-        from jarvis_engine.memory_store import MemoryStore
+        from jarvis_engine.memory.store import MemoryStore
         from jarvis_engine.activity_feed import ActivityFeed
 
         store = MemoryStore(tmp_path)

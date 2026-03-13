@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from jarvis_engine._bus import get_bus as _get_bus
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine.voice.extractors import escape_response
 
 from jarvis_engine.commands.memory_commands import (
@@ -44,7 +44,7 @@ from jarvis_engine.commands.learning_commands import (
 
 
 def cmd_brain_status(as_json: bool) -> int:
-    result, rc = _dispatch(
+    result, rc = cli_dispatch(
         BrainStatusCommand(as_json=as_json),
         as_json=as_json,
         json_field="status",
@@ -79,7 +79,7 @@ def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool)
     if not query.strip():
         print("error: query is required")
         return 2
-    result, rc = _dispatch(
+    result, rc = cli_dispatch(
         BrainContextCommand(
             query=query, max_items=max_items, max_chars=max_chars, as_json=as_json
         ),
@@ -116,7 +116,7 @@ def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool)
 
 
 def cmd_brain_compact(keep_recent: int, as_json: bool) -> int:
-    bus_result, rc = _dispatch(
+    bus_result, rc = cli_dispatch(
         BrainCompactCommand(keep_recent=keep_recent, as_json=as_json),
         as_json=as_json,
         json_field="result",
@@ -130,7 +130,7 @@ def cmd_brain_compact(keep_recent: int, as_json: bool) -> int:
 
 
 def cmd_brain_regression(as_json: bool) -> int:
-    result, rc = _dispatch(
+    result, rc = cli_dispatch(
         BrainRegressionCommand(as_json=as_json),
         as_json=as_json,
         json_field="report",
@@ -147,7 +147,7 @@ def cmd_brain_regression(as_json: bool) -> int:
 
 
 def cmd_knowledge_status(as_json: bool) -> int:
-    result, rc = _dispatch(KnowledgeStatusCommand(as_json=as_json))
+    result, rc = cli_dispatch(KnowledgeStatusCommand(as_json=as_json))
     if rc:
         return rc
     status_dict = {
@@ -167,7 +167,7 @@ def cmd_knowledge_status(as_json: bool) -> int:
 
 
 def cmd_contradiction_list(status: str, limit: int, as_json: bool) -> int:
-    result, rc = _dispatch(ContradictionListCommand(status=status, limit=limit))
+    result, rc = cli_dispatch(ContradictionListCommand(status=status, limit=limit))
     if rc:
         return rc
     if as_json:
@@ -223,7 +223,7 @@ def cmd_fact_lock(node_id: str, action: str) -> int:
 
 
 def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
-    result, rc = _dispatch(
+    result, rc = cli_dispatch(
         KnowledgeRegressionCommand(snapshot_path=snapshot_path, as_json=as_json),
         as_json=as_json,
         json_field="report",
@@ -301,7 +301,7 @@ def cmd_harvest(topic: str, providers: str | None, max_tokens: int) -> int:
 def cmd_ingest_session(
     source: str, session_path: str | None, project_path: str | None
 ) -> int:
-    result, _ = _dispatch(
+    result, _ = cli_dispatch(
         IngestSessionCommand(
             source=source,
             session_path=session_path,

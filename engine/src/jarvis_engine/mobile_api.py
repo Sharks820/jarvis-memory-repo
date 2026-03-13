@@ -17,7 +17,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, ClassVar, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
 
 import sqlite3 as _sqlite3
 
@@ -30,7 +30,18 @@ if TYPE_CHECKING:
     from jarvis_engine.sync.engine import SyncEngine
     from jarvis_engine.sync.transport import SyncTransport
 
-from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._constants import (
+    MAX_AUTH_BODY_SIZE,
+    MAX_COMMAND_RESPONSE_CHARS,
+    MAX_COMMAND_RESPONSE_CHUNK_CHARS,
+    MAX_COMMAND_RESPONSE_CHUNKS,
+    MAX_COMMAND_STDOUT_LINE_CHARS,
+    MAX_COMMAND_STDOUT_TAIL_LINES,
+    MAX_COMMAND_TEXT_CHARS,
+    MAX_NONCES,
+    REPLAY_WINDOW_SECONDS,
+    SUBSYSTEM_ERRORS,
+)
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine._shared import runtime_dir
 from jarvis_engine.ingest import IngestionPipeline
@@ -52,20 +63,11 @@ from jarvis_engine.mobile_routes import (
 from jarvis_engine.mobile_routes._helpers import (
     _thread_local,
     _parse_bool,
+    _ThreadCapturingStdout,
+    THREAD_CAPTURE_MAX_CHARS,
 )
 
 logger = logging.getLogger(__name__)
-
-REPLAY_WINDOW_SECONDS = 120.0
-MAX_NONCES = 100_000
-MAX_AUTH_BODY_SIZE = 2_000_000  # 2 MB (matches sync/push max_content_length)
-MAX_COMMAND_TEXT_CHARS = 2000
-MAX_COMMAND_STDOUT_TAIL_LINES = 30
-MAX_COMMAND_STDOUT_LINE_CHARS = 1200
-MAX_COMMAND_RESPONSE_CHARS = 12_000
-MAX_COMMAND_RESPONSE_CHUNK_CHARS = 800
-MAX_COMMAND_RESPONSE_CHUNKS = 24
-THREAD_CAPTURE_MAX_CHARS = 200_000
 
 # Alias for backward compatibility — prefer importing SUBSYSTEM_ERRORS from _constants.
 _SUBSYSTEM_ERRORS = SUBSYSTEM_ERRORS
@@ -79,75 +81,6 @@ class CLIResult(TypedDict, total=False):
     command_exit_code: int
     stdout_tail: list[str]
     stderr_tail: list[str]
-
-
-class _ThreadCapturingStdout:
-    """Wraps real stdout, routing writes to per-thread StringIO when active.
-
-    Install once at server startup via ``_ThreadCapturingStdout.install()``.
-    Each request thread calls ``start_capture()`` / ``stop_capture()`` to
-    redirect its own prints to a thread-local buffer without affecting other
-    threads.
-    """
-
-    _real_stdout = None  # set by install()
-
-    def __init__(self, real_stdout: IO[str]) -> None:
-        object.__setattr__(self, "_real", real_stdout)
-        _ThreadCapturingStdout._real_stdout = real_stdout
-
-    def write(self, s: str) -> int:
-        buf = getattr(_thread_local, "capture_buf", None)
-        if buf is not None:
-            max_chars = int(getattr(_thread_local, "capture_max_chars", THREAD_CAPTURE_MAX_CHARS))
-            used = int(getattr(_thread_local, "capture_chars", 0))
-            remaining = max_chars - used
-            if remaining <= 0:
-                _thread_local.capture_truncated = True
-                return len(s)
-            if len(s) > remaining:
-                buf.write(s[:remaining])
-                _thread_local.capture_chars = max_chars
-                _thread_local.capture_truncated = True
-                return len(s)
-            buf.write(s)
-            _thread_local.capture_chars = used + len(s)
-            return len(s)
-        return object.__getattribute__(self, "_real").write(s)
-
-    def flush(self) -> None:
-        buf = getattr(_thread_local, "capture_buf", None)
-        if buf is not None:
-            buf.flush()
-        object.__getattribute__(self, "_real").flush()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(object.__getattribute__(self, "_real"), name)
-
-    @staticmethod
-    def start_capture(max_chars: int = THREAD_CAPTURE_MAX_CHARS) -> None:
-        """Begin capturing stdout for the calling thread."""
-        _thread_local.capture_buf = io.StringIO()
-        _thread_local.capture_chars = 0
-        _thread_local.capture_max_chars = max(10_000, int(max_chars))
-        _thread_local.capture_truncated = False
-
-    @staticmethod
-    def stop_capture() -> tuple[str, bool]:
-        """Stop capturing and return `(captured_text, truncated)`."""
-        buf = getattr(_thread_local, "capture_buf", None)
-        truncated = bool(getattr(_thread_local, "capture_truncated", False))
-        _thread_local.capture_buf = None
-        _thread_local.capture_chars = 0
-        _thread_local.capture_max_chars = THREAD_CAPTURE_MAX_CHARS
-        _thread_local.capture_truncated = False
-        return (buf.getvalue() if buf is not None else "", truncated)
-
-    @staticmethod
-    def install() -> None:
-        """Replace sys.stdout once at server startup."""
-        if not isinstance(sys.stdout, _ThreadCapturingStdout):
-            sys.stdout = _ThreadCapturingStdout(sys.stdout)  # type: ignore[assignment]
 
 
 # CORS whitelist: only allow localhost/loopback origins and file:// protocol.
@@ -273,9 +206,11 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
         f"subjectAltName = {san_string}\n"
     )
 
-    # Attempt to generate using openssl
+    # Attempt to generate using openssl (atomic write for TLS config)
+    ext_tmp = ext_file.with_suffix(".cnf.tmp")
     try:
-        ext_file.write_text(ext_content, encoding="utf-8")
+        ext_tmp.write_text(ext_content, encoding="utf-8")
+        os.replace(str(ext_tmp), str(ext_file))
         subprocess.run(
             [
                 "openssl", "req",
@@ -295,7 +230,7 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("TLS cert generation failed (openssl not available?): %s", exc)
         # Clean up partial files
-        for p in (cert_path, key_path, ext_file):
+        for p in (cert_path, key_path, ext_file, ext_tmp):
             try:
                 if p.exists():
                     p.unlink()
@@ -303,12 +238,13 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
                 logger.debug("Failed to clean up partial TLS file %s: %s", p, cleanup_exc)
         return None, None
     finally:
-        # Clean up the temporary extension file
-        try:
-            if ext_file.exists():
-                ext_file.unlink()
-        except OSError as cleanup_exc:
-            logger.debug("Failed to clean up TLS extension file: %s", cleanup_exc)
+        # Clean up the temporary extension files
+        for p in (ext_file, ext_tmp):
+            try:
+                if p.exists():
+                    p.unlink()
+            except OSError as cleanup_exc:
+                logger.debug("Failed to clean up TLS extension file %s: %s", p, cleanup_exc)
 
     if cert_path.exists() and key_path.exists():
         logger.info("Generated self-signed TLS certificate with SAN=%s: %s", san_string, cert_path)

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._db_pragmas import connect_db
 from jarvis_engine._shared import now_iso
 from jarvis_engine.config import repo_root
 
@@ -85,8 +86,6 @@ class ActivityFeed:
         self._max_events = max_events
         self._lock = threading.Lock()
         self._closed = False
-
-        from jarvis_engine._db_pragmas import connect_db
 
         self._db = connect_db(self._db_path, check_same_thread=False)
         self._init_schema()
@@ -276,7 +275,7 @@ _feed_lock = threading.Lock()
 
 def get_activity_feed(db_path: Path | str | None = None) -> ActivityFeed:
     """Return (or create) the module-level ActivityFeed singleton."""
-    global _feed
+    global _feed  # lazy singleton: one shared DB connection for the process
     if _feed is not None and not _feed._closed:
         return _feed
     with _feed_lock:
@@ -298,7 +297,7 @@ def log_activity(
 
 def _reset_feed() -> None:
     """Close and discard the module-level singleton.  Test-only."""
-    global _feed
+    global _feed  # teardown: clear the lazy singleton for test isolation
     with _feed_lock:
         if _feed is not None:
             try:

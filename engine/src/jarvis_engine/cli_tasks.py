@@ -7,7 +7,7 @@ Contains: route, run-task, web-research.
 from __future__ import annotations
 
 from jarvis_engine._bus import get_bus as _get_bus
-from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
+from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine.voice.extractors import escape_response
 
 from jarvis_engine.commands.task_commands import (
@@ -18,7 +18,7 @@ from jarvis_engine.commands.task_commands import (
 
 
 def cmd_route(risk: str, complexity: str) -> int:
-    result, _ = _dispatch(RouteCommand(risk=risk, complexity=complexity))
+    result, _ = cli_dispatch(RouteCommand(risk=risk, complexity=complexity))
     print(f"provider={result.provider}")
     print(f"reason={result.reason}")
     return 0

@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
     from jarvis_engine.sync.engine import SyncEngine
     from jarvis_engine.sync.transport import SyncTransport
 
-from jarvis_engine._constants import SUBSYSTEM_ERRORS
+from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 
 from jarvis_engine.commands.sync_commands import (
     SyncPullCommand,
@@ -34,7 +33,7 @@ except ImportError:  # cryptography not installed
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class SyncPullHandler:

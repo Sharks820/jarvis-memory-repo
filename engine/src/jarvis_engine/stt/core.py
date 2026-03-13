@@ -39,6 +39,25 @@ from jarvis_engine.stt.backends import (  # noqa: F401 -- re-exports
 
 logger = logging.getLogger(__name__)
 
+# API endpoints
+_GROQ_STT_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+# Audio thresholds
+_MIN_AUDIO_SAMPLES_16KHZ = 1600  # 0.1s at 16 kHz
+_GROQ_PROMPT_MAX_TOKENS = 224  # Groq API prompt token limit
+_GROQ_MAX_API_RETRIES = 2
+_GROQ_RATE_LIMIT_BACKOFF_S = 2
+_GROQ_ERROR_BACKOFF_S = 1
+
+# Confidence scoring
+_FALLBACK_CONFIDENCE = 0.90  # when segments lack logprobs
+_NO_SPEECH_PENALTY_THRESHOLD = 0.5  # penalize confidence above this
+_PARAKEET_BASELINE_CONFIDENCE = 0.94  # Parakeet's known 6.05% WER baseline
+
+# STT prompt limits
+_STT_PROMPT_MAX_CHARS = 1200
+_STT_MAX_ENTITY_HINTS = 40
+
 
 class _HTTPJsonResponse(Protocol):
     status_code: int
@@ -134,13 +153,13 @@ def _build_stt_prompt(prompt: str, entity_list: list[str]) -> str:
     base_prompt = prompt.strip() or JARVIS_DEFAULT_PROMPT
     if not entity_list:
         return base_prompt
-    hint_terms = ", ".join(entity_list[:40])
+    hint_terms = ", ".join(entity_list[:_STT_MAX_ENTITY_HINTS])
     if not hint_terms:
         return base_prompt
     return (
         f"{base_prompt} "
         f"Recognize names and phrases exactly when spoken: {hint_terms}."
-    )[:1200]
+    )[:_STT_PROMPT_MAX_CHARS]
 
 
 def _log_stt_metric(
@@ -225,36 +244,38 @@ def _groq_api_call(
 
     resp = None
     with httpx.Client(timeout=30.0) as client:
-        for attempt in range(2):
+        for attempt in range(_GROQ_MAX_API_RETRIES):
             try:
                 resp = client.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    _GROQ_STT_API_URL,
                     headers={"Authorization": f"Bearer {api_key}"},
                     data={
                         "model": GROQ_STT_MODEL,
                         "language": language,
                         "response_format": "verbose_json",
                         "temperature": "0.0",
-                        "prompt": prompt[:224],  # Groq limit: 224 tokens
+                        "prompt": prompt[:_GROQ_PROMPT_MAX_TOKENS],
                     },
                     files={"file": (filename, audio_bytes, "audio/wav")},
                 )
                 if resp.status_code >= 500 or resp.status_code == 429:
                     logger.warning(
-                        "Groq API returned %d, attempt %d/2",
+                        "Groq API returned %d, attempt %d/%d",
                         resp.status_code,
                         attempt + 1,
+                        _GROQ_MAX_API_RETRIES,
                     )
-                    if attempt < 1:
-                        time.sleep(2 if resp.status_code == 429 else 1)
+                    if attempt < _GROQ_MAX_API_RETRIES - 1:
+                        backoff = _GROQ_RATE_LIMIT_BACKOFF_S if resp.status_code == 429 else _GROQ_ERROR_BACKOFF_S
+                        time.sleep(backoff)
                         continue
                 break
             except httpx.TransportError as exc:
                 logger.warning(
-                    "Groq API connection error: %s, attempt %d/2", exc, attempt + 1
+                    "Groq API connection error: %s, attempt %d/%d", exc, attempt + 1, _GROQ_MAX_API_RETRIES
                 )
-                if attempt < 1:
-                    time.sleep(1)
+                if attempt < _GROQ_MAX_API_RETRIES - 1:
+                    time.sleep(_GROQ_ERROR_BACKOFF_S)
                     continue
                 return TranscriptionResult(
                     text="",
@@ -318,13 +339,13 @@ def _groq_parse_response(
             # Penalize confidence when Whisper thinks segments are noise
             if no_speech_probs:
                 avg_no_speech = sum(no_speech_probs) / len(no_speech_probs)
-                if avg_no_speech > 0.5:
+                if avg_no_speech > _NO_SPEECH_PENALTY_THRESHOLD:
                     confidence *= 1.0 - avg_no_speech
             confidence = round(confidence, 4)
         else:
-            confidence = 0.90  # fallback if segments lack logprobs
+            confidence = _FALLBACK_CONFIDENCE  # fallback if segments lack logprobs
     else:
-        confidence = 0.90  # fallback if no segments returned
+        confidence = _FALLBACK_CONFIDENCE  # fallback if no segments returned
 
     return text, detected_lang, confidence, parsed_segments if parsed_segments else None
 
@@ -353,8 +374,8 @@ def transcribe_groq(
     if not api_key:
         raise RuntimeError("GROQ_API_KEY not set")
 
-    # Minimum audio duration check: require at least 0.1s (1600 samples at 16kHz)
-    if isinstance(audio, np.ndarray) and len(audio) < 1600:
+    # Minimum audio duration check: require at least 0.1s at 16 kHz
+    if isinstance(audio, np.ndarray) and len(audio) < _MIN_AUDIO_SAMPLES_16KHZ:
         logger.debug("Audio too short for Groq API (%d samples)", len(audio))
         return None
 
@@ -553,7 +574,7 @@ def _try_local(
     audio: np.ndarray | str, *, language: str, prompt: str = ""
 ) -> TranscriptionResult | None:
     """Attempt local faster-whisper transcription, returning *None* on failure."""
-    global _local_stt_instance
+    global _local_stt_instance  # lazy singleton: initialized once, reused across calls
     try:
         with _local_stt_lock:
             if _local_stt_instance is None:
@@ -574,7 +595,7 @@ def _try_parakeet(
     caller can fall back to the next backend.  The model is lazy-loaded on
     first use with double-checked locking to be thread-safe.
     """
-    global _parakeet_model
+    global _parakeet_model  # lazy singleton: heavy model loaded once, reused across calls
 
     try:
         try:
@@ -621,7 +642,7 @@ def _try_parakeet(
             )
 
         # Confidence scoring: try to extract log probabilities from result
-        confidence = 0.94  # Baseline: Parakeet's known 6.05% WER
+        confidence = _PARAKEET_BASELINE_CONFIDENCE
         try:
             # onnx-asr TimestampedResult may expose token-level log probs
             tokens = getattr(result, "tokens", None)
@@ -665,7 +686,7 @@ def _try_local_emergency(
     used so the standard ``_try_local()`` path (small.en or JARVIS_STT_MODEL)
     is unaffected.
     """
-    global _local_emergency_instance
+    global _local_emergency_instance  # lazy singleton: heavy model loaded once, reused across calls
     try:
         with _local_emergency_lock:
             if _local_emergency_instance is None:
@@ -991,7 +1012,7 @@ def warmup_stt_backends() -> None:
 
     Handles ``ImportError`` gracefully when ``onnx_asr`` is not installed.
     """
-    global _parakeet_model
+    global _parakeet_model  # lazy singleton: warm up the shared model instance
     try:
         import onnx_asr  # type: ignore[import-untyped]
     except ImportError:

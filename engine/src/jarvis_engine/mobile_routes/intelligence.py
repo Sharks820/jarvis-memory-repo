@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from typing import Any, Protocol
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import KG_METRICS_LOG, SELF_TEST_HISTORY, SUBSYSTEM_ERRORS
+from jarvis_engine._constants import KG_METRICS_LOG, SELF_TEST_HISTORY, SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine._shared import runtime_dir
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 logger = logging.getLogger(__name__)
 
-_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS_DB
 
 
 class _IntelligenceRouteServerProtocol(MobileRouteServerProtocol, Protocol):

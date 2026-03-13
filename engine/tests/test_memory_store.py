@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 
-from jarvis_engine.memory_store import MemoryEvent, MemoryStore
+from jarvis_engine.memory.store import MemoryEvent, MemoryStore
 
 
 # ── existing tests ────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
   "relay_url": "",
-  "lan_url": "https://192.168.50.156:8787",
+  "lan_url": "https://192.168.50.156:9001",
   "enabled": true,
   "sync_interval_connected": 60,
   "sync_interval_disconnected": 300,

@@ -30,6 +30,26 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# API endpoints
+_DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
+
+# Audio constants
+_SAMPLE_RATE_HZ = 16000
+_BITS_PER_SAMPLE = 16
+_BYTES_PER_SAMPLE = _BITS_PER_SAMPLE // 8  # 16-bit = 2 bytes per sample
+_INT16_MAX = 32767
+_INT16_MIN = -32768
+_DEEPGRAM_MAX_KEYWORDS = 500
+_DEEPGRAM_REQUEST_TIMEOUT_S = 30.0
+
+# Recording parameters
+_MIN_RECORDING_DURATION_S = 0.5  # at least 0.5s of audio
+_PRE_SPEECH_PAD_S = 0.2  # ring buffer before speech onset
+_POST_SPEECH_PAD_S = 0.3  # trailing audio after speech ends
+_SILERO_CHUNK_DURATION_S = 0.032  # 32ms (512 samples at 16 kHz)
+_RMS_CHUNK_DURATION_S = 0.1  # 100ms for RMS fallback
+_NOISE_CALIBRATION_DURATION_S = 0.5  # 500ms ambient calibration
+
 
 class _AudioReadStream(Protocol):
     def read(self, frames: int) -> tuple[np.ndarray, Any]: ...
@@ -62,7 +82,7 @@ def _calibrate_noise_floor(
     ``_NOISE_FLOOR_MIN`` (0.005) and ``_NOISE_FLOOR_MAX`` (0.05) to
     avoid extreme values in very quiet or very noisy environments.
     """
-    calibration_samples = int(sample_rate * 0.5)  # 500ms
+    calibration_samples = int(sample_rate * _NOISE_CALIBRATION_DURATION_S)
     try:
         ambient_chunk, _ = stream.read(calibration_samples)
     except (OSError, RuntimeError, ValueError, TypeError) as exc:
@@ -84,13 +104,13 @@ def _calibrate_noise_floor(
 # Shared WAV conversion utility
 
 
-def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
+def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = _SAMPLE_RATE_HZ) -> bytes:
     """Convert a mono float32 numpy array to WAV bytes for API upload."""
-    audio_int16 = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
+    audio_int16 = np.clip(audio * _INT16_MAX, _INT16_MIN, _INT16_MAX).astype(np.int16)
     buf = io.BytesIO()
     # Write WAV header
     num_samples = len(audio_int16)
-    data_size = num_samples * 2  # 16-bit = 2 bytes per sample
+    data_size = num_samples * _BYTES_PER_SAMPLE
     buf.write(b"RIFF")
     buf.write(struct.pack("<I", 36 + data_size))
     buf.write(b"WAVE")
@@ -99,9 +119,9 @@ def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     buf.write(struct.pack("<H", 1))  # PCM format
     buf.write(struct.pack("<H", 1))  # mono
     buf.write(struct.pack("<I", sample_rate))
-    buf.write(struct.pack("<I", sample_rate * 2))  # byte rate
-    buf.write(struct.pack("<H", 2))  # block align
-    buf.write(struct.pack("<H", 16))  # bits per sample
+    buf.write(struct.pack("<I", sample_rate * _BYTES_PER_SAMPLE))  # byte rate
+    buf.write(struct.pack("<H", _BYTES_PER_SAMPLE))  # block align
+    buf.write(struct.pack("<H", _BITS_PER_SAMPLE))  # bits per sample
     buf.write(b"data")
     buf.write(struct.pack("<I", data_size))
     buf.write(audio_int16.tobytes())
@@ -157,8 +177,8 @@ def _build_deepgram_params(
         ("filler_words", "false"),
         ("numerals", "true"),
     ]
-    # Deepgram supports up to 500 keywords per request; boost intensity
-    for kt in keyterms[:500]:
+    # Deepgram supports up to _DEEPGRAM_MAX_KEYWORDS keywords per request
+    for kt in keyterms[:_DEEPGRAM_MAX_KEYWORDS]:
         params.append(("keywords", f"{kt}:2.0"))
     return params
 
@@ -305,9 +325,9 @@ def _try_deepgram(
         audio_bytes, content_type = _prepare_deepgram_audio(audio)
         params = _build_deepgram_params(language, keyterms)
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=_DEEPGRAM_REQUEST_TIMEOUT_S) as client:
             resp = client.post(
-                "https://api.deepgram.com/v1/listen",
+                _DEEPGRAM_API_URL,
                 headers={
                     "Authorization": f"Token {api_key}",
                     "Content-Type": content_type,
@@ -399,8 +419,8 @@ def _capture_audio_loop(
     drain_seconds: float,
     vad_detector: _VadDetector | None,
     use_silero: bool,
-    pre_speech_pad_seconds: float = 0.2,
-    post_speech_pad_seconds: float = 0.3,
+    pre_speech_pad_seconds: float = _PRE_SPEECH_PAD_S,
+    post_speech_pad_seconds: float = _POST_SPEECH_PAD_S,
 ) -> list[np.ndarray]:
     """Read audio chunks from *stream*, stopping on post-speech silence.
 
@@ -418,10 +438,10 @@ def _capture_audio_loop(
 
     # Silero VAD works best with 32ms (512-sample) chunks at 16 kHz.
     # RMS fallback uses 100ms chunks for backward compatibility.
-    chunk_duration = 0.032 if use_silero else 0.1
+    chunk_duration = _SILERO_CHUNK_DURATION_S if use_silero else _RMS_CHUNK_DURATION_S
     samples_per_chunk = int(sample_rate * chunk_duration)
     max_silence_chunks = int(silence_duration / chunk_duration)
-    min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
+    min_recording_chunks = int(_MIN_RECORDING_DURATION_S / chunk_duration)
     max_chunks = int(max_duration_seconds / chunk_duration)
 
     # RC-3: pre-speech ring buffer (~200ms of audio before speech onset)

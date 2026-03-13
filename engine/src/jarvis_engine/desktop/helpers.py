@@ -709,7 +709,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         message: Notification body (truncated to 256 chars).
         icon: One of "Info", "Warning", "Error".
     """
-    global _last_toast_time
+    global _last_toast_time  # mutable throttle timestamp shared across calls
 
     if icon not in _TOAST_ICON_TYPES:
         icon = "Info"
