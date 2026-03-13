@@ -20,20 +20,13 @@ import re
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+from jarvis_engine._protocols import EmbedServiceProtocol
 from jarvis_engine._shared import get_fast_local_model as _get_fast_local_model
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import numpy as np
-
-
-class EmbedServiceProtocol(Protocol):
-    def embed(self, text: str, *, prefix: str = "") -> list[float]:
-        ...
-
-    def embed_query(self, query: str) -> list[float]:
-        ...
 
 class FeedbackTrackerProtocol(Protocol):
     def get_route_quality(self, route_name: str) -> dict[str, Any]:

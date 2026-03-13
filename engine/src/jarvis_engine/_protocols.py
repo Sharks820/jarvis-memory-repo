@@ -25,6 +25,10 @@ class EmbedServiceProtocol(Protocol):
         """Return a dense embedding vector for *text*."""
         ...
 
+    def embed_query(self, query: str) -> list[float]:
+        """Return a dense embedding vector optimised for query retrieval."""
+        ...
+
     def embed_batch(
         self,
         texts: list[str],

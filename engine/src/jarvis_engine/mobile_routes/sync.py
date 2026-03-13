@@ -7,17 +7,14 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ._helpers import HeaderProtocol
+
 if TYPE_CHECKING:
     from jarvis_engine.sync.auto_sync import AutoSyncConfig
     from jarvis_engine.sync.engine import SyncEngine
     from jarvis_engine.sync.transport import SyncTransport
 
 logger = logging.getLogger(__name__)
-
-
-class _HeaderProtocol(Protocol):
-    def get(self, key: str, default: str | None = None) -> str | None:
-        ...
 
 
 class _SyncServerProtocol(Protocol):
@@ -31,7 +28,7 @@ class _SyncServerProtocol(Protocol):
 
 class _SyncHandlerProtocol(Protocol):
     server: _SyncServerProtocol
-    headers: _HeaderProtocol
+    headers: HeaderProtocol
     _root: Path
 
     def _validate_auth(self, body: bytes) -> bool:
