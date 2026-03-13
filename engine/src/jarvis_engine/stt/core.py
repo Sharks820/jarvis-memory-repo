@@ -60,9 +60,7 @@ class TranscriptionResult:
     segments: list[TranscriptionSegment] | None = None
 
 
-# ---------------------------------------------------------------------------
 # STT quality metrics logging
-# ---------------------------------------------------------------------------
 
 _stt_metrics_lock = threading.Lock()
 
@@ -177,9 +175,7 @@ def _log_stt_metric(
         logger.debug("Failed to write STT metric: %s", exc)
 
 
-# ---------------------------------------------------------------------------
 # Groq Whisper STT (cloud) — helpers
-# ---------------------------------------------------------------------------
 
 
 def _groq_prepare_audio(
@@ -333,9 +329,7 @@ def _groq_parse_response(
     return text, detected_lang, confidence, parsed_segments if parsed_segments else None
 
 
-# ---------------------------------------------------------------------------
 # Groq Whisper STT (cloud) — main entry point
-# ---------------------------------------------------------------------------
 
 
 def transcribe_groq(
@@ -400,9 +394,7 @@ def transcribe_groq(
     )
 
 
-# ---------------------------------------------------------------------------
 # Local faster-whisper STT (offline fallback)
-# ---------------------------------------------------------------------------
 
 
 class SpeechToText:
@@ -533,9 +525,7 @@ class SpeechToText:
         )
 
 
-# ---------------------------------------------------------------------------
 # Smart transcription (auto-selects best available backend)
-# ---------------------------------------------------------------------------
 
 
 def _try_groq(
@@ -687,10 +677,8 @@ def _try_local_emergency(
         return None
 
 
-# ---------------------------------------------------------------------------
 # Fallback chain: ordered list of backend names for auto mode.
 # Functions are looked up at call time so they can be mocked in tests.
-# ---------------------------------------------------------------------------
 
 FALLBACK_CHAIN: list[str] = [
     "parakeet",  # Best local: 6.05% WER

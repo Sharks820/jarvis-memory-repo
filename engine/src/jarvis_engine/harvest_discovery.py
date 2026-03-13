@@ -19,9 +19,7 @@ from jarvis_engine._shared import memory_db_path as _memory_db_path
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Named SQL constants for discover_harvest_topics() queries
-# ---------------------------------------------------------------------------
 
 SQL_RECENT_SUMMARIES = """\
 SELECT summary FROM records
@@ -120,9 +118,7 @@ def _get_recently_harvested_topics(root: Path) -> set[str]:
     return recent
 
 
-# ---------------------------------------------------------------------------
 # Topic candidate helpers
-# ---------------------------------------------------------------------------
 
 
 def _try_add_candidate(
@@ -171,9 +167,7 @@ def _add_phrases(
     return len(candidates) >= max_topics
 
 
-# ---------------------------------------------------------------------------
 # Collection sources
-# ---------------------------------------------------------------------------
 
 
 def _collect_from_recent_memories(
@@ -329,9 +323,7 @@ def _collect_from_learning_missions(
         )
 
 
-# ---------------------------------------------------------------------------
 # Main discovery pipeline
-# ---------------------------------------------------------------------------
 
 
 def discover_harvest_topics(root: Path) -> list[str]:

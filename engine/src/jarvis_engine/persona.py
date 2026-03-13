@@ -8,9 +8,7 @@ from typing import TypedDict
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
 
-# ---------------------------------------------------------------------------
 # Tone profiles: map branch domains to personality instructions
-# ---------------------------------------------------------------------------
 
 class ToneProfile(TypedDict):
     branches: list[str]

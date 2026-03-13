@@ -54,9 +54,7 @@ def _is_pending_contradiction(
 class ContradictionManager(KGManagerBase):
     """Manages contradiction quarantine entries for owner review."""
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _update_fts_index(self, node_id: str, label: str) -> None:
         """Update fts_kg_nodes for a node. Silently no-ops if table missing.
@@ -112,9 +110,7 @@ class ContradictionManager(KGManagerBase):
         except (sqlite3.Error, OSError) as exc:
             logger.debug("Vec embedding write for node %s failed: %s", node_id, exc)
 
-    # ------------------------------------------------------------------
     # List operations
-    # ------------------------------------------------------------------
 
     def list_pending(self, limit: int = 20) -> list[dict]:
         """List pending contradictions, most recent first."""
@@ -148,9 +144,7 @@ class ContradictionManager(KGManagerBase):
                 )
             return [dict(row) for row in cur.fetchall()]
 
-    # ------------------------------------------------------------------
     # Resolution helpers
-    # ------------------------------------------------------------------
 
     def _load_contradiction(
         self,
@@ -281,9 +275,7 @@ class ContradictionManager(KGManagerBase):
             }
         )
 
-    # ------------------------------------------------------------------
     # Resolution
-    # ------------------------------------------------------------------
 
     def _validate_resolution_args(
         self,

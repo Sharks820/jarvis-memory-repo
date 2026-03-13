@@ -49,9 +49,7 @@ from jarvis_engine.harvest_discovery import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Parameter bundle dataclasses
-# ---------------------------------------------------------------------------
 
 @dataclass
 class DaemonConfig:
@@ -73,9 +71,7 @@ class DaemonConfig:
     watchdog_every_cycles: int = 5
 
 
-# ---------------------------------------------------------------------------
 # Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
-# ---------------------------------------------------------------------------
 _daemon_bus: CommandBus | None = None
 _daemon_bus_lock = threading.Lock()
 
@@ -129,20 +125,15 @@ def _get_daemon_bus() -> CommandBus:
         return _daemon_bus
 
 
-# ---------------------------------------------------------------------------
 # Daemon cycle state for KG regression tracking
-# ---------------------------------------------------------------------------
 _daemon_kg_prev_metrics: dict | None = None
 _daemon_kg_prev_metrics_lock = threading.Lock()
 
 
-# ---------------------------------------------------------------------------
 # Gaming mode helpers — now live in gaming_mode.py, imported above.
 
 
-# ---------------------------------------------------------------------------
 # Mission run helpers
-# ---------------------------------------------------------------------------
 
 
 def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
@@ -189,9 +180,7 @@ def _run_next_pending_mission(*, max_results: int = 6, max_pages: int = 10) -> i
     return 0
 
 
-# ---------------------------------------------------------------------------
 # Mobile API watchdog restart
-# ---------------------------------------------------------------------------
 
 
 def _restart_mobile_api(service_name: str) -> None:
@@ -247,9 +236,7 @@ def _restart_mobile_api(service_name: str) -> None:
         print(f"watchdog_restart_mobile_api_error={exc}")
 
 
-# ---------------------------------------------------------------------------
 # Extracted subsystem helpers — each encapsulates one daemon responsibility
-# ---------------------------------------------------------------------------
 
 
 def _register_daemon_pid(root: Path) -> bool:
@@ -470,7 +457,7 @@ def _collect_kg_metrics(root: Path) -> None:
         try:
             bus = _get_daemon_bus()
             kg = getattr(bus.ctx, "kg", None)
-        except Exception as exc:  # noqa: BLE001 — boundary: catch-all justified (bus may not be initialized yet)
+        except Exception as exc:  # noqa: BLE001
             logger.debug("KG metrics: bus not available yet: %s", exc)
             kg = None
 
@@ -739,9 +726,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
         _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
 
-# ---------------------------------------------------------------------------
 # Main daemon loop implementation
-# ---------------------------------------------------------------------------
 
 
 def _gather_cycle_state(

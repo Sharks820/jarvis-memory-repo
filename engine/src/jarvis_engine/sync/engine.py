@@ -310,9 +310,7 @@ class SyncEngine:
             "new_values": merged_new,
         }
 
-    # ------------------------------------------------------------------
     # _apply_single_change helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _validate_and_parse_pk(

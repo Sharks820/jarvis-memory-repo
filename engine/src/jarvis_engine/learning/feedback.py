@@ -27,7 +27,7 @@ class RouteQuality(TypedDict):
 class ResponseFeedbackTracker(LearningTrackerBase):
     """Detect implicit feedback signals from conversation patterns."""
 
-    CORRECTION_SIGNALS = [
+    CORRECTION_SIGNALS: tuple[str, ...] = (
         "no, i meant",
         "that's not what i asked",
         "let me rephrase",
@@ -37,9 +37,9 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         "try again",
         "i said",
         "that's not right",
-    ]
+    )
 
-    SATISFACTION_SIGNALS = [
+    SATISFACTION_SIGNALS: tuple[str, ...] = (
         "perfect",
         "great",
         "thanks",
@@ -49,7 +49,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         "well done",
         "nice",
         "awesome",
-    ]
+    )
 
     def __init__(
         self,

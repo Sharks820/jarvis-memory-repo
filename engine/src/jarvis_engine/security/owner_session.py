@@ -28,9 +28,7 @@ class SessionStatus(TypedDict):
     locked_out: bool
     session_count: int
 
-# ---------------------------------------------------------------------------
 # Argon2id — optional, fall back to PBKDF2 if not installed
-# ---------------------------------------------------------------------------
 
 _HAS_ARGON2 = False
 _Argon2Hasher: type[Any] | None = None
@@ -45,17 +43,13 @@ try:
 except ImportError:  # pragma: no cover
     logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
 
-# ---------------------------------------------------------------------------
 # PBKDF2 constants
-# ---------------------------------------------------------------------------
 
 _PBKDF2_ITERATIONS = 600_000
 _PBKDF2_SALT_LEN = 32  # 256-bit random salt per password
 
 
-# ---------------------------------------------------------------------------
 # OwnerSessionManager
-# ---------------------------------------------------------------------------
 
 
 class OwnerSessionManager:
@@ -109,9 +103,7 @@ class OwnerSessionManager:
         # Decide which hasher to use
         self._use_argon2 = _HAS_ARGON2 and not force_pbkdf2
 
-    # ------------------------------------------------------------------
     # Internal housekeeping
-    # ------------------------------------------------------------------
 
     def _purge_expired(self) -> None:
         """Remove expired sessions from ``_sessions``.  Caller must hold lock."""
@@ -120,9 +112,7 @@ class OwnerSessionManager:
         for t in expired:
             del self._sessions[t]
 
-    # ------------------------------------------------------------------
     # Password management
-    # ------------------------------------------------------------------
 
     def set_password(self, password: str) -> None:
         """Hash and store *password*.
@@ -162,9 +152,7 @@ class OwnerSessionManager:
                 logger.info("Password changed — %d session(s) invalidated", count)
             logger.info("Owner password set (algo=%s)", self._hash_algo)
 
-    # ------------------------------------------------------------------
     # Authentication
-    # ------------------------------------------------------------------
 
     def authenticate(self, password: str) -> str | None:
         """Verify *password* and return a 64-char hex session token.
@@ -216,9 +204,7 @@ class OwnerSessionManager:
             logger.info("Owner authenticated, session ...%s created", token[-4:])
             return token
 
-    # ------------------------------------------------------------------
     # Session management
-    # ------------------------------------------------------------------
 
     def validate_session(self, token: str) -> bool:
         """Return ``True`` if *token* is a valid active session.
@@ -251,9 +237,7 @@ class OwnerSessionManager:
             self._sessions.clear()
         logger.info("All %d sessions invalidated", count)
 
-    # ------------------------------------------------------------------
     # Lockout
-    # ------------------------------------------------------------------
 
     def is_locked_out(self) -> bool:
         """Return ``True`` if the account is currently locked out."""
@@ -272,9 +256,7 @@ class OwnerSessionManager:
             return False
         return True
 
-    # ------------------------------------------------------------------
     # Status
-    # ------------------------------------------------------------------
 
     def session_status(self) -> SessionStatus:
         """Return a status summary.
@@ -294,9 +276,7 @@ class OwnerSessionManager:
                 "session_count": len(self._sessions),
             }
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def create_external_session(self) -> str | None:
         """Create a session token for an externally-verified owner.

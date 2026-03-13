@@ -13,9 +13,7 @@ from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
 
-# ---------------------------------------------------------------------------
 # TypedDicts
-# ---------------------------------------------------------------------------
 
 
 class ProvenanceRecord(TypedDict):
@@ -27,9 +25,7 @@ class ProvenanceRecord(TypedDict):
     quarantine_reason: str
 
 
-# ---------------------------------------------------------------------------
 # Trust level constants
-# ---------------------------------------------------------------------------
 
 OWNER_INPUT = "OWNER_INPUT"
 VERIFIED_EXTERNAL = "VERIFIED_EXTERNAL"
@@ -61,9 +57,7 @@ class MemoryProvenance:
         # record_hash -> provenance dict
         self._records: dict[str, ProvenanceRecord] = {}
 
-    # ------------------------------------------------------------------
     # Tagging
-    # ------------------------------------------------------------------
 
     def tag_record(
         self,
@@ -118,9 +112,7 @@ class MemoryProvenance:
                     del self._records[k]
         return prov
 
-    # ------------------------------------------------------------------
     # Retrieval
-    # ------------------------------------------------------------------
 
     def get_provenance(self, record_hash: str) -> ProvenanceRecord | None:
         """Return a copy of the provenance record for *record_hash*, or ``None``."""
@@ -137,9 +129,7 @@ class MemoryProvenance:
                 quarantine_reason=prov["quarantine_reason"],
             )
 
-    # ------------------------------------------------------------------
     # Lifecycle transitions
-    # ------------------------------------------------------------------
 
     def promote(self, record_hash: str) -> bool:
         """Promote a record from ``UNVERIFIED_EXTERNAL`` to ``VERIFIED_EXTERNAL``.
@@ -172,9 +162,7 @@ class MemoryProvenance:
             prov["quarantine_reason"] = reason
             return True
 
-    # ------------------------------------------------------------------
     # Quarantine management
-    # ------------------------------------------------------------------
 
     def get_quarantined(self, limit: int = 50) -> list[dict[str, Any]]:
         """Return up to *limit* quarantined records (copies, not references)."""

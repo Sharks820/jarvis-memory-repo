@@ -28,9 +28,7 @@ class ScopeEnforcer:
         active.  Required for escalation-gated actions.
     """
 
-    # ------------------------------------------------------------------
     # Class-level policy tables
-    # ------------------------------------------------------------------
 
     ALLOWED_SCOPES: ClassVar[dict[str, set[str]]] = {
         "memory": {"read", "write", "search", "delete_own"},
@@ -50,9 +48,7 @@ class ScopeEnforcer:
         "filesystem.write_outside_sandbox",
     }
 
-    # ------------------------------------------------------------------
     # Constructor
-    # ------------------------------------------------------------------
 
     def __init__(self, owner_session_active: bool = False) -> None:
         self._owner_session_active = owner_session_active
@@ -60,9 +56,7 @@ class ScopeEnforcer:
         self._violations: collections.deque[dict] = collections.deque(maxlen=1000)
         self._total_violation_count: int = 0
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def check(self, scope: str, action: str) -> tuple[bool, str]:
         """Check whether *scope*.*action* is permitted.
@@ -121,9 +115,7 @@ class ScopeEnforcer:
             buf = list(self._violations)
         return buf[-limit:] if limit < len(buf) else buf
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _record_violation(self, scope: str, action: str, reason: str) -> None:
         entry = {

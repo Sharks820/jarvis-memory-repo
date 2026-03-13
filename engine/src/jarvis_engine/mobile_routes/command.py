@@ -18,6 +18,11 @@ from jarvis_engine.mobile_routes._helpers import (
 
 logger = logging.getLogger(__name__)
 
+# Narrowed exception tuple for command route handlers.
+# Covers lazy import failures, runtime errors from the bus/gateway,
+# and data-shape mismatches from user input.
+_COMMAND_ROUTE_ERRORS = (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError)
+
 
 class _CommandRouteServerProtocol(MobileRouteServerProtocol, Protocol):
     def ensure_memory_engine(self) -> Any | None:
@@ -230,7 +235,7 @@ class CommandRoutesMixin:
                     if rec:
                         contact_context = str(rec.get("summary", ""))[:200]
                         break
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+        except _COMMAND_ROUTE_ERRORS as exc:
             logger.debug("Contact context memory lookup failed: %s", exc)
         self._write_json(HTTPStatus.OK, {
             "ok": True,
@@ -333,7 +338,7 @@ class CommandRoutesMixin:
                     if isinstance(m, dict)
                 ],
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except _COMMAND_ROUTE_ERRORS as exc:
             logger.warning("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
 
@@ -362,7 +367,7 @@ class CommandRoutesMixin:
                     if isinstance(m, dict)
                 ],
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+        except _COMMAND_ROUTE_ERRORS as exc:
             logger.warning("Mission active list failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Active missions unavailable."})
 
@@ -384,7 +389,7 @@ class CommandRoutesMixin:
                 "mission_id": mission_id,
                 "steps": steps,
             })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+        except _COMMAND_ROUTE_ERRORS as exc:
             logger.warning("Mission steps failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission steps unavailable."})
 
@@ -601,7 +606,7 @@ class CommandRoutesMixin:
                                 })
                     except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
                         logger.debug("Batch record fetch for meeting prep failed: %s", exc)
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+        except _COMMAND_ROUTE_ERRORS as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)
         if briefing["context_facts"] or briefing["recent_memories"]:
             topics = set()

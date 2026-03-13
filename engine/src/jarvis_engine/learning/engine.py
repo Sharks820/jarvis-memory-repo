@@ -231,7 +231,7 @@ class ConversationLearningEngine:
     # Single-word keywords checked via word-boundary (set intersection) to avoid
     # false positives like "age" in "message" or "son" in "reason".
     # Multi-word phrases checked via substring match (safe since they're specific).
-    _PERSONAL_DATA_SINGLE_WORDS: set[str] = {
+    _PERSONAL_DATA_SINGLE_WORDS: frozenset[str] = frozenset({
         "name",
         "birthday",
         "born",
@@ -266,7 +266,7 @@ class ConversationLearningEngine:
         "height",
         "diagnosed",
         "medication",
-    }
+    })
     _PERSONAL_DATA_PHRASES: tuple[str, ...] = (
         "blood type",
         "credit card",

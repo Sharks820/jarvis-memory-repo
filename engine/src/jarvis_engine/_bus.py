@@ -17,18 +17,14 @@ from pathlib import Path
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.config import repo_root
 
-# ---------------------------------------------------------------------------
 # Caching state
-# ---------------------------------------------------------------------------
 
 _cached_bus: CommandBus | None = None
 _cached_bus_root: Path | None = None
 _cached_bus_lock = threading.Lock()
 
 
-# ---------------------------------------------------------------------------
 # Public factory
-# ---------------------------------------------------------------------------
 
 
 def get_bus() -> CommandBus:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class SyncPushCommand:
@@ -14,10 +16,9 @@ class SyncPushCommand:
 
 
 @dataclass
-class SyncPushResult:
+class SyncPushResult(ResultBase):
     applied: int = 0
     conflicts_resolved: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -29,11 +30,10 @@ class SyncPullCommand:
 
 
 @dataclass
-class SyncPullResult:
+class SyncPullResult(ResultBase):
     encrypted_payload: str = ""
     new_cursors: str = "{}"
     has_more: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,6 @@ class SyncStatusCommand:
 
 
 @dataclass
-class SyncStatusResult:
+class SyncStatusResult(ResultBase):
     changelog_size: int = 0
     cursors: str = "{}"
-    message: str = ""

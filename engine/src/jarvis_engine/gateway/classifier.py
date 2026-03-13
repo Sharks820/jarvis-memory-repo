@@ -35,8 +35,8 @@ class FeedbackTrackerProtocol(Protocol):
 class IntentClassifier:
     """Classify user queries into routing categories using embedding similarity."""
 
-    ROUTES: dict[str, list[str]] = {
-        "math_logic": [
+    ROUTES: dict[str, tuple[str, ...]] = {
+        "math_logic": (
             "solve this differential equation step by step",
             "prove that the square root of 2 is irrational",
             "calculate the eigenvalues of this 3x3 matrix",
@@ -52,8 +52,8 @@ class IntentClassifier:
             "calculate the Fourier transform of this signal",
             "solve this system of linear equations using Gaussian elimination",
             "what is the integral of e to the power of negative x squared",
-        ],
-        "complex": [
+        ),
+        "complex": (
             "write a Python script that implements a binary search tree with balancing",
             "analyze this codebase and suggest architectural improvements",
             "help me debug this race condition in my threading code",
@@ -69,8 +69,8 @@ class IntentClassifier:
             "explain how to scale this database for millions of concurrent users",
             "design a distributed caching strategy for this web application",
             "analyze the security implications of this authentication flow",
-        ],
-        "routine": [
+        ),
+        "routine": (
             "summarize this article for me",
             "rewrite this paragraph to be more concise",
             "what are the key points from this meeting transcript",
@@ -86,8 +86,8 @@ class IntentClassifier:
             "explain what REST API means in simple terms",
             "generate a bullet point summary of these meeting notes",
             "reformat this CSV data into a readable table",
-        ],
-        "simple_private": [
+        ),
+        "simple_private": (
             "what's on my calendar today",
             "what medications do I take",
             "remind me about my doctor appointment",
@@ -103,8 +103,8 @@ class IntentClassifier:
             "what's my morning routine",
             "show me my prescription refill schedule",
             "what did Jarvis learn about me today",
-        ],
-        "creative": [
+        ),
+        "creative": (
             "write a short story about a robot learning to paint",
             "brainstorm 10 startup ideas in the health tech space",
             "help me write a toast for my friend's wedding",
@@ -120,8 +120,8 @@ class IntentClassifier:
             "brainstorm unique gift ideas for someone who has everything",
             "write an engaging introduction for my blog post",
             "help me craft a personal mission statement",
-        ],
-        "web_research": [
+        ),
+        "web_research": (
             "what is the latest news about artificial intelligence",
             "what is the current price of bitcoin today",
             "who won the Super Bowl this year",
@@ -137,7 +137,7 @@ class IntentClassifier:
             "find me the best restaurants in downtown Austin",
             "what movies are coming out this month",
             "what is the exchange rate for USD to EUR today",
-        ],
+        ),
     }
 
     # Primary model for each route — local-first strategy.
@@ -146,18 +146,16 @@ class IntentClassifier:
     # Cloud CLIs (Claude, Codex, Gemini) are fallbacks only — used when local
     # models detect they can't handle the query or for web grounding.
     # All routes resolved at runtime via _get_local_model / _get_fast_local_model.
-    MODEL_MAP: dict[str, str] = {
-        # All routes resolved dynamically in _resolve_model_for_route
-    }
+    MODEL_MAP: dict[str, str] = {}  # All routes resolved dynamically in _resolve_model_for_route
 
     # Fallback preferences per route — cloud CLIs as escalation only.
     # Tried in order when local model fails or returns low-quality response.
-    MODEL_FALLBACKS: dict[str, list[str]] = {
-        "math_logic": ["codex-cli", "claude-cli", "gemini-cli"],
-        "complex": ["claude-cli", "codex-cli", "gemini-cli"],
-        "routine": ["gemini-cli", "claude-cli"],
-        "creative": ["gemini-cli", "claude-cli"],
-        "web_research": ["gemini-cli", "claude-cli"],
+    MODEL_FALLBACKS: dict[str, tuple[str, ...]] = {
+        "math_logic": ("codex-cli", "claude-cli", "gemini-cli"),
+        "complex": ("claude-cli", "codex-cli", "gemini-cli"),
+        "routine": ("gemini-cli", "claude-cli"),
+        "creative": ("gemini-cli", "claude-cli"),
+        "web_research": ("gemini-cli", "claude-cli"),
     }
 
     PRIVACY_KEYWORDS: frozenset[str] = _CANONICAL_PRIVACY_KEYWORDS

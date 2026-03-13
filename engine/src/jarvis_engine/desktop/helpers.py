@@ -41,10 +41,8 @@ from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_su
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # DPAPI helpers -- Windows Data Protection API via ctypes
 # Encrypts/decrypts data tied to the current Windows user account.
-# ---------------------------------------------------------------------------
 
 _DPAPI_AVAILABLE = sys.platform == "win32"
 

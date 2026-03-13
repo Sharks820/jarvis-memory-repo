@@ -166,9 +166,7 @@ class VoiceTelemetry:
         self._slo_violations: list[dict[str, Any]] = []
         self._consecutive_slo_breaches: int = 0
 
-    # ------------------------------------------------------------------
     # Per-thread current utterance accessor
-    # ------------------------------------------------------------------
 
     @property
     def _current(self) -> _UtteranceRecord:
@@ -183,9 +181,7 @@ class VoiceTelemetry:
     def _current(self, value: _UtteranceRecord) -> None:
         self._local.current = value
 
-    # ------------------------------------------------------------------
     # Stage marking
-    # ------------------------------------------------------------------
 
     def begin_utterance(self) -> None:
         """Start tracking a new utterance.  Resets current timestamps."""
@@ -240,9 +236,7 @@ class VoiceTelemetry:
         with self._lock:
             self._fallback_triggers += 1
 
-    # ------------------------------------------------------------------
     # Utterance completion
-    # ------------------------------------------------------------------
 
     def finish_utterance(self) -> dict[str, float]:
         """Finalize the current utterance, compute derived metrics, and check SLOs.
@@ -326,9 +320,7 @@ class VoiceTelemetry:
 
         return metrics
 
-    # ------------------------------------------------------------------
     # SLO enforcement
-    # ------------------------------------------------------------------
 
     def _check_slo_violations(self) -> list[dict[str, Any]] | None:
         """Check SLO targets and record violations.
@@ -424,9 +416,7 @@ class VoiceTelemetry:
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("SLO alert emission failed: %s", exc)
 
-    # ------------------------------------------------------------------
     # Health event emission
-    # ------------------------------------------------------------------
 
     def _build_health_event_unlocked(self) -> HealthEventDict:
         """Build a health event dict.  Must be called while lock is held."""
@@ -468,9 +458,7 @@ class VoiceTelemetry:
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Health event emission failed: %s", exc)
 
-    # ------------------------------------------------------------------
     # Public query methods
-    # ------------------------------------------------------------------
 
     def get_latency_stats(self) -> LatencyStatsDict:
         """Return percentile latency stats for the capture-to-transcript metric.
@@ -604,9 +592,7 @@ class VoiceTelemetry:
             },
         )
 
-    # ------------------------------------------------------------------
     # Stage transition events (for widget indicator)
-    # ------------------------------------------------------------------
 
     def emit_stage_transition(self, stage: str) -> None:
         """Emit an activity feed event for a voice pipeline stage transition.
@@ -632,9 +618,7 @@ class VoiceTelemetry:
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Stage transition event emission failed: %s", exc)
 
-    # ------------------------------------------------------------------
     # Reset (test-only)
-    # ------------------------------------------------------------------
 
     def reset(self) -> None:
         """Reset all telemetry state.  Intended for testing only."""

@@ -161,9 +161,7 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
     re.compile(r"^file:///[A-Za-z]:/"),  # Only local file:// URIs with drive letter
 ]
 
-# ---------------------------------------------------------------------------
 # Rate-limit configuration
-# ---------------------------------------------------------------------------
 
 class _RateLimitConfig:
     """Describes a sliding-window rate-limit bucket."""
@@ -419,7 +417,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 on_credential_rotate=_rotate_signing_key,
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.error("SecurityOrchestrator init FAILED — server will reject non-essential requests: %s", exc)
             self.security = None
             self._security_degraded = True
@@ -437,7 +435,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             # Share with SecurityOrchestrator to avoid duplicate instances
             if self.security is not None:
                 self.security.owner_session = self.owner_session
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
             self._session_degraded = True
@@ -681,7 +679,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                     logger.debug("Sync engine/transport init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
-            except Exception as exc:  # boundary: catch-all justified
+            except Exception as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
                 # Do NOT set _sync_init_attempted so future calls can retry.
             return self._sync_engine
@@ -704,7 +702,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 from jarvis_engine.memory.engine import MemoryEngine
                 self._memory_engine = MemoryEngine(db_path)
                 logger.info("MemoryEngine lazy-initialized for mobile API metrics")
-            except Exception as exc:  # boundary: catch-all justified
+            except Exception as exc:
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
@@ -932,13 +930,11 @@ class MobileIngestHandler(
                 f"Command {lifecycle_state}",
                 details,
             )
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             # Activity feed must never break command execution.
             logger.debug("Activity feed logging failed: %s", exc)
 
-    # ------------------------------------------------------------------
     # Voice command helpers (decomposed from _run_voice_command)
-    # ------------------------------------------------------------------
 
     def _validate_voice_text(
         self,
@@ -1264,9 +1260,7 @@ class MobileIngestHandler(
             stderr_lines=stderr_lines,
         )
 
-    # ------------------------------------------------------------------
     # Main voice command orchestrator
-    # ------------------------------------------------------------------
 
     def _run_voice_command(
         self,
@@ -1608,9 +1602,7 @@ class MobileIngestHandler(
             return True
         return self._validate_auth(body)
 
-    # ------------------------------------------------------------------
     # GET handler methods (extracted for O(1) dispatch-dict routing)
-    # ------------------------------------------------------------------
 
     # Dispatch dict for GET routes — built once per class, O(1) lookup.
     _GET_DISPATCH: ClassVar[dict[str, str]] = {
@@ -1719,9 +1711,7 @@ class MobileIngestHandler(
             return False
         return True
 
-    # ------------------------------------------------------------------
     # POST handler methods (extracted for O(1) dispatch-dict routing)
-    # ------------------------------------------------------------------
 
     # ── Mission endpoints ────────────────────────────────────────────────
 
@@ -1880,7 +1870,7 @@ def _init_auto_sync_config(
         except OSError as exc:
             logger.debug("LAN IP detection for auto-sync failed: %s", exc)
         logger.info("Auto-sync config initialized")
-    except Exception as exc:  # boundary: catch-all justified
+    except Exception as exc:
         logger.warning("Failed to initialize auto-sync config: %s", exc)
 
 
@@ -1927,7 +1917,7 @@ def _init_sync_engine(
             logger.info("Sync engine and transport initialized for mobile API")
         else:
             logger.warning("No signing key; sync transport not initialized")
-    except Exception as exc:  # boundary: catch-all justified
+    except Exception as exc:
         logger.warning("Failed to initialize sync for mobile API: %s", exc)
 
 
@@ -2004,7 +1994,7 @@ def _start_bus_prewarm(repo_root: Path) -> None:
             # Install thread-capturing stdout for concurrent request handling
             _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
 
     import threading as _threading
@@ -2022,27 +2012,27 @@ def _shutdown_server(server: MobileIngestServer, store: MemoryStore) -> None:
             if sync_db is not None:
                 sync_db.close()
                 logger.info("Sync engine DB connection closed")
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.warning("Failed to close sync engine DB: %s", exc)
     # Close security orchestrator DB connection
     if server._security_db is not None:
         try:
             server._security_db.close()
             logger.info("Security DB connection closed")
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.warning("Failed to close security DB: %s", exc)
     # Close the MemoryEngine (lazy-initialized for metrics)
     if server._memory_engine is not None:
         try:
             server._memory_engine.close()
             logger.info("MemoryEngine connection closed")
-        except Exception as exc:  # boundary: catch-all justified
+        except Exception as exc:
             logger.warning("Failed to close MemoryEngine: %s", exc)
     # Close the MemoryStore (which holds its own SQLite connection)
     try:
         store.close()
         logger.info("MemoryStore connection closed")
-    except Exception as exc:  # boundary: catch-all justified
+    except Exception as exc:
         logger.warning("Failed to close MemoryStore: %s", exc)
 
 

@@ -98,9 +98,7 @@ class DiagnosticEngine:
         except (ImportError, OSError, ValueError):
             return self._root / ".planning" / "brain" / "jarvis_memory.db"
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def run_full_scan(self) -> list[DiagnosticIssue]:
         """Run all health checks, return sorted by severity."""
@@ -160,9 +158,7 @@ class DiagnosticEngine:
 
         return {"applied": False, "result": f"Unknown fix action: {action}"}
 
-    # ------------------------------------------------------------------
     # Health check methods
-    # ------------------------------------------------------------------
 
     def _check_database_health(self) -> list[DiagnosticIssue]:
         """Check database integrity, WAL size, and total DB size."""
@@ -546,9 +542,7 @@ class DiagnosticEngine:
 
         return issues
 
-    # ------------------------------------------------------------------
     # Auto-fix actions
-    # ------------------------------------------------------------------
 
     def _fix_vacuum_db(self) -> dict[str, Any]:
         """Run VACUUM + ANALYZE on memory.db."""

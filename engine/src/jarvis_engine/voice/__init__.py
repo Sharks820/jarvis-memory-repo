@@ -12,11 +12,9 @@ telemetry   – Voice UX telemetry & SLO tracking
 wakeword    – Wake-word detection
 """
 
-# ---------------------------------------------------------------------------
 # Lazy backward-compat shims so that old import paths keep working:
 #   from jarvis_engine.voice import speak_text          (was voice.py)
 #   from jarvis_engine.voice import VoiceSpeakResult    (was voice.py)
-# ---------------------------------------------------------------------------
 
 from jarvis_engine.voice.core import (  # noqa: F401
     VoiceSpeakResult,

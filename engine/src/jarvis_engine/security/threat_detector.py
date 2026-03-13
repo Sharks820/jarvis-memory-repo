@@ -20,9 +20,7 @@ from jarvis_engine.security.ip_tracker import ThreatReport
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Detection patterns
-# ---------------------------------------------------------------------------
 
 _SQL_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
@@ -92,9 +90,7 @@ _SUSPICIOUS_USER_AGENTS: list[str] = [
     "go-http-client",
 ]
 
-# ---------------------------------------------------------------------------
 # Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -116,15 +112,11 @@ class ThreatAssessment:
     recommended_action: str = "ALLOW"  # ALLOW / THROTTLE / CHALLENGE / BLOCK / KILL
 
 
-# ---------------------------------------------------------------------------
 # Severity helpers
-# ---------------------------------------------------------------------------
 
 _SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
-# ---------------------------------------------------------------------------
 # Detector
-# ---------------------------------------------------------------------------
 
 
 class _IPTrackerProtocol(Protocol):
@@ -168,9 +160,7 @@ class ThreatDetector:
         # Counter for periodic stale-IP cleanup (avoid O(n) scan every request)
         self._rate_check_counter: int = 0
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def assess(self, request_context: dict) -> ThreatAssessment:
         """Run all detection rules and return an aggregated assessment.
@@ -224,9 +214,7 @@ class ThreatDetector:
 
         return self._aggregate(signals)
 
-    # ------------------------------------------------------------------
     # Aggregation
-    # ------------------------------------------------------------------
 
     def _aggregate(self, signals: list[ThreatSignal]) -> ThreatAssessment:
         if not signals:
@@ -267,9 +255,7 @@ class ThreatDetector:
             recommended_action=action_map[level],
         )
 
-    # ------------------------------------------------------------------
     # Detection rules
-    # ------------------------------------------------------------------
 
     def _rule_payload_injection(self, ctx: dict) -> ThreatSignal | None:
         """Check for SQL injection patterns in body and path."""

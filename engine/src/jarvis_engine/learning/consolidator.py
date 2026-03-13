@@ -85,9 +85,7 @@ class MemoryConsolidator:
         self._similarity_threshold = similarity_threshold
         self._min_group_size = min_group_size
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def _process_group(
         self,
@@ -225,9 +223,7 @@ class MemoryConsolidator:
 
         return len(batch)
 
-    # ------------------------------------------------------------------
     # Clustering
-    # ------------------------------------------------------------------
 
     def _cluster_records(
         self,
@@ -276,9 +272,7 @@ class MemoryConsolidator:
 
         return groups
 
-    # ------------------------------------------------------------------
     # LLM summarisation (with concatenation fallback)
-    # ------------------------------------------------------------------
 
     def _consolidate_group(self, records: list[dict]) -> str | None:
         """Produce a single fact statement for a group of related records.
@@ -314,9 +308,7 @@ class MemoryConsolidator:
         text = (response.text or "").strip()
         return text if text else None
 
-    # ------------------------------------------------------------------
     # Storage helpers
-    # ------------------------------------------------------------------
 
     def _fetch_episodic_records(
         self,

@@ -10,6 +10,9 @@ from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, Mob
 
 logger = logging.getLogger(__name__)
 
+# Common exception tuple for health-route subsystem probes.
+_HEALTH_PROBE_ERRORS = (ImportError, RuntimeError, OSError, ValueError)
+
 
 class _HealthRouteServerProtocol(MobileRouteServerProtocol, Protocol):
     repo_root: Path
@@ -91,7 +94,7 @@ class HealthRoutesMixin:
                         "process_cpu_pct": (metrics.get("process_cpu_pct", {}) or {}).get("current", 0.0),
                         "embedding_cache_mb": (metrics.get("embedding_cache_mb", {}) or {}).get("current", 0.0),
                     }
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except _HEALTH_PROBE_ERRORS as exc:
             logger.debug("Reliability panel runtime snapshot unavailable: %s", exc)
         return panel
 
@@ -190,12 +193,12 @@ class HealthRoutesMixin:
         try:
             dash = build_intelligence_dashboard(self._root)
             combined["alerts"] = dash.get("proactive_alerts", [])
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except _HEALTH_PROBE_ERRORS as exc:
             logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
             combined["reliability"] = self._build_reliability_panel(self._root, reliability_cache=reliability_cache)
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except _HEALTH_PROBE_ERRORS as exc:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
         try:
@@ -268,7 +271,7 @@ class HealthRoutesMixin:
             from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
 
             metrics = hygiene_dashboard_metrics(self._root)
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except _HEALTH_PROBE_ERRORS as exc:
             logger.debug("Memory hygiene metrics failed: %s", exc)
             metrics = {}
         self._write_json(HTTPStatus.OK, {"ok": True, "hygiene": metrics})
@@ -289,7 +292,7 @@ class HealthRoutesMixin:
                 "score": score,
                 "issues": [i.to_dict() for i in issues],
             })
-        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        except _HEALTH_PROBE_ERRORS as exc:
             logger.debug("Diagnostics scan failed: %s", exc)
             self._write_json(HTTPStatus.OK, {
                 "ok": True,

@@ -21,10 +21,9 @@ class OpsBriefCommand:
 
 
 @dataclass
-class OpsBriefResult:
+class OpsBriefResult(ResultBase):
     brief: str = ""
     saved_path: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -34,10 +33,9 @@ class OpsExportActionsCommand:
 
 
 @dataclass
-class OpsExportActionsResult:
+class OpsExportActionsResult(ResultBase):
     actions_path: str = ""
     action_count: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -46,9 +44,8 @@ class OpsSyncCommand:
 
 
 @dataclass
-class OpsSyncResult:
+class OpsSyncResult(ResultBase):
     summary: SyncSummary | None = None
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,9 +70,8 @@ class AutomationRunCommand:
 
 
 @dataclass
-class AutomationRunResult:
+class AutomationRunResult(ResultBase):
     outcomes: list[ActionOutcome] = field(default_factory=list)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,10 +93,9 @@ class MissionStatusCommand:
 
 
 @dataclass
-class MissionStatusResult:
+class MissionStatusResult(ResultBase):
     missions: list[dict[str, Any]] = field(default_factory=list)
     total_count: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,9 +126,8 @@ class GrowthEvalCommand:
 
 
 @dataclass
-class GrowthEvalResult:
+class GrowthEvalResult(ResultBase):
     run: EvalRun | None = None
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -143,9 +137,8 @@ class GrowthReportCommand:
 
 
 @dataclass
-class GrowthReportResult:
+class GrowthReportResult(ResultBase):
     summary: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,9 +148,8 @@ class GrowthAuditCommand:
 
 
 @dataclass
-class GrowthAuditResult:
+class GrowthAuditResult(ResultBase):
     run: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -166,10 +158,9 @@ class MissionCancelCommand:
 
 
 @dataclass
-class MissionCancelResult:
+class MissionCancelResult(ResultBase):
     cancelled: bool = False
     mission: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -208,10 +199,9 @@ class MissionStepsCommand:
 
 
 @dataclass
-class MissionStepsResult:
+class MissionStepsResult(ResultBase):
     steps: list[dict[str, Any]] = field(default_factory=list)
     mission_id: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -220,10 +210,9 @@ class MissionActiveCommand:
 
 
 @dataclass
-class MissionActiveResult:
+class MissionActiveResult(ResultBase):
     missions: list[dict[str, Any]] = field(default_factory=list)
     count: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -250,9 +239,8 @@ class IntelligenceDashboardCommand:
 
 
 @dataclass
-class IntelligenceDashboardResult:
+class IntelligenceDashboardResult(ResultBase):
     dashboard: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -262,8 +250,7 @@ class DiagnosticRunCommand:
 
 
 @dataclass
-class DiagnosticRunResult:
+class DiagnosticRunResult(ResultBase):
     issues: list[dict[str, Any]] = field(default_factory=list)
     healthy: bool = True
     score: int = 100
-    return_code: int = 0

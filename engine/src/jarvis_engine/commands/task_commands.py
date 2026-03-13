@@ -39,10 +39,9 @@ class RouteCommand:
 
 
 @dataclass
-class RouteResult:
+class RouteResult(ResultBase):
     provider: str = ""
     reason: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)

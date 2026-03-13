@@ -8,8 +8,6 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Callable, cast
 
-logger = logging.getLogger(__name__)
-
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -112,6 +110,8 @@ from jarvis_engine.commands.sync_commands import (
     SyncPushCommand,
     SyncStatusCommand,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _register_with_fallback(

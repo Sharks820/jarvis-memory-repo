@@ -77,9 +77,7 @@ _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     },
 }
 
-# ---------------------------------------------------------------------------
 # DDL
-# ---------------------------------------------------------------------------
 
 _CHANGELOG_DDL = """\
 CREATE TABLE IF NOT EXISTS _sync_changelog (
@@ -118,9 +116,7 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_changelog_device ON _sync_changelog (device_id);",
 ]
 
-# ---------------------------------------------------------------------------
 # Trigger SQL generation
-# ---------------------------------------------------------------------------
 
 
 def _pk_expr(pk: str | list[str], alias: str) -> str:
@@ -421,9 +417,7 @@ def _build_delete_trigger(table: str, pk: str | list[str], fields: list[str], de
     ])
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 
 def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop") -> None:

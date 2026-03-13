@@ -38,9 +38,7 @@ class ForensicLogger:
         self._lock = threading.Lock()
         self._prev_hash: str = self._recover_last_hash()
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def log_event(self, event: dict) -> None:
         """Append *event* to the forensic log with timestamp and hash chain."""
@@ -197,9 +195,7 @@ class ForensicLogger:
             )
             zf.writestr("summary.txt", "\n".join(summary_lines) + "\n")
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _recover_last_hash(self) -> str:
         """Read the last line of the log to restore the hash chain.

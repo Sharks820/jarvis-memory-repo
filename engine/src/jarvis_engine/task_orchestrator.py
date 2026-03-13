@@ -423,18 +423,18 @@ class TaskOrchestrator:
     def _safe_output_path(self, raw_path: str) -> Path:
         try:
             path = Path(raw_path).expanduser()
-        except RuntimeError:
-            raise ValueError("Cannot expand user home directory in output path.")
+        except RuntimeError as exc:
+            raise ValueError("Cannot expand user home directory in output path.") from exc
         if path.is_absolute():
             resolved = path.resolve()
         else:
             resolved = (self._root / path).resolve()
         try:
             resolved.relative_to(self._root)
-        except ValueError:
+        except ValueError as exc:
             raise ValueError(
                 "Security policy: output path must remain inside the repository root."
-            )
+            ) from exc
         return resolved
 
     def _log(self, request: TaskRequest, result: TaskResult) -> None:

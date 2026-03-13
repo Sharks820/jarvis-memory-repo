@@ -27,9 +27,7 @@ from jarvis_engine.config import repo_root
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Categories
-# ---------------------------------------------------------------------------
 
 
 class ActivityCategory:
@@ -55,9 +53,7 @@ class ActivityCategory:
     VOICE_PIPELINE = "voice_pipeline"
 
 
-# ---------------------------------------------------------------------------
 # Event dataclass
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -71,9 +67,7 @@ class ActivityEvent:
     event_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
-# ---------------------------------------------------------------------------
 # Feed (SQLite-backed)
-# ---------------------------------------------------------------------------
 
 
 class ActivityFeed:
@@ -97,9 +91,7 @@ class ActivityFeed:
         self._db = connect_db(self._db_path, check_same_thread=False)
         self._init_schema()
 
-    # ------------------------------------------------------------------
     # Schema
-    # ------------------------------------------------------------------
 
     def _init_schema(self) -> None:
         """Create the activity_log table if it doesn't exist (idempotent)."""
@@ -121,9 +113,7 @@ class ActivityFeed:
                 ON activity_log(created_at);
         """)
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def _check_open(self) -> None:
         """Raise RuntimeError if the feed has been closed."""
@@ -250,9 +240,7 @@ class ActivityFeed:
                     "Failed to close activity feed database connection: %s", exc
                 )
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _auto_prune(self) -> None:
         """Delete oldest rows when count exceeds *max_events*.
@@ -280,9 +268,7 @@ class ActivityFeed:
         self.close()
 
 
-# ---------------------------------------------------------------------------
 # Module-level singleton
-# ---------------------------------------------------------------------------
 
 _feed: ActivityFeed | None = None
 _feed_lock = threading.Lock()

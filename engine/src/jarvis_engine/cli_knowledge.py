@@ -40,9 +40,7 @@ from jarvis_engine.commands.learning_commands import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Brain commands
-# ---------------------------------------------------------------------------
 
 
 def cmd_brain_status(as_json: bool) -> int:
@@ -145,9 +143,7 @@ def cmd_brain_regression(as_json: bool) -> int:
     return 0
 
 
-# ---------------------------------------------------------------------------
 # Knowledge graph commands
-# ---------------------------------------------------------------------------
 
 
 def cmd_knowledge_status(as_json: bool) -> int:
@@ -252,9 +248,7 @@ def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
     return 0
 
 
-# ---------------------------------------------------------------------------
 # Consolidation
-# ---------------------------------------------------------------------------
 
 
 def cmd_consolidate(branch: str, max_groups: int, dry_run: bool) -> int:
@@ -278,9 +272,7 @@ def cmd_consolidate(branch: str, max_groups: int, dry_run: bool) -> int:
     return 0 if not result.errors else 2
 
 
-# ---------------------------------------------------------------------------
 # Harvesting commands
-# ---------------------------------------------------------------------------
 
 
 def cmd_harvest(topic: str, providers: str | None, max_tokens: int) -> int:
@@ -356,9 +348,7 @@ def cmd_harvest_budget(
     return result.return_code
 
 
-# ---------------------------------------------------------------------------
 # Learning CLI commands
-# ---------------------------------------------------------------------------
 
 
 def cmd_learn(user_message: str, assistant_response: str) -> int:

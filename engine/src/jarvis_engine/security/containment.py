@@ -153,9 +153,7 @@ class ContainmentEngine:
         self._containment_history: deque[ContainResult] = deque(maxlen=1000)
         self._current_hmac_key: str | None = None
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def _apply_containment_actions(
         self,
@@ -401,9 +399,7 @@ class ContainmentEngine:
 
         return {"recovered": True, "level_recovered": level, "actions": actions}
 
-    # ------------------------------------------------------------------
     # Credential rotation
-    # ------------------------------------------------------------------
 
     def _rotate_credentials(self) -> str:
         """Generate a new HMAC signing key, store it, and propagate to server.
@@ -427,9 +423,7 @@ class ContainmentEngine:
         logger.warning("HMAC signing key rotated")
         return new_key
 
-    # ------------------------------------------------------------------
     # Internals
-    # ------------------------------------------------------------------
 
     def _verify_master_password(self, password: str) -> bool:
         """Check *password* against the stored master password hash.

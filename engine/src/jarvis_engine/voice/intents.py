@@ -697,12 +697,10 @@ def _expand_natural_command_aliases(lowered: str) -> str:
     return " ".join(aliases)
 
 
-# ---------------------------------------------------------------------------
 # Dispatch table — ordered list of (matcher, handler) rules.
 #
 # Order matters: first match wins, preserving the original if/elif semantics.
 # Grouped by theme; comments mark group boundaries for readability.
-# ---------------------------------------------------------------------------
 
 _DISPATCH_RULES: list[_IntentRule] = [
     # -- System setup & runtime control --

@@ -53,6 +53,8 @@ except ImportError:
 else:
     _log_activity = _activity_log
 
+logger = logging.getLogger(__name__)
+
 # Defer ollama import to avoid blocking when Ollama server isn't running.
 # Some ollama versions attempt a connection check during import/init.
 _HAS_OLLAMA = False
@@ -124,8 +126,6 @@ if TYPE_CHECKING:
     from jarvis_engine.gateway.circuit_breaker import ProviderHealthTracker
     from jarvis_engine.gateway.costs import CostTracker
     from jarvis_engine.learning.feedback import ResponseFeedbackTracker
-
-logger = logging.getLogger(__name__)
 
 
 # OpenAI-compatible cloud provider configurations

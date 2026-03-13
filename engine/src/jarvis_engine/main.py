@@ -59,16 +59,10 @@ from jarvis_engine.commands.proactive_commands import (
     WakeWordStartCommand,
 )
 
-logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
 # Command Bus factory — delegated to jarvis_engine._bus
-# ---------------------------------------------------------------------------
 from jarvis_engine._bus import get_bus as _get_bus  # noqa: E402
 
-# ---------------------------------------------------------------------------
 # Imports from split modules (used by CLI arg dispatch in this file)
-# ---------------------------------------------------------------------------
 from jarvis_engine.cli_ops import (  # noqa: E402
     cmd_ops_brief,
     cmd_ops_export_actions,
@@ -103,16 +97,12 @@ from jarvis_engine.cli_knowledge import (  # noqa: E402
     cmd_flag_expired,
 )
 
-# ---------------------------------------------------------------------------
 # Auto-ingest: delegated to jarvis_engine.auto_ingest (public module)
-# ---------------------------------------------------------------------------
 from jarvis_engine.auto_ingest import (  # noqa: E402
     auto_ingest_memory as _auto_ingest_memory,
 )
 
-# ---------------------------------------------------------------------------
 # Imports from _constants (only those used by remaining cmd_* functions)
-# ---------------------------------------------------------------------------
 from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT  # noqa: E402
 from jarvis_engine._shared import memory_db_path as _memory_db_path  # noqa: E402
 from jarvis_engine._shared import make_task_id as _make_task_id  # noqa: E402
@@ -120,9 +110,7 @@ from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME  # no
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME  # noqa: E402
 from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
 
-# ---------------------------------------------------------------------------
 # Imports from extracted modules (only symbols used by cmd_* in this file)
-# ---------------------------------------------------------------------------
 from jarvis_engine.voice.extractors import (  # noqa: E402
     escape_response,
     shorten_urls_for_speech,
@@ -131,10 +119,10 @@ from jarvis_engine.gaming_mode import gaming_processes_path  # noqa: E402
 from jarvis_engine.stt.contracts import VoiceUtterance  # noqa: E402
 
 
-# ---------------------------------------------------------------------------
 # Shared dispatch helper — imported from _cli_helpers
-# ---------------------------------------------------------------------------
 from jarvis_engine._cli_helpers import cli_dispatch as _dispatch  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_gaming_mode(enable: bool | None, reason: str, auto_detect: str) -> int:

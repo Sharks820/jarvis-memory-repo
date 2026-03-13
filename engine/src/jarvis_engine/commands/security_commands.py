@@ -25,9 +25,8 @@ class RuntimeControlCommand:
 
 
 @dataclass
-class RuntimeControlResult:
+class RuntimeControlResult(ResultBase):
     state: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -61,12 +60,11 @@ class ConnectStatusCommand:
 
 
 @dataclass
-class ConnectStatusResult:
+class ConnectStatusResult(ResultBase):
     statuses: list[ConnectorStatus] = field(default_factory=list)
     prompts: list[dict[str, Any]] = field(default_factory=list)
     ready: int = 0
     pending: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,10 +84,9 @@ class ConnectBootstrapCommand:
 
 
 @dataclass
-class ConnectBootstrapResult:
+class ConnectBootstrapResult(ResultBase):
     prompts: list[dict[str, Any]] = field(default_factory=list)
     ready: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,6 +128,5 @@ class PersonaConfigCommand:
 
 
 @dataclass
-class PersonaConfigResult:
+class PersonaConfigResult(ResultBase):
     config: PersonaConfig | dict[str, str] | None = None
-    message: str = ""

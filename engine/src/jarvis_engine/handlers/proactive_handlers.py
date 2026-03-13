@@ -7,7 +7,7 @@ import logging
 import threading
 import time as _time_mod
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.costs import CostTracker
@@ -37,7 +37,7 @@ class ProactiveCheckHandler:
     """Load snapshot data and evaluate proactive trigger rules."""
 
     def __init__(
-        self, root: Path, proactive_engine: Optional[ProactiveEngine] = None
+        self, root: Path, proactive_engine: ProactiveEngine | None = None
     ) -> None:
         self._root = root
         self._engine = proactive_engine
@@ -256,7 +256,7 @@ class WakeWordStartHandler:
 class CostReductionHandler:
     """Compute local-vs-cloud ratio, take snapshot, and compute trend."""
 
-    def __init__(self, root: Path, cost_tracker: Optional[CostTracker] = None) -> None:
+    def __init__(self, root: Path, cost_tracker: CostTracker | None = None) -> None:
         self._root = root
         self._cost_tracker = cost_tracker
 
@@ -310,8 +310,8 @@ class SelfTestHandler:
     def __init__(
         self,
         root: Path,
-        engine: Optional[MemoryEngine] = None,
-        embed_service: Optional[EmbeddingService] = None,
+        engine: MemoryEngine | None = None,
+        embed_service: EmbeddingService | None = None,
     ) -> None:
         self._root = root
         self._engine = engine

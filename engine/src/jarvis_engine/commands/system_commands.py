@@ -20,7 +20,7 @@ class StatusCommand:
 
 
 @dataclass
-class StatusResult:
+class StatusResult(ResultBase):
     profile: str = ""
     primary_runtime: str = ""
     secondary_runtime: str = ""
@@ -28,7 +28,6 @@ class StatusResult:
     operation_mode: str = ""
     cloud_burst_enabled: bool = False
     events: list[Any] = field(default_factory=list)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,10 +37,9 @@ class LogCommand:
 
 
 @dataclass
-class LogResult:
+class LogResult(ResultBase):
     ts: str = ""
     event_type: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -122,12 +120,11 @@ class GamingModeCommand:
 
 
 @dataclass
-class GamingModeResult:
+class GamingModeResult(ResultBase):
     state: dict[str, Any] = field(default_factory=dict)
     detected: bool = False
     detected_process: str = ""
     effective_enabled: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)

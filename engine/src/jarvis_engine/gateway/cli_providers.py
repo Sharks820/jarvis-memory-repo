@@ -29,9 +29,7 @@ from typing import TypedDict
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Token usage parsing from CLI stderr/stdout
-# ---------------------------------------------------------------------------
 
 # Patterns for extracting token counts from CLI output.
 # Claude CLI JSON has usage.input_tokens / usage.output_tokens in event stream.
@@ -164,9 +162,7 @@ def _detect_cli(name: str) -> str | None:
     return shutil.which(name)
 
 
-# ---------------------------------------------------------------------------
 # Provider registry
-# ---------------------------------------------------------------------------
 
 _CLI_CONFIGS: dict[str, dict] = {
     "claude-cli": {
@@ -232,9 +228,7 @@ def _get_executable(provider_key: str, bare_name: str) -> str:
     return _RESOLVED_PATHS.get(provider_key, bare_name)
 
 
-# ---------------------------------------------------------------------------
 # Common result / subprocess helpers
-# ---------------------------------------------------------------------------
 
 
 class CLIProviderResult(TypedDict):
@@ -370,9 +364,7 @@ def _run_cli_subprocess(
         )
 
 
-# ---------------------------------------------------------------------------
 # Invocation helpers
-# ---------------------------------------------------------------------------
 
 
 def _build_messages_text(messages: list[dict[str, str]]) -> str:
@@ -862,9 +854,7 @@ def call_kimi_cli(
     )
 
 
-# ---------------------------------------------------------------------------
 # Unified dispatcher
-# ---------------------------------------------------------------------------
 
 _CLI_CALLERS: dict[str, Callable] = {
     "claude-cli": call_claude_cli,

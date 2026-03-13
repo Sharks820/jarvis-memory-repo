@@ -46,9 +46,7 @@ class HoneypotStats(TypedDict):
     top_attackers: list[AttackerInfo]
 
 
-# ---------------------------------------------------------------------------
 # Honeypot path registry
-# ---------------------------------------------------------------------------
 
 HONEYPOT_PATHS: list[str] = [
     "/admin",
@@ -69,9 +67,7 @@ HONEYPOT_PATHS: list[str] = [
 # Normalise to a set for O(1) lookup
 _HONEYPOT_SET: set[str] = set(HONEYPOT_PATHS)
 
-# ---------------------------------------------------------------------------
 # Hit record
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -84,9 +80,7 @@ class _HitRecord:
     timestamp: float = field(default_factory=time.time)
 
 
-# ---------------------------------------------------------------------------
 # Fake response generators
-# ---------------------------------------------------------------------------
 
 
 def _fake_login_page() -> str:
@@ -224,9 +218,7 @@ _RESPONSE_MAP: dict[str, tuple[int, str, Callable[[], str]]] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # HoneypotEngine
-# ---------------------------------------------------------------------------
 
 
 class HoneypotEngine:
@@ -246,9 +238,7 @@ class HoneypotEngine:
         self._unique_ips: set[str] = set()
         self._unique_ips_cap: int = 10000  # cap to prevent unbounded growth
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def is_honeypot_path(self, path: str) -> bool:
         """Return ``True`` if *path* is a known honeypot endpoint."""

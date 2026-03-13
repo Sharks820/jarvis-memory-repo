@@ -147,9 +147,7 @@ class RegressionChecker:
             "captured_at": _now_iso(),
         }
 
-    # ------------------------------------------------------------------
     # Backup / Restore
-    # ------------------------------------------------------------------
 
     def backup_graph(self, tag: str = "") -> Path:
         """Copy the SQLite DB to a timestamped backup file.
@@ -191,9 +189,7 @@ class RegressionChecker:
 
         return backup_path
 
-    # ------------------------------------------------------------------
     # restore_graph helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _copy_backup_to_temp(backup_path: Path, tmp_dst: Path) -> None:
@@ -286,9 +282,7 @@ class RegressionChecker:
             logger.error("Failed to restore graph from %s: %s", backup_path, exc)
             return False
 
-    # ------------------------------------------------------------------
     # Node-level diff
-    # ------------------------------------------------------------------
 
     def node_diff(self, snapshot_before: KGSnapshot, snapshot_after: KGSnapshot) -> NodeDiff:
         """Compute node-level changes between two metric snapshots.

@@ -267,9 +267,7 @@ def set_process_title(name: str) -> None:
         logger.debug("setproctitle not available; process title unchanged")
 
 
-# ---------------------------------------------------------------------------
 # Personal vocabulary loader (shared by stt.py and stt_postprocess.py)
-# ---------------------------------------------------------------------------
 
 _personal_vocab_cache: dict[str, list[str]] = {}
 _personal_vocab_lock = threading.Lock()
@@ -335,9 +333,7 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         return _personal_vocab_cache["raw"]
 
 
-# ---------------------------------------------------------------------------
 # FTS5 query sanitization (shared by memory/engine.py and knowledge/graph.py)
-# ---------------------------------------------------------------------------
 
 # FTS5 special characters that must be escaped in user queries.
 # Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
@@ -439,9 +435,7 @@ def sanitize_fts_query(query: str) -> str:
     tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
     return " ".join(tokens).strip()
 
-# ---------------------------------------------------------------------------
 # Utilities moved from _constants.py (these are functions, not constants)
-# ---------------------------------------------------------------------------
 
 _lazy_cache: dict[str, object] = {}
 

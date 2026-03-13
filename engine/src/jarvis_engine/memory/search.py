@@ -55,19 +55,15 @@ __all__ = [
     "hybrid_search",
 ]
 
-# ---------------------------------------------------------------------------
 #  RRF weight constants — tune these to adjust FTS5 vs. semantic balance.
 #  fts_weight + vec_weight need not sum to 1; they are independent multipliers
 #  on each retrieval method's RRF contribution.
-# ---------------------------------------------------------------------------
 RRF_FTS_WEIGHT: float = 0.4  # keyword (FTS5) contribution
 RRF_VEC_WEIGHT: float = 0.6  # semantic (sqlite-vec) contribution
 
-# ---------------------------------------------------------------------------
 #  Debounced access-count updater — avoids a DB write on every search call.
 #  Flushes when the pending set reaches _ACCESS_BATCH_SIZE or when
 #  _ACCESS_FLUSH_INTERVAL seconds have elapsed since the first pending entry.
-# ---------------------------------------------------------------------------
 _ACCESS_BATCH_SIZE = 100
 _ACCESS_FLUSH_INTERVAL = 10.0  # seconds
 

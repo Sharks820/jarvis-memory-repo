@@ -59,14 +59,11 @@ class HeartbeatMonitor:
         self._healthy: bool = True
         self._running: bool = False
         self._started_at: Optional[float] = None
-        # ---------------------------------------------------------------------
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def start(self) -> None:
         """Start the watchdog daemon thread.
@@ -140,9 +137,7 @@ class HeartbeatMonitor:
                 else 0.0,
             }
 
-    # ------------------------------------------------------------------
     # Internal watchdog loop
-    # ------------------------------------------------------------------
 
     def _watchdog_loop(self) -> None:
         """Background loop that checks for missed heartbeats."""

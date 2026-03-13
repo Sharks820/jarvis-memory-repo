@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -49,9 +47,7 @@ class ResolutionResult:
     errors: list[str] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
 # Entity resolver
-# ---------------------------------------------------------------------------
 
 
 class EntityResolver:
@@ -67,9 +63,7 @@ class EntityResolver:
         self._embed_service = embed_service
         self._threshold = similarity_threshold
 
-    # ------------------------------------------------------------------
     # Schema -- ensure merge history table exists
-    # ------------------------------------------------------------------
 
     def _ensure_merge_history(self) -> None:
         """Create kg_merge_history table if it does not exist (idempotent)."""
@@ -87,9 +81,7 @@ class EntityResolver:
                 );
             """)
 
-    # ------------------------------------------------------------------
     # Duplicate detection
-    # ------------------------------------------------------------------
 
     # Default number of nearest neighbours to retrieve per node when using
     # vector-based candidate retrieval.  Kept small to bound total comparisons
@@ -392,9 +384,7 @@ class EntityResolver:
                         )
                     )
 
-    # ------------------------------------------------------------------
     # Merge
-    # ------------------------------------------------------------------
 
     def _precompute_merge_embedding(self, label: str) -> bytes | None:
         """Pre-compute vec embedding blob for a label WITHOUT holding any lock.
@@ -706,9 +696,7 @@ class EntityResolver:
         self._kg.db.commit()
         self._kg.invalidate_cache()
 
-    # ------------------------------------------------------------------
     # Auto-resolve
-    # ------------------------------------------------------------------
 
     def auto_resolve(
         self,
@@ -789,9 +777,7 @@ class EntityResolver:
 
         return result
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _pick_keeper(self, id_a: str, id_b: str) -> tuple[str, str]:
         """Choose which node to keep based on confidence then edge count.

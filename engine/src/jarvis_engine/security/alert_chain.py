@@ -63,9 +63,7 @@ class AlertChain:
         self._dedup_cache: dict[tuple[str | None, int], float] = {}
         self._dispatch_callbacks: list = []
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def send_alert(
         self,
@@ -160,9 +158,7 @@ class AlertChain:
             items = list(self._alerts)
             return list(reversed(items[-limit:]))
 
-    # ------------------------------------------------------------------
     # Dedup logic
-    # ------------------------------------------------------------------
 
     def _should_dedup(
         self, source_ip: str | None, level: int, now: float | None = None
@@ -180,9 +176,7 @@ class AlertChain:
             return False
         return (now - last_time) < _DEDUP_WINDOW_S
 
-    # ------------------------------------------------------------------
     # Dispatch internals
-    # ------------------------------------------------------------------
 
     def _dispatch(
         self,

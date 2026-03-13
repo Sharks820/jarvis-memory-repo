@@ -19,9 +19,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Availability check (no side-effects on import)
-# ---------------------------------------------------------------------------
 
 _torch_available: bool | None = None
 _silero_available: bool | None = None
@@ -56,9 +54,7 @@ def _check_silero() -> bool:
     return _silero_available
 
 
-# ---------------------------------------------------------------------------
 # SileroVADDetector
-# ---------------------------------------------------------------------------
 
 # Silero VAD operates on fixed-size windows.  At 16 kHz the recommended
 # window is 512 samples (32 ms).
@@ -236,9 +232,7 @@ class SileroVADDetector:
         return _check_torch() and _check_silero()
 
 
-# ---------------------------------------------------------------------------
 # Module-level singleton (same pattern as _local_stt_instance in stt.py)
-# ---------------------------------------------------------------------------
 
 _vad_instance: SileroVADDetector | None = None
 _vad_lock = threading.Lock()

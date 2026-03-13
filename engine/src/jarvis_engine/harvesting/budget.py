@@ -97,7 +97,7 @@ class BudgetManager:
                 )
             self._db.commit()
 
-    _VALID_PERIODS = {"daily", "monthly"}
+    _VALID_PERIODS: frozenset[str] = frozenset({"daily", "monthly"})
 
     def set_budget(
         self,

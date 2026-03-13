@@ -14,9 +14,7 @@ from typing import Any, TypedDict
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 
-# ---------------------------------------------------------------------------
 # TypedDicts
-# ---------------------------------------------------------------------------
 
 
 class AttackIntelligence(TypedDict):
@@ -27,9 +25,7 @@ class AttackIntelligence(TypedDict):
     recent_attacks: list[dict]
 
 
-# ---------------------------------------------------------------------------
 # Schema
-# ---------------------------------------------------------------------------
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS attack_patterns (
@@ -56,9 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_attack_patterns_last_seen
 """
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _payload_hash(payload: str) -> str:
@@ -80,9 +74,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-# ---------------------------------------------------------------------------
 # AttackPatternMemory
-# ---------------------------------------------------------------------------
 
 
 class AttackPatternMemory:

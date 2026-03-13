@@ -21,9 +21,7 @@ from jarvis_engine._shared import now_iso as _now_iso
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # TypedDicts
-# ---------------------------------------------------------------------------
 
 
 class DefenseDashboard(TypedDict):
@@ -35,9 +33,7 @@ class DefenseDashboard(TypedDict):
     top_categories: list[dict]
 
 
-# ---------------------------------------------------------------------------
 # Auto-rule generation threshold
-# ---------------------------------------------------------------------------
 
 _AUTO_RULE_THRESHOLD = 3  # similar attacks needed to generate a rule
 
@@ -86,9 +82,7 @@ class AdaptiveDefenseEngine:
         self._unique_ips_cap: int = 10000  # cap to prevent unbounded growth
         self._category_counts_cap: int = 1000  # max distinct categories tracked
 
-    # ------------------------------------------------------------------
     # Record a detection event
-    # ------------------------------------------------------------------
 
     def record_detection(
         self,
@@ -130,9 +124,7 @@ class AdaptiveDefenseEngine:
             ):
                 self._category_counts[category] += 1
 
-    # ------------------------------------------------------------------
     # Auto-rule generation
-    # ------------------------------------------------------------------
 
     def check_auto_rule(self, category: str) -> dict[str, Any] | None:
         """Check if a category has enough detections to auto-generate a rule.
@@ -175,9 +167,7 @@ class AdaptiveDefenseEngine:
         )
         return rule
 
-    # ------------------------------------------------------------------
     # Dashboard & metrics
-    # ------------------------------------------------------------------
 
     def get_defense_dashboard(self) -> DefenseDashboard:
         """Return a metrics dashboard dict.
@@ -210,9 +200,7 @@ class AdaptiveDefenseEngine:
             "top_categories": [{"category": cat, "count": cnt} for cat, cnt in top],
         }
 
-    # ------------------------------------------------------------------
     # Briefing
-    # ------------------------------------------------------------------
 
     def generate_briefing(self) -> str:
         """Return a human-readable text briefing of defense status."""
@@ -238,9 +226,7 @@ class AdaptiveDefenseEngine:
 
         return "\n".join(lines)
 
-    # ------------------------------------------------------------------
     # Rule access
-    # ------------------------------------------------------------------
 
     def get_rules(self) -> list[dict[str, Any]]:
         """Return the list of auto-generated defense rules."""

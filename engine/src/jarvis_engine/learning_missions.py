@@ -593,9 +593,7 @@ def run_learning_mission(
     return report
 
 
-# ---------------------------------------------------------------------------
 # Cancel a mission
-# ---------------------------------------------------------------------------
 
 
 def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
@@ -636,9 +634,7 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
     return target
 
 
-# ---------------------------------------------------------------------------
 # Retry failed missions
-# ---------------------------------------------------------------------------
 
 def retry_failed_missions(root: Path) -> int:
     """Re-queue failed missions (up to 2 retries) by setting status back to pending.
@@ -682,9 +678,7 @@ def retry_failed_missions(root: Path) -> int:
     return re_queued
 
 
-# ---------------------------------------------------------------------------
 # Auto-generate missions from knowledge gaps
-# ---------------------------------------------------------------------------
 
 _MISSION_OBJECTIVES = [
     "Discover verified facts and deepen knowledge graph coverage",
@@ -881,9 +875,7 @@ def auto_generate_missions(
     return _create_missions_from_topics(root, collector.candidates, max_new)
 
 
-# ---------------------------------------------------------------------------
 # Step-driven progress model (Task D)
-# ---------------------------------------------------------------------------
 
 _MISSION_STEPS: list[MissionStep] = [
     {"name": "init", "description": "Initializing mission", "weight": 0.5, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
@@ -1006,9 +998,7 @@ def get_now_working_on(root: Path) -> dict[str, Any] | None:
     return None
 
 
-# ---------------------------------------------------------------------------
 # Pause / Resume / Restart lifecycle controls (Task D)
-# ---------------------------------------------------------------------------
 
 
 def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
@@ -1101,9 +1091,7 @@ def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
     return target
 
 
-# ---------------------------------------------------------------------------
 # Learning dashboard enrichment (Task D)
-# ---------------------------------------------------------------------------
 
 
 def mission_dashboard_metrics(root: Path) -> dict[str, Any]:

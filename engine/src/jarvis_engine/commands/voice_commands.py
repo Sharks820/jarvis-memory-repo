@@ -17,10 +17,9 @@ class VoiceListCommand:
 
 
 @dataclass
-class VoiceListResult:
+class VoiceListResult(ResultBase):
     windows_voices: list[str] = field(default_factory=list)
     edge_voices: list[str] = field(default_factory=list)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -33,10 +32,9 @@ class VoiceSayCommand:
 
 
 @dataclass
-class VoiceSayResult:
+class VoiceSayResult(ResultBase):
     voice_name: str = ""
     output_wav: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,11 +45,10 @@ class VoiceEnrollCommand:
 
 
 @dataclass
-class VoiceEnrollResult:
+class VoiceEnrollResult(ResultBase):
     user_id: str = ""
     profile_path: str = ""
     samples: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,12 +59,11 @@ class VoiceVerifyCommand:
 
 
 @dataclass
-class VoiceVerifyResult:
+class VoiceVerifyResult(ResultBase):
     user_id: str = ""
     score: float = 0.0
     threshold: float = 0.82
     matched: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -78,13 +74,12 @@ class VoiceListenCommand:
 
 
 @dataclass
-class VoiceListenResult:
+class VoiceListenResult(ResultBase):
     text: str = ""
     confidence: float = 0.0
     duration_seconds: float = 0.0
     segments: list[TranscriptionSegment] | None = None
     utterance: VoiceUtterance | None = None
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -121,8 +116,7 @@ class PersonaComposeCommand:
 
 
 @dataclass
-class PersonaComposeResult:
+class PersonaComposeResult(ResultBase):
     text: str = ""
     branch: str = ""
     tone: str = ""
-    message: str = ""

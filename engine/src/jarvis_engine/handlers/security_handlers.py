@@ -7,8 +7,6 @@ import logging
 import re
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from jarvis_engine._shared import check_path_within_root as _check_path_within_root
 
 from jarvis_engine.commands.security_commands import (
@@ -29,6 +27,8 @@ from jarvis_engine.commands.security_commands import (
     RuntimeControlCommand,
     RuntimeControlResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class _SecurityHandlerBase:

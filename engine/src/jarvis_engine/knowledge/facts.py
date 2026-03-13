@@ -43,7 +43,7 @@ class FactExtractor:
     """Extract structured facts from text using domain-specific patterns."""
 
     # Each pattern tuple: (compiled_regex, subject_prefix, predicate, base_confidence)
-    PATTERNS: list[tuple[re.Pattern, str, str, float]] = [
+    PATTERNS: tuple[tuple[re.Pattern, str, str, float], ...] = (
         # Health: "takes medication X", "prescribed X", "on X daily"
         (
             re.compile(
@@ -104,7 +104,7 @@ class FactExtractor:
             "earns",
             0.65,
         ),
-    ]
+    )
 
     def extract(
         self, text: str, source: str = "", branch: str = "", max_facts: int = 10

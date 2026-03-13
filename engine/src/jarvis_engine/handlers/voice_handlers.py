@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 
-logger = logging.getLogger(__name__)
-
 from jarvis_engine.commands.voice_commands import (
     PersonaComposeCommand,
     PersonaComposeResult,
@@ -32,6 +30,8 @@ from jarvis_engine.commands.voice_commands import (
     VoiceVerifyResult,
 )
 from jarvis_engine.stt.contracts import VoiceUtterance
+
+logger = logging.getLogger(__name__)
 
 
 def _build_voice_utterance(

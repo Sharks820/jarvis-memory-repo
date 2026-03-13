@@ -32,9 +32,7 @@ def _current_datetime_prompt_line() -> str:
     return get_datetime_prompt()
 
 
-# ---------------------------------------------------------------------------
 # Memory retrieval helpers
-# ---------------------------------------------------------------------------
 
 
 def _retrieve_memories_hybrid(
@@ -71,13 +69,11 @@ def _retrieve_memories_legacy(
 
     Returns a list of summary strings.  Returns empty list on failure.
     """
-    import jarvis_engine.voice.pipeline as _vp
-
-    repo_root = _vp.repo_root
+    from jarvis_engine.brain_memory import build_context_packet
+    from jarvis_engine.config import repo_root
 
     try:
-        _build_context = _vp.build_context_packet
-        packet = _build_context(
+        packet = build_context_packet(
             repo_root(), query=query, max_items=max_items, max_chars=1800
         )
         selected = packet.get("selected", [])
@@ -94,9 +90,7 @@ def _retrieve_memories_legacy(
         return []
 
 
-# ---------------------------------------------------------------------------
 # Fact injection helpers
-# ---------------------------------------------------------------------------
 
 
 def _inject_kg_facts(
@@ -189,9 +183,7 @@ def _inject_semantic_facts(
         logger.debug("KG semantic fact query failed: %s", sem_exc)
 
 
-# ---------------------------------------------------------------------------
 # Cross-branch query helper
-# ---------------------------------------------------------------------------
 
 
 def _query_cross_branch(
@@ -230,9 +222,7 @@ def _query_cross_branch(
         return []
 
 
-# ---------------------------------------------------------------------------
 # Preference loading helper
-# ---------------------------------------------------------------------------
 
 
 def _load_preferences(bus: "CommandBus") -> list[str]:
@@ -253,9 +243,7 @@ def _load_preferences(bus: "CommandBus") -> list[str]:
     return preference_lines
 
 
-# ---------------------------------------------------------------------------
 # Main orchestrator
-# ---------------------------------------------------------------------------
 
 
 def _build_smart_context(
@@ -321,9 +309,8 @@ def _build_system_parts(
     the LLM system prompt.
     """
     from jarvis_engine.persona import get_persona_prompt
-    import jarvis_engine.voice.pipeline as _vp
+    from jarvis_engine.config import repo_root
 
-    repo_root = _vp.repo_root
     persona = load_persona_config(repo_root())
     parts = [_current_datetime_prompt_line(), get_persona_prompt(persona)]
     if fact_lines:

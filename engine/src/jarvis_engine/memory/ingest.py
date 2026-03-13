@@ -54,9 +54,7 @@ class RecordDict(TypedDict):
     last_accessed: str
 
 
-# ---------------------------------------------------------------------------
 # Rule-based importance scoring
-# ---------------------------------------------------------------------------
 
 _IMPORTANCE_RULES: list[tuple[list[str], float]] = [
     # (keywords, score) — first match wins, order matters

@@ -85,9 +85,7 @@ class CarrierIntel:
     risk_score: float = 0.0  # 0.0-1.0 from lookup provider
 
 
-# ---------------------------------------------------------------------------
 #  Campaign Detection
-# ---------------------------------------------------------------------------
 
 
 def _group_reports_by_prefix(
@@ -454,9 +452,7 @@ _SCAM_LABELS = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
 #  Time-of-day scoring
-# ---------------------------------------------------------------------------
 
 # US area code → timezone mapping (major codes, covers >80% of US numbers)
 _AREA_CODE_TZ: dict[str, str] = {
@@ -716,9 +712,7 @@ def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
     return 0.0
 
 
-# ---------------------------------------------------------------------------
 #  Call Intel Reporting
-# ---------------------------------------------------------------------------
 
 
 def create_call_intel_report(
@@ -747,9 +741,7 @@ def create_call_intel_report(
     )
 
 
-# ---------------------------------------------------------------------------
 #  Campaign Persistence
-# ---------------------------------------------------------------------------
 
 
 def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
@@ -825,9 +817,7 @@ def load_call_intel(path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
         return []
 
 
-# ---------------------------------------------------------------------------
 #  Carrier Lookup Cache
-# ---------------------------------------------------------------------------
 
 
 def save_carrier_intel(path: Path, intel: CarrierIntel) -> None:
@@ -859,9 +849,7 @@ def _load_carrier_cache(path: Path) -> dict[str, Any]:
     return load_json_file(path, {}, expected_type=dict)
 
 
-# ---------------------------------------------------------------------------
 #  Prefix Blocking
-# ---------------------------------------------------------------------------
 
 
 def build_prefix_block_actions(
@@ -902,9 +890,7 @@ def build_prefix_block_actions(
     return actions
 
 
-# ---------------------------------------------------------------------------
 #  Helpers
-# ---------------------------------------------------------------------------
 
 
 def _generate_campaign_id(prefix: str, numbers: list[str]) -> str:

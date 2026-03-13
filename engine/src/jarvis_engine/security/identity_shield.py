@@ -111,9 +111,7 @@ class BreachLookupResult(TypedDict):
     ips: list[str]
 
 
-# ---------------------------------------------------------------------------
 # Adjacent-key map (QWERTY layout)
-# ---------------------------------------------------------------------------
 
 _ADJACENT_KEYS: dict[str, str] = {
     "q": "wa",
@@ -144,9 +142,7 @@ _ADJACENT_KEYS: dict[str, str] = {
     "m": "njk",
 }
 
-# ---------------------------------------------------------------------------
 # Homoglyph map
-# ---------------------------------------------------------------------------
 
 _HOMOGLYPHS: dict[str, list[str]] = {
     "a": ["@", "4"],
@@ -161,9 +157,7 @@ _HOMOGLYPHS: dict[str, list[str]] = {
     "z": ["2"],
 }
 
-# ---------------------------------------------------------------------------
 # Platform URL templates
-# ---------------------------------------------------------------------------
 
 _PLATFORM_URLS: dict[str, str] = {
     "twitter": "https://x.com/{username}",
@@ -172,9 +166,7 @@ _PLATFORM_URLS: dict[str, str] = {
 }
 
 
-# ========================================================================
 # FamilyShield
-# ========================================================================
 
 
 class FamilyShield:
@@ -195,9 +187,7 @@ class FamilyShield:
             if data is not None:
                 self._members = data.get("members", [])
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def add_member(
         self,
@@ -257,9 +247,7 @@ class FamilyShield:
                 "total_domains": sum(len(m.get("domains", [])) for m in self._members),
             }
 
-    # ------------------------------------------------------------------
     # Persistence
-    # ------------------------------------------------------------------
 
     def _persist(self) -> None:
         """Write current state to JSON config (caller holds _lock)."""
@@ -275,9 +263,7 @@ class FamilyShield:
             logger.error("Failed to persist FamilyShield config: %s", exc)
 
 
-# ========================================================================
 # BreachMonitor
-# ========================================================================
 
 
 class BreachMonitor:
@@ -293,9 +279,7 @@ class BreachMonitor:
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key
 
-    # ------------------------------------------------------------------
     # Password k-anonymity check
-    # ------------------------------------------------------------------
 
     def check_password(self, password: str) -> PasswordCheckResult:
         """Check if *password* appears in known breaches using k-anonymity.
@@ -321,9 +305,7 @@ class BreachMonitor:
 
         return {"compromised": False, "count": 0}
 
-    # ------------------------------------------------------------------
     # Email breach check
-    # ------------------------------------------------------------------
 
     def check_email(self, email: str) -> list[BreachRecord]:
         """Query HIBP for breaches affecting *email*.
@@ -365,9 +347,7 @@ class BreachMonitor:
             })
         return results
 
-    # ------------------------------------------------------------------
     # Bulk check
-    # ------------------------------------------------------------------
 
     def check_all(self, family: FamilyShield) -> dict[str, list[BreachRecord]]:
         """Check all family emails for breaches.
@@ -379,9 +359,7 @@ class BreachMonitor:
             results[email] = self.check_email(email)
         return results
 
-    # ------------------------------------------------------------------
     # Status
-    # ------------------------------------------------------------------
 
     def status(self) -> BreachMonitorStatus:
         """Return module status summary."""
@@ -391,17 +369,13 @@ class BreachMonitor:
         }
 
 
-# ========================================================================
 # TyposquatMonitor
-# ========================================================================
 
 
 class TyposquatMonitor:
     """Generates typosquat domain variants and checks DNS registration."""
 
-    # ------------------------------------------------------------------
     # Variant generation
-    # ------------------------------------------------------------------
 
     def generate_variants(self, domain: str) -> list[str]:
         """Generate typosquat variants for *domain*.
@@ -451,9 +425,7 @@ class TyposquatMonitor:
 
         return variants
 
-    # ------------------------------------------------------------------
     # DNS check
-    # ------------------------------------------------------------------
 
     def check_domain(self, domain: str) -> list[BreachLookupResult]:
         """Check which typosquat variants of *domain* have DNS records.
@@ -494,9 +466,7 @@ class TyposquatMonitor:
         # Fallback: sequential
         return [_lookup(v) for v in variants]
 
-    # ------------------------------------------------------------------
     # Family scan
-    # ------------------------------------------------------------------
 
     def scan_all(self, family: FamilyShield) -> dict[str, list[BreachLookupResult]]:
         """Check all family domains for typosquat variants.
@@ -508,9 +478,7 @@ class TyposquatMonitor:
             results[domain] = self.check_domain(domain)
         return results
 
-    # ------------------------------------------------------------------
     # Status
-    # ------------------------------------------------------------------
 
     def status(self) -> TyposquatMonitorStatus:
         """Return module status summary."""
@@ -519,9 +487,7 @@ class TyposquatMonitor:
         }
 
 
-# ========================================================================
 # ImpersonationDetector
-# ========================================================================
 
 
 class ImpersonationDetector:
@@ -530,9 +496,7 @@ class ImpersonationDetector:
 
     _TIMEOUT_SECONDS = 5
 
-    # ------------------------------------------------------------------
     # Variant generation
-    # ------------------------------------------------------------------
 
     def generate_username_variants(self, username: str) -> list[str]:
         """Generate impersonation-style variants of *username*.
@@ -574,9 +538,7 @@ class ImpersonationDetector:
 
         return variants
 
-    # ------------------------------------------------------------------
     # Platform profile check
-    # ------------------------------------------------------------------
 
     def check_platform(self, username: str, platform: str) -> PlatformCheckResult | None:
         """Check if *username* exists on *platform*.
@@ -613,9 +575,7 @@ class ImpersonationDetector:
 
         return result
 
-    # ------------------------------------------------------------------
     # Family scan
-    # ------------------------------------------------------------------
 
     def scan_all(self, family: FamilyShield) -> dict[str, list[PlatformCheckResult]]:
         """Check all family usernames for impersonation across platforms.
@@ -662,9 +622,7 @@ class ImpersonationDetector:
 
         return results
 
-    # ------------------------------------------------------------------
     # Status
-    # ------------------------------------------------------------------
 
     def status(self) -> ImpersonationDetectorStatus:
         """Return module status summary."""

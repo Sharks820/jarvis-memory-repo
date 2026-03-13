@@ -227,9 +227,7 @@ class SecurityOrchestrator:
         # Note: HeartbeatMonitor and HomeNetworkMonitor are NOT instantiated here.
         # They start background threads and are managed by the daemon startup code.
 
-    # ------------------------------------------------------------------
     # Module initialisation / status helpers
-    # ------------------------------------------------------------------
 
     def _init_module(
         self,
@@ -275,9 +273,7 @@ class SecurityOrchestrator:
             )
             return None
 
-    # ------------------------------------------------------------------
     # Inbound request pipeline
-    # ------------------------------------------------------------------
 
     def check_request(
         self, path: str, source_ip: str, headers: dict,
@@ -329,9 +325,7 @@ class SecurityOrchestrator:
             "containment_actions": containment_actions,
         }
 
-    # ------------------------------------------------------------------
     # check_request helper methods
-    # ------------------------------------------------------------------
 
     def _check_honeypot(
         self, path: str, source_ip: str, headers: dict,
@@ -586,9 +580,7 @@ class SecurityOrchestrator:
             if blocked:
                 self._total_blocked += 1
 
-    # ------------------------------------------------------------------
     # Outbound output scanning
-    # ------------------------------------------------------------------
 
     def scan_output(
         self,
@@ -618,9 +610,7 @@ class SecurityOrchestrator:
             "filtered_text": response_text if result.safe else "[REDACTED: security issues detected]",
         }
 
-    # ------------------------------------------------------------------
     # Status dashboard
-    # ------------------------------------------------------------------
 
     def status(self) -> SecurityStatus:
         """Return aggregate security status across all modules.
@@ -664,9 +654,7 @@ class SecurityOrchestrator:
 
         return cast(SecurityStatus, result)
 
-    # ------------------------------------------------------------------
     # Public delegation methods for CQRS handlers
-    # ------------------------------------------------------------------
 
     def contain(self, ip: str, level: int, reason: str) -> ContainResult:
         """Execute containment at the specified *level* against *ip*.
@@ -710,9 +698,7 @@ class SecurityOrchestrator:
         """Unblock an IP address via the internal ``IPTracker``."""
         self._ip_tracker.unblock_ip(ip)
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _handle_threat(
         self,

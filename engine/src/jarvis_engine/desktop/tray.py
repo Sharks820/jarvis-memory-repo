@@ -91,6 +91,6 @@ class TrayMixin:
         if self._tray_icon is not None:
             try:
                 self._tray_icon.stop()
-            except Exception as exc:  # boundary: catch-all justified
+            except (OSError, RuntimeError) as exc:
                 logger.debug("Failed to stop tray icon: %s", exc)
             self._tray_icon = None

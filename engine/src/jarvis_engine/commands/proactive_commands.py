@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class ProactiveCheckCommand:
@@ -14,10 +16,9 @@ class ProactiveCheckCommand:
 
 
 @dataclass
-class ProactiveCheckResult:
+class ProactiveCheckResult(ResultBase):
     alerts_fired: int = 0
     alerts: list[dict[str, Any]] = field(default_factory=list)
-    message: str = ""
     diagnostics: str = ""
 
 
@@ -29,9 +30,8 @@ class WakeWordStartCommand:
 
 
 @dataclass
-class WakeWordStartResult:
+class WakeWordStartResult(ResultBase):
     started: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -42,13 +42,12 @@ class CostReductionCommand:
 
 
 @dataclass
-class CostReductionResult:
+class CostReductionResult(ResultBase):
     local_pct: float = 0.0
     cloud_cost_usd: float = 0.0
     failed_count: int = 0
     failed_cost_usd: float = 0.0
     trend: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -59,9 +58,8 @@ class SelfTestCommand:
 
 
 @dataclass
-class SelfTestResult:
+class SelfTestResult(ResultBase):
     average_score: float = 0.0
     tasks_run: int = 0
     regression_detected: bool = False
-    message: str = ""
     per_task_scores: list = field(default_factory=list)

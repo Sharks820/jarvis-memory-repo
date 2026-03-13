@@ -25,9 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Verdict types
-# ---------------------------------------------------------------------------
 
 
 class InjectionVerdict(Enum):
@@ -49,9 +47,7 @@ class InjectionResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
-# ---------------------------------------------------------------------------
 # Pattern library — Layer 1
-# ---------------------------------------------------------------------------
 
 # Each tuple is (pattern_name, compiled_regex).  Flags are applied per-entry
 # so that patterns requiring DOTALL/MULTILINE can opt in individually.
@@ -246,9 +242,7 @@ _STRONG_PATTERN_NAMES: frozenset[str] = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
 # Structural analysis helpers — Layer 2
-# ---------------------------------------------------------------------------
 
 # Imperative verbs that suggest command-like syntax
 _IMPERATIVE_VERBS: frozenset[str] = frozenset(
@@ -406,9 +400,7 @@ def _detect_mixed_scripts(text: str) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
 # PromptInjectionFirewall
-# ---------------------------------------------------------------------------
 
 
 class PromptInjectionFirewall:

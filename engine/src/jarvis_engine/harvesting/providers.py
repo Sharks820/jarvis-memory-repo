@@ -51,11 +51,11 @@ class HarvesterProvider:
         if self._client is None:
             try:
                 from openai import OpenAI
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
                     f"Provider {self.name} requires 'openai' package. "
                     "Install with: pip install openai>=1.0.0"
-                )
+                ) from exc
 
             self._client = OpenAI(
                 api_key=self._api_key, base_url=self.base_url, timeout=60.0
@@ -209,11 +209,11 @@ class GeminiProvider:
         if self._client is None:
             try:
                 from google import genai
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
                     "GeminiProvider requires 'google-genai' package. "
                     "Install with: pip install google-genai>=1.0.0"
-                )
+                ) from exc
 
             self._client = genai.Client(
                 api_key=self._api_key,

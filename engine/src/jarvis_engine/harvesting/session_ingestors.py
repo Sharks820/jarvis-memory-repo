@@ -124,9 +124,7 @@ class CodexIngestor:
         return _parse_session_jsonl(session_path, entry_type="assistant")
 
 
-# ---------------------------------------------------------------------------
 # Shared JSONL parsing
-# ---------------------------------------------------------------------------
 
 
 def _parse_session_jsonl(path: Path, entry_type: str = "assistant") -> list[str]:

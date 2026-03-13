@@ -32,9 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # TypedDicts
-# ---------------------------------------------------------------------------
 
 
 class NeutralizationResult(TypedDict):
@@ -141,9 +139,7 @@ class ThreatNeutralizer:
         # Recent actions log (bounded)
         self._recent_actions: deque[dict] = deque(maxlen=500)
 
-    # ------------------------------------------------------------------
     # Main neutralization pipeline
-    # ------------------------------------------------------------------
 
     def neutralize(
         self, ip: str, category: str, evidence: dict
@@ -325,9 +321,7 @@ class ThreatNeutralizer:
                 self._total_reported += 1
             self._recent_actions.append(action_record)
 
-    # ------------------------------------------------------------------
     # AbuseIPDB reporting
-    # ------------------------------------------------------------------
 
     def report_to_abuseipdb(
         self,
@@ -404,9 +398,7 @@ class ThreatNeutralizer:
             logger.warning("AbuseIPDB report failed for %s: %s", ip, exc)
             return False
 
-    # ------------------------------------------------------------------
     # RDAP ISP abuse contact lookup
-    # ------------------------------------------------------------------
 
     def lookup_isp_abuse_contact(self, ip: str) -> str | None:
         """Look up the ISP abuse contact email via RDAP.
@@ -466,9 +458,7 @@ class ThreatNeutralizer:
             logger.debug("RDAP lookup failed for %s: %s", ip, exc)
             return None
 
-    # ------------------------------------------------------------------
     # Law enforcement package
-    # ------------------------------------------------------------------
 
     def generate_law_enforcement_package(
         self,
@@ -534,9 +524,7 @@ class ThreatNeutralizer:
             "report_template": report_template,
         }
 
-    # ------------------------------------------------------------------
     # Permanent block
-    # ------------------------------------------------------------------
 
     def permanent_block(self, ip: str, reason: str) -> None:
         """Add IP to permanent blocklist via ip_tracker.
@@ -555,9 +543,7 @@ class ThreatNeutralizer:
         except (sqlite3.Error, OSError) as exc:
             logger.warning("Failed to permanently block %s: %s", ip, exc)
 
-    # ------------------------------------------------------------------
     # Status
-    # ------------------------------------------------------------------
 
     def status(self) -> ThreatNeutralizerStatus:
         """Return operational status and counters.
@@ -575,9 +561,7 @@ class ThreatNeutralizer:
                 "recent_actions": list(self._recent_actions),
             }
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _rdap_cache_put(self, ip: str, result: str | None) -> None:
         """Store a value in the RDAP cache, evicting stale/oldest entries if full.

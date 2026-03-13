@@ -32,9 +32,7 @@ from jarvis_engine.config import repo_root
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 _DEFAULT_STATE_DIR = ".planning/runtime"
 _STATE_FILENAME = "conversation_state.json"
@@ -228,9 +226,7 @@ _COMMON_WORDS = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
 # Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -278,9 +274,7 @@ class ConversationSnapshot:
         return cls(**filtered)
 
 
-# ---------------------------------------------------------------------------
 # Timeline entry (named tuple-style dataclass)
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -295,9 +289,7 @@ class TimelineEntry:
     summary_snippet: str
 
 
-# ---------------------------------------------------------------------------
 # ConversationTimeline — SQLite-backed turn history
-# ---------------------------------------------------------------------------
 
 
 class ConversationTimeline:
@@ -532,9 +524,7 @@ class ConversationTimeline:
                 self._using_db = False
 
 
-# ---------------------------------------------------------------------------
 # Snippet redaction (S3)
-# ---------------------------------------------------------------------------
 
 
 def _redact_snippet(snippet: str, max_len: int = 50) -> str:
@@ -548,9 +538,7 @@ def _redact_snippet(snippet: str, max_len: int = 50) -> str:
     return f"{snippet[:20]}...{snippet[-20:]}"
 
 
-# ---------------------------------------------------------------------------
 # Encryption helpers (S1)
-# ---------------------------------------------------------------------------
 
 
 def _get_or_create_salt(salt_path: Path) -> bytes:
@@ -633,9 +621,7 @@ def _get_encryption_key(state_dir: Path) -> bytes | None:
         return None
 
 
-# ---------------------------------------------------------------------------
 # PII masking helpers (S2)
-# ---------------------------------------------------------------------------
 
 
 def _mask_ssn(value: str) -> str:
@@ -701,9 +687,7 @@ def filter_pii_entity(entity: str) -> PIIFilterResult:
     return PIIFilterResult(value=entity, pii_detected=False, masked=False)
 
 
-# ---------------------------------------------------------------------------
 # Entity validation (S5)
-# ---------------------------------------------------------------------------
 
 
 def validate_entity(entity: str) -> bool:
@@ -735,9 +719,7 @@ def validate_entity(entity: str) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
 # Entity extraction functions
-# ---------------------------------------------------------------------------
 
 
 def extract_entities(text: str) -> set[str]:
@@ -956,9 +938,7 @@ def detect_goal_completion(text: str, goals: list[str]) -> list[str]:
     return completed
 
 
-# ---------------------------------------------------------------------------
 # ConversationStateManager
-# ---------------------------------------------------------------------------
 
 
 class ConversationStateManager:
@@ -1013,9 +993,7 @@ class ConversationStateManager:
         # Attempt to load persisted state
         self.load()
 
-    # ------------------------------------------------------------------
     # Turn tracking
-    # ------------------------------------------------------------------
 
     def update_turn(self, role: str, content: str, model: str) -> None:
         """Record a conversation turn and update extracted state.
@@ -1110,9 +1088,7 @@ class ConversationStateManager:
         # Debounced save — avoid disk I/O on every single turn
         self._save_debounced()
 
-    # ------------------------------------------------------------------
     # Model switch tracking
-    # ------------------------------------------------------------------
 
     def mark_model_switch(
         self, from_model: str, to_model: str, reason: str = ""
@@ -1172,9 +1148,7 @@ class ConversationStateManager:
 
         self.save()
 
-    # ------------------------------------------------------------------
     # Checkpointing
-    # ------------------------------------------------------------------
 
     def create_checkpoint(self, dropped_messages: list[dict[str, str]]) -> int:
         """Create a checkpoint from messages about to be dropped.
@@ -1250,9 +1224,7 @@ class ConversationStateManager:
         self.save()
         return checkpoint_id
 
-    # ------------------------------------------------------------------
     # Prompt injection helper
-    # ------------------------------------------------------------------
 
     def get_prompt_injection(self) -> dict[str, Any]:
         """Return state to inject into the system prompt for continuity.
@@ -1275,9 +1247,7 @@ class ConversationStateManager:
                 "prior_decisions": list(self._snapshot.prior_decisions),
             }
 
-    # ------------------------------------------------------------------
     # State snapshot (for mobile API / dashboard)
-    # ------------------------------------------------------------------
 
     def get_state_snapshot(self, *, full: bool = False) -> dict[str, Any]:
         """Return conversation state as a serializable dict.
@@ -1329,9 +1299,7 @@ class ConversationStateManager:
 
             return data
 
-    # ------------------------------------------------------------------
     # Persistence
-    # ------------------------------------------------------------------
 
     def _save_debounced(self) -> None:
         """Save only if enough time has elapsed since the last save.
@@ -1449,13 +1417,10 @@ class ConversationStateManager:
                     self.save()
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.warning("Could not load conversation state: %s", exc)
-        except Exception as exc:
-            # Catch cryptography errors (InvalidToken, etc.)
+        except Exception as exc:  # noqa: BLE001 — cryptography.fernet.InvalidToken and similar
             logger.warning("Could not decrypt conversation state: %s", exc)
 
-    # ------------------------------------------------------------------
     # Reset
-    # ------------------------------------------------------------------
 
     def reset(self) -> None:
         """Reset the conversation state, starting a new session.
@@ -1490,9 +1455,7 @@ class ConversationStateManager:
 
         self.save()
 
-    # ------------------------------------------------------------------
     # Timeline access
-    # ------------------------------------------------------------------
 
     @property
     def timeline(self) -> ConversationTimeline:
@@ -1509,18 +1472,14 @@ class ConversationStateManager:
         with self._lock:
             return ConversationSnapshot.from_dict(self._snapshot.to_dict())
 
-    # ------------------------------------------------------------------
     # Cleanup
-    # ------------------------------------------------------------------
 
     def close(self) -> None:
         """Close the timeline database and persist final state."""
         self.save()
         self._timeline.close()
 
-    # ------------------------------------------------------------------
     # Telemetry helpers (private)
-    # ------------------------------------------------------------------
 
     def _emit_entity_telemetry(self, entities: set[str]) -> None:
         """Emit an entity_extraction telemetry event."""
@@ -1556,9 +1515,7 @@ class ConversationStateManager:
             logger.debug("Entity telemetry failed: %s", exc)
 
 
-# ---------------------------------------------------------------------------
 # Module-level singleton
-# ---------------------------------------------------------------------------
 
 _conversation_state: ConversationStateManager | None = None
 _manager_lock = threading.Lock()

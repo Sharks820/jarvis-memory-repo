@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class BrainStatusCommand:
@@ -12,9 +14,8 @@ class BrainStatusCommand:
 
 
 @dataclass
-class BrainStatusResult:
+class BrainStatusResult(ResultBase):
     status: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,8 @@ class BrainContextCommand:
 
 
 @dataclass
-class BrainContextResult:
+class BrainContextResult(ResultBase):
     packet: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,9 +38,8 @@ class BrainCompactCommand:
 
 
 @dataclass
-class BrainCompactResult:
+class BrainCompactResult(ResultBase):
     result: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -49,9 +48,8 @@ class BrainRegressionCommand:
 
 
 @dataclass
-class BrainRegressionResult:
+class BrainRegressionResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,12 +61,11 @@ class IngestCommand:
 
 
 @dataclass
-class IngestResult:
+class IngestResult(ResultBase):
     record_id: str = ""
     source: str = ""
     kind: str = ""
     task_id: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,6 +98,5 @@ class MemoryMaintenanceCommand:
 
 
 @dataclass
-class MemoryMaintenanceResult:
+class MemoryMaintenanceResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
-    message: str = ""

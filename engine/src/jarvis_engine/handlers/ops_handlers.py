@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -18,8 +18,6 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
     from jarvis_engine.memory_store import MemoryStore
-
-logger = logging.getLogger(__name__)
 
 from jarvis_engine._shared import check_path_within_root as _check_path_within_root
 
@@ -66,9 +64,11 @@ from jarvis_engine.commands.ops_commands import (
     OpsSyncResult,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OpsBriefHandler:
-    def __init__(self, root: Path, gateway: Optional[ModelGateway] = None) -> None:
+    def __init__(self, root: Path, gateway: ModelGateway | None = None) -> None:
         self._root = root
         self._gateway = gateway
 
@@ -177,7 +177,7 @@ class OpsAutopilotHandler:
 class AutomationRunHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
-        self._store: Optional[MemoryStore] = None
+        self._store: MemoryStore | None = None
 
     def _get_store(self) -> MemoryStore:
         """Lazily create and cache the MemoryStore."""
@@ -258,12 +258,12 @@ class MissionCancelHandler:
 
 class MissionRunHandler:
     def __init__(
-        self, root: Path, enriched_pipeline: Optional[EnrichedIngestPipeline] = None
+        self, root: Path, enriched_pipeline: EnrichedIngestPipeline | None = None
     ) -> None:
         self._root = root
         self._enriched_pipeline = enriched_pipeline
-        self._store: Optional[MemoryStore] = None
-        self._pipeline: Optional[IngestionPipeline] = None
+        self._store: MemoryStore | None = None
+        self._pipeline: IngestionPipeline | None = None
 
     def _get_ingest_pipeline(self) -> EnrichedIngestPipeline | IngestionPipeline:
         """Return enriched pipeline if available, else lazily create legacy pipeline."""
@@ -471,7 +471,7 @@ class MissionActiveHandler:
 
 
 class MemoryHygieneHandler:
-    def __init__(self, root: Path, engine: Optional[MemoryEngine] = None) -> None:
+    def __init__(self, root: Path, engine: MemoryEngine | None = None) -> None:
         self._root = root
         self._engine = engine
 
@@ -505,11 +505,11 @@ class IntelligenceDashboardHandler:
     def __init__(
         self,
         root: Path,
-        pref_tracker: Optional[PreferenceTracker] = None,
-        feedback_tracker: Optional[ResponseFeedbackTracker] = None,
-        usage_tracker: Optional[UsagePatternTracker] = None,
-        kg: Optional[KnowledgeGraph] = None,
-        engine: Optional[MemoryEngine] = None,
+        pref_tracker: PreferenceTracker | None = None,
+        feedback_tracker: ResponseFeedbackTracker | None = None,
+        usage_tracker: UsagePatternTracker | None = None,
+        kg: KnowledgeGraph | None = None,
+        engine: MemoryEngine | None = None,
     ) -> None:
         self._root = root
         self._pref_tracker = pref_tracker

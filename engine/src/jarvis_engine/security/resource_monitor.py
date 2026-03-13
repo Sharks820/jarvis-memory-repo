@@ -81,9 +81,7 @@ class ResourceMonitor:
         # Set of metrics that have exceeded their cap.
         self._cap_exceeded: set[str] = set()
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def record(self, metric: str, value: float) -> None:
         """Record a metric observation.
@@ -191,9 +189,7 @@ class ResourceMonitor:
             self._cap_exceeded.clear()
             logger.info("ResourceMonitor: daily counters reset")
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _compute_anomaly(self, window: collections.deque[float], value: float) -> bool:
         """Return ``True`` if *value* is a z-score anomaly within *window*.

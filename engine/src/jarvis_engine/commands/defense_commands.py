@@ -9,14 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from jarvis_engine.commands.base import ResultBase
+
 if TYPE_CHECKING:
     from jarvis_engine.security.ip_tracker import ThreatReport
     from jarvis_engine.security.orchestrator import AllThreatsReport, SecurityStatus
 
 
-# ---------------------------------------------------------------------------
 # Security Status
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -25,16 +25,13 @@ class SecurityStatusCommand:
 
 
 @dataclass
-class SecurityStatusResult:
+class SecurityStatusResult(ResultBase):
     """Result containing the defense dashboard and summary."""
 
     dashboard: "SecurityStatus | dict[str, Any]" = field(default_factory=dict)
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Threat Report
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -45,16 +42,13 @@ class ThreatReportCommand:
 
 
 @dataclass
-class ThreatReportResult:
+class ThreatReportResult(ResultBase):
     """Result containing the threat report."""
 
     report: "ThreatReport | AllThreatsReport | dict[str, Any] | None" = field(default_factory=dict)
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Forensic Export
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -66,16 +60,13 @@ class ExportForensicsCommand:
 
 
 @dataclass
-class ExportForensicsResult:
+class ExportForensicsResult(ResultBase):
     """Result containing the export file path."""
 
     export_path: str = ""
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Containment Override
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -94,16 +85,13 @@ class ContainmentOverrideCommand:
 
 
 @dataclass
-class ContainmentOverrideResult:
+class ContainmentOverrideResult(ResultBase):
     """Result of a containment override operation."""
 
     success: bool = False
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # IP Blocking
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -115,11 +103,10 @@ class BlockIPCommand:
 
 
 @dataclass
-class BlockIPResult:
+class BlockIPResult(ResultBase):
     """Result of an IP block operation."""
 
     success: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -130,16 +117,13 @@ class UnblockIPCommand:
 
 
 @dataclass
-class UnblockIPResult:
+class UnblockIPResult(ResultBase):
     """Result of an IP unblock operation."""
 
     success: bool = False
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Quarantine Review
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -148,16 +132,13 @@ class ReviewQuarantineCommand:
 
 
 @dataclass
-class ReviewQuarantineResult:
+class ReviewQuarantineResult(ResultBase):
     """Result containing quarantined records."""
 
     records: list = field(default_factory=list)
-    message: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Security Briefing
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -166,8 +147,7 @@ class SecurityBriefingCommand:
 
 
 @dataclass
-class SecurityBriefingResult:
+class SecurityBriefingResult(ResultBase):
     """Result containing the briefing text."""
 
     briefing: str = ""
-    message: str = ""

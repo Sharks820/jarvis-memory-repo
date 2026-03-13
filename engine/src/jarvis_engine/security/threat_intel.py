@@ -131,9 +131,7 @@ class ThreatIntelFeed:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def enrich_ip(self, ip: str) -> ThreatEnrichment:
         """Enrich *ip* with threat intelligence data.
@@ -237,9 +235,7 @@ class ThreatIntelFeed:
             "requests_total": requests,
         }
 
-    # ------------------------------------------------------------------
     # Private — AbuseIPDB
-    # ------------------------------------------------------------------
 
     def _query_abuseipdb(self, ip: str) -> int | None:
         """Query AbuseIPDB for *ip* and return the abuse confidence score."""
@@ -258,9 +254,7 @@ class ThreatIntelFeed:
             logger.debug("AbuseIPDB query failed for %s: %s", ip, exc)
             return None
 
-    # ------------------------------------------------------------------
     # Private — AlienVault OTX
-    # ------------------------------------------------------------------
 
     def _query_otx(self, ip: str) -> int | None:
         """Query OTX for *ip* and return the number of pulses."""
@@ -280,9 +274,7 @@ class ThreatIntelFeed:
             logger.debug("OTX query failed for %s: %s", ip, exc)
             return None
 
-    # ------------------------------------------------------------------
     # Private — Feodo Tracker blocklist
-    # ------------------------------------------------------------------
 
     def _refresh_feodo_blocklist(self) -> None:
         """Download and cache the Feodo Tracker IP blocklist.

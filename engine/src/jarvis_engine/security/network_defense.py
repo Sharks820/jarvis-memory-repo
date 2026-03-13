@@ -26,9 +26,7 @@ from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # TypedDicts
-# ---------------------------------------------------------------------------
 
 
 class DNSCacheAnalysis(TypedDict):
@@ -52,9 +50,7 @@ class NetworkDefenseStatus(TypedDict):
     dga_candidates: int
 
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 # Shannon entropy threshold for flagging potential DGA domains.
 _DGA_ENTROPY_THRESHOLD = 3.5
@@ -95,9 +91,7 @@ _MAC_RE = re.compile(
 )
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _normalize_mac(mac: str) -> str:
@@ -129,9 +123,7 @@ def _run_command(args: list[str]) -> str:
         return ""
 
 
-# ---------------------------------------------------------------------------
 # KnownDeviceRegistry
-# ---------------------------------------------------------------------------
 
 
 class KnownDeviceRegistry:
@@ -217,9 +209,7 @@ class KnownDeviceRegistry:
             self._save()
 
 
-# ---------------------------------------------------------------------------
 # HomeNetworkMonitor
-# ---------------------------------------------------------------------------
 
 
 class HomeNetworkMonitor:
@@ -249,9 +239,7 @@ class HomeNetworkMonitor:
         self._suspicious_connections: int = 0
         self._dga_candidates: int = 0
 
-    # ------------------------------------------------------------------
     # Alert helper
-    # ------------------------------------------------------------------
 
     def _fire_alert(self, alert: dict[str, Any]) -> None:
         if self._alert_callback:
@@ -260,9 +248,7 @@ class HomeNetworkMonitor:
             except (RuntimeError, ValueError, TypeError) as exc:
                 logger.debug("Alert callback failed: %s", exc)
 
-    # ------------------------------------------------------------------
     # ARP scanning
-    # ------------------------------------------------------------------
 
     def scan_arp_table(self) -> list[dict[str, Any]]:
         """Parse the system ARP table and return a list of entries.
@@ -398,9 +384,7 @@ class HomeNetworkMonitor:
                         }
                     )
 
-    # ------------------------------------------------------------------
     # DNS cache analysis
-    # ------------------------------------------------------------------
 
     def analyze_dns_cache(self) -> DNSCacheAnalysis:
         """Analyze the DNS cache for DGA / C2 indicators.
@@ -458,9 +442,7 @@ class HomeNetworkMonitor:
 
         return result
 
-    # ------------------------------------------------------------------
     # Connection monitoring
-    # ------------------------------------------------------------------
 
     def check_connections(self) -> list[dict[str, Any]]:
         """List active network connections and flag suspicious ones.
@@ -616,9 +598,7 @@ class HomeNetworkMonitor:
 
         return False, ""
 
-    # ------------------------------------------------------------------
     # Full scan & status
-    # ------------------------------------------------------------------
 
     def full_scan(self) -> NetworkScanResult:
         """Run ARP, DNS, and connection scans. Return aggregated results."""

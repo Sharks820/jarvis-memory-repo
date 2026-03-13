@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from jarvis_engine.memory_store import MemoryStore
     from jarvis_engine.task_orchestrator import TaskOrchestrator
 
-logger = logging.getLogger(__name__)
-
 from jarvis_engine.commands.task_commands import (
     QueryCommand,
     QueryResult,
@@ -26,6 +24,8 @@ from jarvis_engine.commands.task_commands import (
     WebResearchCommand,
     WebResearchResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RunTaskHandler:

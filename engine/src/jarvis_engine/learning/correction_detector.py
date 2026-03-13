@@ -34,9 +34,7 @@ class Correction:
     confidence: float
 
 
-# ------------------------------------------------------------------
 # Compiled correction patterns
-# ------------------------------------------------------------------
 # Each entry is (compiled_regex, old_claim_group, new_claim_group).
 # Groups are 1-indexed regex group numbers, or None if not captured.
 
@@ -121,9 +119,7 @@ class CorrectionDetector:
     def __init__(self, kg: KnowledgeGraph | None = None) -> None:
         self._kg = kg
 
-    # ------------------------------------------------------------------
     # Detection
-    # ------------------------------------------------------------------
 
     def detect_correction(self, user_message: str) -> Correction | None:
         """Detect a correction pattern in *user_message*.
@@ -155,9 +151,7 @@ class CorrectionDetector:
 
         return None
 
-    # ------------------------------------------------------------------
     # Application
-    # ------------------------------------------------------------------
 
     def apply_correction(self, correction: Correction) -> bool:
         """Apply *correction* to the knowledge graph.
@@ -262,9 +256,7 @@ class CorrectionDetector:
 
         return True
 
-    # ------------------------------------------------------------------
     # Internal helpers for apply_correction
-    # ------------------------------------------------------------------
 
     def _retract_and_merge(
         self,
@@ -368,9 +360,7 @@ class CorrectionDetector:
         upsert_fts_kg(self._kg._db, node_id, new_label)
 
 
-# ------------------------------------------------------------------
 # Helpers
-# ------------------------------------------------------------------
 
 _CORRECTION_STOPWORDS = frozenset(
     {

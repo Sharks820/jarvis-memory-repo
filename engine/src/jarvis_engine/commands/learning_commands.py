@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class LearnInteractionCommand:
@@ -19,9 +21,8 @@ class LearnInteractionCommand:
 
 
 @dataclass
-class LearnInteractionResult:
+class LearnInteractionResult(ResultBase):
     records_created: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,10 @@ class CrossBranchQueryCommand:
 
 
 @dataclass
-class CrossBranchQueryResult:
+class CrossBranchQueryResult(ResultBase):
     direct_results: list = field(default_factory=list)
     cross_branch_connections: list = field(default_factory=list)
     branches_involved: list = field(default_factory=list)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,9 +48,8 @@ class FlagExpiredFactsCommand:
 
 
 @dataclass
-class FlagExpiredFactsResult:
+class FlagExpiredFactsResult(ResultBase):
     expired_count: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,9 +62,8 @@ class ConsolidateMemoryCommand:
 
 
 @dataclass
-class ConsolidateMemoryResult:
+class ConsolidateMemoryResult(ResultBase):
     groups_found: int = 0
     records_consolidated: int = 0
     new_facts_created: int = 0
     errors: list = field(default_factory=list)
-    message: str = ""

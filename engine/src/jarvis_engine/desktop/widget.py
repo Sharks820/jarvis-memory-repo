@@ -67,6 +67,18 @@ logger = logging.getLogger(__name__)
 
 _REMOTE_WIDGET_ERRORS = (HTTPError, URLError, RuntimeError, TimeoutError)
 
+# Catch-all for best-effort HTTP/JSON operations in the widget.
+# Covers network errors, JSON parse failures, and unexpected key/type issues.
+_WIDGET_IO_ERRORS = (
+    HTTPError, URLError, OSError, TimeoutError,
+    json.JSONDecodeError, KeyError, ValueError, RuntimeError,
+)
+
+# Catch-all for voice/audio subsystem failures in the widget.
+_WIDGET_VOICE_ERRORS = (
+    OSError, RuntimeError, ValueError, TimeoutError, ImportError,
+)
+
 
 class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk):
     BG = "#070d1a"
@@ -286,11 +298,11 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if self.launcher_win is not None:
             try:
                 self.launcher_win.destroy()
-            except Exception as exc:  # boundary: catch-all justified
+            except (tk.TclError, RuntimeError, OSError) as exc:
                 logger.debug("Failed to destroy launcher window during shutdown: %s", exc)
         try:
             self.destroy()
-        except Exception as exc:  # boundary: catch-all justified
+        except (tk.TclError, RuntimeError, OSError) as exc:
             logger.debug("Failed to destroy main widget window during shutdown: %s", exc)
 
     def _bind_shortcuts(self) -> None:
@@ -441,7 +453,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.cfg.panel_y = y
         try:
             _save_widget_cfg(self.root_path, self.cfg)
-        except Exception as exc:  # boundary: catch-all justified
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.debug("Failed to save widget position to config: %s", exc)
 
     def _build_ui(self) -> None:
@@ -532,6 +544,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         capsule.pack(fill=tk.X, padx=10, pady=(0, 10))
         self._live_capsule = capsule
 
+        self._build_live_capsule_top_row(capsule)
+        self._build_live_capsule_context(capsule)
+        self._build_live_capsule_activity(capsule)
+        self._build_live_capsule_detail(capsule)
+
+    def _build_live_capsule_top_row(self, capsule: tk.Frame) -> None:
+        """Build the top row with mode, health, mission, and toggle controls."""
         top_row = tk.Frame(capsule, bg="#0a1424")
         top_row.pack(fill=tk.X, padx=10, pady=(8, 2))
         self._live_capsule_top = top_row
@@ -588,7 +607,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             command=self._toggle_live_detail_section,
         )
         self._live_detail_toggle_btn.pack(side=tk.RIGHT, padx=(0, 6))
-        # --- Always-visible context and activity section ---
+
+    def _build_live_capsule_context(self, capsule: tk.Frame) -> None:
+        """Build the always-visible context label inside the live capsule."""
         self._live_context_var = tk.StringVar(
             value="Voice, missions, and desktop context stay synchronized here."
         )
@@ -604,7 +625,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._live_context_label.pack(fill=tk.X, padx=10, pady=(4, 2))
 
-        # Always-visible activity row
+    def _build_live_capsule_activity(self, capsule: tk.Frame) -> None:
+        """Build the always-visible activity row with signal, learned, and intel chips."""
         activity_row = tk.Frame(capsule, bg="#0a1424")
         activity_row.pack(fill=tk.X, padx=10, pady=(0, 4))
         self._activity_chip_var = tk.StringVar(value="No fresh signals yet")
@@ -643,7 +665,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._intel_chip_label.pack(side=tk.RIGHT)
 
-        # --- Collapsible detail section (mission progress, ops rail) ---
+    def _build_live_capsule_detail(self, capsule: tk.Frame) -> None:
+        """Build the collapsible detail section with mission progress and ops rail."""
         self._live_detail_body = tk.Frame(capsule, bg="#0a1424")
 
         progress_row = tk.Frame(self._live_detail_body, bg="#0a1424")
@@ -1392,7 +1415,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     exc,
                     hints=(("Make sure the Mobile API is running and the Base URL is correct.", "error"),),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Connect",
                     exc,
@@ -1409,7 +1432,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             health_ok = bool(health_data.get("ok", False))
             self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
             return True
-        except Exception as exc:  # boundary: catch-all justified
+        except _WIDGET_IO_ERRORS as exc:
             logger.debug("Diagnostics health check failed: %s", exc)
             self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
             self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
@@ -1424,7 +1447,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             last_sync = sync_data.get("last_sync_utc", "unknown")
             self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
             self._log_async(f"  Last sync: {last_sync}", role="jarvis")
-        except Exception as exc:  # boundary: catch-all justified
+        except _WIDGET_IO_ERRORS as exc:
             logger.debug("Diagnostics sync check failed: %s", exc)
             self._log_async(f"  Sync: unavailable ({exc})", role="error")
 
@@ -1438,7 +1461,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             fact_count = dash_data.get("fact_count", "?")
             self._log_async(f"  Intelligence score: {score}", role="jarvis")
             self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
-        except Exception as exc:  # boundary: catch-all justified
+        except _WIDGET_IO_ERRORS as exc:
             logger.debug("Diagnostics intelligence check failed: %s", exc)
             self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
 
@@ -1499,7 +1522,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     ),
                     notify_toast=("Jarvis", "Diagnose & Repair failed", "Error"),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Diagnose",
                     exc,
@@ -2264,7 +2287,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                  "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
                 capture_output=True, timeout=5,
             )
-        except Exception as exc:  # boundary: catch-all justified
+        except (OSError, subprocess.SubprocessError, FileNotFoundError) as exc:
             logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
         self.command_text.config(state=tk.NORMAL)
         self._log("Command cancelled.", role="system")
@@ -2376,7 +2399,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
                     command_mode=True,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Command",
                     exc,
@@ -2532,7 +2555,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.after(0, self._update_growth_labels, growth_data)
                 if recent_evts:
                     self.after(0, self._update_activity_events, recent_evts)
-            except Exception as exc:  # boundary: catch-all justified
+            except _WIDGET_IO_ERRORS as exc:
                 logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
 
         if not ok:
@@ -2599,7 +2622,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     if self._prev_svc_running.get(name, False):
                         self._notify_toast("Jarvis Service Down", f"{name} has stopped", "Warning")
                 self._prev_svc_running[name] = svc["running"]
-        except Exception as exc:  # boundary: catch-all justified
+        except (ImportError, OSError, KeyError, TypeError, ValueError) as exc:
             logger.debug("Failed to refresh service status: %s", exc)
         # Re-schedule every 10 seconds
         self.after(10000, self._refresh_services)
@@ -2624,7 +2647,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     exc,
                     hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Dashboard",
                     exc,
@@ -2672,7 +2695,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     exc,
                     hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Activity load",
                     exc,
@@ -2704,7 +2727,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     self.after(0, self._send_command_async)
                 else:
                     self._set_state_async(DesktopWidgetState.IDLE.value)
-            except Exception as exc:  # noqa: BLE001
+            except _WIDGET_VOICE_ERRORS as exc:
                 logger.debug("Voice dictation failed: %s", exc)
                 self._log_async(f"dictation failed: {exc}", role="error")
                 self._set_error_briefly_async()
@@ -2759,7 +2782,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     except (tk.TclError, RuntimeError):  # Widget may be destroyed
                         logger.debug("Cannot schedule wake word actions (widget may be destroyed)")
                         return
-            except Exception as exc:  # boundary: catch-all justified
+            except _WIDGET_VOICE_ERRORS as exc:
                 logger.warning("Hotword detection error: %s", exc)
             # Cooldown: 10s after wake word to avoid re-triggering during processing
             for _ in range(20):
@@ -2795,20 +2818,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                             health_payload = json.loads(body)
                             if isinstance(health_payload, dict) and "intelligence" in health_payload:
                                 intel_data = health_payload["intelligence"]
-                        except Exception as exc:  # boundary: catch-all justified
+                        except (json.JSONDecodeError, KeyError, ValueError, UnicodeDecodeError) as exc:
                             logger.debug("Failed to parse intelligence from health response: %s", exc)
                     resp.close()
                     resp = None
                     if ok:
                         break
-                except Exception as exc:  # boundary: catch-all justified
+                except _WIDGET_IO_ERRORS as exc:
                     logger.debug("Health poll request failed: %s", exc)
                     ok = False
                 finally:
                     if resp is not None:
                         try:
                             resp.close()
-                        except Exception as exc:  # boundary: catch-all justified
+                        except (OSError, RuntimeError) as exc:
                             logger.debug("Failed to close health poll HTTP response: %s", exc)
                         resp = None
                 if self.stop_event.is_set():
@@ -2838,7 +2861,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     if msg:
                         self._notify_toast("Jarvis Alert", msg, "Warning")
                         break  # One toast per poll cycle
-        except Exception as exc:  # boundary: catch-all justified
+        except _WIDGET_IO_ERRORS as exc:
             logger.debug("Failed to fetch widget-status: %s", exc)
         return growth_data, recent_events, now_working_on
 
@@ -2852,7 +2875,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Fetch quick diagnostics status for the desktop health pulse."""
         try:
             data = _http_json(cfg, "/diagnostics/status", method="GET")
-        except Exception as exc:  # boundary: catch-all justified
+        except _WIDGET_IO_ERRORS as exc:
             logger.debug("Failed to fetch diagnostics status: %s", exc)
             return None
         self._last_diag_poll_at = time.monotonic()
@@ -3077,7 +3100,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             csm = get_conversation_state()
             injection = csm.get_prompt_injection()
             state_snapshot = csm.get_state_snapshot(full=False)
-        except Exception as exc:  # boundary: continuity rail is best-effort
+        except (ImportError, OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
             logger.debug("Failed to refresh continuity snapshot: %s", exc)
             return
 

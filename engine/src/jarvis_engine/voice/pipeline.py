@@ -19,7 +19,6 @@ from typing import Any, Callable
 from jarvis_engine._bus import get_bus
 from jarvis_engine._shared import env_int as _env_int
 from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
-from jarvis_engine.brain_memory import build_context_packet  # noqa: F401 — tests monkeypatch this
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
@@ -273,7 +272,6 @@ def _flush_history_atexit() -> None:
 
 _atexit.register(_flush_history_atexit)
 
-# ---------------------------------------------------------------------------
 # Backward-compatible module-level aliases for external consumers
 # (mobile_api.py, tests, etc.)
 #
@@ -282,7 +280,6 @@ _atexit.register(_flush_history_atexit)
 # _last_routed_model) are proxied via a custom module class so that both reads
 # AND writes (e.g. monkeypatch.setattr in tests, or direct assignment in
 # mobile_api.py) are forwarded to the _state singleton.
-# ---------------------------------------------------------------------------
 _conversation_history_lock = _state._conversation_history_lock
 _last_routed_model_lock = _state._last_routed_model_lock
 

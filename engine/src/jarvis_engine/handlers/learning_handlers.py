@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -32,7 +32,7 @@ class LearnInteractionHandler:
     """Delegates LearnInteractionCommand to ConversationLearningEngine."""
 
     def __init__(
-        self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None
+        self, root: Path, learning_engine: ConversationLearningEngine | None = None
     ) -> None:
         self._root = root
         self._learning_engine = learning_engine
@@ -76,9 +76,9 @@ class CrossBranchQueryHandler:
     def __init__(
         self,
         root: Path,
-        engine: Optional[MemoryEngine] = None,
-        kg: Optional[KnowledgeGraph] = None,
-        embed_service: Optional[EmbeddingService] = None,
+        engine: MemoryEngine | None = None,
+        kg: KnowledgeGraph | None = None,
+        embed_service: EmbeddingService | None = None,
     ) -> None:
         self._root = root
         self._engine = engine
@@ -115,7 +115,7 @@ class CrossBranchQueryHandler:
 class FlagExpiredFactsHandler:
     """Delegates FlagExpiredFactsCommand to flag_expired_facts function."""
 
-    def __init__(self, root: Path, kg: Optional[KnowledgeGraph] = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -144,10 +144,10 @@ class ConsolidateMemoryHandler:
     def __init__(
         self,
         root: Path,
-        engine: Optional[MemoryEngine] = None,
-        gateway: Optional[ModelGateway] = None,
-        embed_service: Optional[EmbeddingService] = None,
-        kg: Optional[KnowledgeGraph] = None,
+        engine: MemoryEngine | None = None,
+        gateway: ModelGateway | None = None,
+        embed_service: EmbeddingService | None = None,
+        kg: KnowledgeGraph | None = None,
     ) -> None:
         self._root = root
         self._engine = engine

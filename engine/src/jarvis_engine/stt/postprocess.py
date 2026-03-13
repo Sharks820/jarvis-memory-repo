@@ -84,9 +84,7 @@ def _load_jellyfish() -> _JellyfishModule:
     return cast(_JellyfishModule, import_module("jellyfish"))
 
 
-# ---------------------------------------------------------------------------
 # Stage 1: Audio Preprocessing
-# ---------------------------------------------------------------------------
 
 
 def preprocess_audio(
@@ -178,9 +176,7 @@ def preprocess_audio(
     return audio
 
 
-# ---------------------------------------------------------------------------
 # Stage 2: Hallucination Detection
-# ---------------------------------------------------------------------------
 
 # Phrases that are hallucinations only when they ARE the entire transcription
 _EXACT_HALLUCINATION_PHRASES: set[str] = {
@@ -333,9 +329,7 @@ def strip_foreign_prefix(text: str) -> str:
     return text
 
 
-# ---------------------------------------------------------------------------
 # Stage 3: Smart Filler Word Removal
-# ---------------------------------------------------------------------------
 
 # Simple fillers: always remove
 _SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECASE)
@@ -385,9 +379,7 @@ def normalize_sentence_text(text: str) -> str:
     return _SENTENCE_START_RE.sub(_capitalize, result)
 
 
-# ---------------------------------------------------------------------------
 # Stage 4: LLM Post-Correction
-# ---------------------------------------------------------------------------
 
 _LLM_SYSTEM_PROMPT = """\
 You are a speech-to-text post-processor. Fix ONLY transcription errors in the text below.
@@ -516,9 +508,7 @@ def correct_with_llm(
         return text
 
 
-# ---------------------------------------------------------------------------
 # Stage 5: NER Entity Correction
-# ---------------------------------------------------------------------------
 
 
 def correct_entities(text: str, entity_list: list[str]) -> str:
@@ -596,9 +586,7 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
 
     return " ".join(corrected_words)
 
-# ---------------------------------------------------------------------------
 # Stage 6: Full Pipeline Orchestration
-# ---------------------------------------------------------------------------
 
 COMMAND_PATTERNS: set[str] = {
     "brain status",

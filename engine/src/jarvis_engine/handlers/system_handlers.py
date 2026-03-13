@@ -12,8 +12,6 @@ from typing import Any  # used for WeatherHandler.current dict (external API sha
 from urllib.parse import quote
 from urllib.request import urlopen
 
-logger = logging.getLogger(__name__)
-
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,
     DaemonRunResult,
@@ -38,6 +36,8 @@ from jarvis_engine.commands.system_commands import (
     WeatherCommand,
     WeatherResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class StatusHandler:

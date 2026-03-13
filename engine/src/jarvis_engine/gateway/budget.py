@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Cost-per-1K-tokens for cost-aware routing
-# ---------------------------------------------------------------------------
 
 #: Estimated cost per 1K input+output tokens (blended) by provider.
 #: Lower is cheaper. Used to prefer cheaper providers for routine queries.
@@ -57,9 +55,7 @@ class BudgetExceededError(Exception):
         self.cap = cap
 
 
-# ---------------------------------------------------------------------------
 # Alert thresholds
-# ---------------------------------------------------------------------------
 
 _ALERT_THRESHOLDS: tuple[float, ...] = (0.50, 0.75, 0.90)
 
@@ -77,9 +73,7 @@ class BudgetStatus:
     budget_ok: bool = True
 
 
-# ---------------------------------------------------------------------------
 # BudgetEnforcer
-# ---------------------------------------------------------------------------
 
 
 class BudgetEnforcer:
@@ -344,9 +338,7 @@ class BudgetEnforcer:
         self.close()
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _env_float(key: str, default: float) -> float:

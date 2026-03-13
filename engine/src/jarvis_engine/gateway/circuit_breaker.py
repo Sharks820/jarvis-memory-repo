@@ -19,9 +19,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Circuit breaker states
-# ---------------------------------------------------------------------------
 
 
 class CircuitState(Enum):
@@ -32,9 +30,7 @@ class CircuitState(Enum):
     HALF_OPEN = "half_open"  # Testing — allow one probe request
 
 
-# ---------------------------------------------------------------------------
 # Backoff configuration
-# ---------------------------------------------------------------------------
 
 #: (consecutive_failures_threshold, cooldown_seconds)
 _BACKOFF_TIERS: list[tuple[int, float]] = [
@@ -53,9 +49,7 @@ def _cooldown_for_failures(consecutive: int) -> float:
     return cooldown
 
 
-# ---------------------------------------------------------------------------
 # ProviderHealth
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -103,9 +97,7 @@ class ProviderHealth:
         }
 
 
-# ---------------------------------------------------------------------------
 # ProviderHealthTracker
-# ---------------------------------------------------------------------------
 
 _MIN_SUCCESS_RATE = 0.50  # Don't route to providers below this
 

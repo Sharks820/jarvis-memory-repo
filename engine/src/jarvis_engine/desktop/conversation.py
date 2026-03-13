@@ -98,9 +98,7 @@ class ConversationMixin:
         ("learned", {"foreground": "#34d399", "font": ("Consolas", 9, "italic"), "lmargin1": 8, "lmargin2": 8, "spacing1": 1, "spacing3": 1}),
     ]
 
-    # ------------------------------------------------------------------
     # Chat area build
-    # ------------------------------------------------------------------
 
     def _build_chat_header(self: Any, body: tk.Frame) -> None:
         """Build the conversation header with Clear, End Conversation, and Pop Out buttons."""
@@ -219,9 +217,7 @@ class ConversationMixin:
         for name, kwargs in self._CHAT_TAG_SPECS:
             self.output.tag_configure(name, **kwargs)
 
-    # ------------------------------------------------------------------
     # Chat history management
-    # ------------------------------------------------------------------
 
     def _clear_history(self: Any) -> None:
         """Clear all text from the conversation display."""
@@ -248,9 +244,7 @@ class ConversationMixin:
 
         self._thread(worker)
 
-    # ------------------------------------------------------------------
     # Pop-out conversation window
-    # ------------------------------------------------------------------
 
     def _pop_out_conversation(self: Any) -> None:
         """Open conversation in a separate resizable window with command input."""
@@ -428,9 +422,7 @@ class ConversationMixin:
 
         win.protocol("WM_DELETE_WINDOW", _on_close)
 
-    # ------------------------------------------------------------------
     # Chat logging
-    # ------------------------------------------------------------------
 
     def _log(self: Any, message: str, role: str = "system") -> None:
         stamp = time.strftime("%H:%M:%S")
@@ -492,9 +484,7 @@ class ConversationMixin:
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("_log_async failed (widget may be destroyed)")
 
-    # ------------------------------------------------------------------
     # Thinking indicator
-    # ------------------------------------------------------------------
 
     def _show_thinking(self: Any) -> None:
         """Show animated 'Jarvis is thinking...' indicator as a Label widget.
@@ -567,9 +557,7 @@ class ConversationMixin:
                 logger.debug("Failed to update popout thinking label")
         self._thinking_after_id = self.after(400, self._animate_thinking)
 
-    # ------------------------------------------------------------------
     # Visual indicators
-    # ------------------------------------------------------------------
 
     def _show_learned_indicator(self: Any) -> None:
         """Update the persistent learned counter chip and flash in chat."""
@@ -599,9 +587,7 @@ class ConversationMixin:
             role="jarvis",
         )
 
-    # ------------------------------------------------------------------
     # Help overlay
-    # ------------------------------------------------------------------
 
     def _show_help(self: Any) -> None:
         """Show help overlay with commands and tips."""

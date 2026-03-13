@@ -18,9 +18,7 @@ from jarvis_engine._shared import sha256_hex
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Session dataclass
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -36,9 +34,7 @@ class Session:
     fingerprint: str
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _compute_fingerprint(ip: str, user_agent: str) -> str:
@@ -47,9 +43,7 @@ def _compute_fingerprint(ip: str, user_agent: str) -> str:
     return sha256_hex(raw)
 
 
-# ---------------------------------------------------------------------------
 # SessionManager
-# ---------------------------------------------------------------------------
 
 
 class SessionManager:
@@ -80,9 +74,7 @@ class SessionManager:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def create_session(self, device_id: str, ip: str, user_agent: str = "") -> str:
         """Create a new session and return its ID.
@@ -207,9 +199,7 @@ class SessionManager:
                 )
             return result
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _purge_expired(self) -> None:
         """Remove sessions that have exceeded idle or absolute timeouts."""

@@ -34,9 +34,7 @@ _MAX_CREATION_DRIFT_S = 5.0
 # to a hard TerminateProcess / SIGKILL.
 _GRACEFUL_TIMEOUT_S = 5.0
 
-# ---------------------------------------------------------------------------
 # PID directory helpers
-# ---------------------------------------------------------------------------
 
 
 def _pids_dir(root: Path) -> Path:
@@ -49,9 +47,7 @@ def _pid_path(service: str, root: Path) -> Path:
     return _pids_dir(root) / f"{service}.pid"
 
 
-# ---------------------------------------------------------------------------
 # Process alive check (no psutil dependency)
-# ---------------------------------------------------------------------------
 
 
 def _check_pid_alive(pid: int) -> bool:
@@ -150,9 +146,7 @@ def _verify_pid_identity(pid: int, stored_create_ts: float | None) -> bool:
     return abs(create_time - stored_create_ts) < _MAX_CREATION_DRIFT_S
 
 
-# ---------------------------------------------------------------------------
 # PID file CRUD
-# ---------------------------------------------------------------------------
 
 
 def _lock_pid_file(service: str, root: Path) -> AbstractContextManager[None]:
@@ -273,9 +267,7 @@ def _remove_pid_file_path(path: Path) -> None:
         logger.debug("Failed to remove PID file %s: %s", path, exc)
 
 
-# ---------------------------------------------------------------------------
 # High-level queries
-# ---------------------------------------------------------------------------
 
 
 def is_service_running(service: str, root: Path) -> bool:
@@ -422,9 +414,7 @@ def list_services(root: Path) -> list[dict[str, Any]]:
     return results
 
 
-# ---------------------------------------------------------------------------
 # Service watchdog
-# ---------------------------------------------------------------------------
 
 
 def check_and_restart_services(

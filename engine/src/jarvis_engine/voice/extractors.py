@@ -8,17 +8,13 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-# ---------------------------------------------------------------------------
 # Compiled patterns
-# ---------------------------------------------------------------------------
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
 
 
-# ---------------------------------------------------------------------------
 # Text cleaning helpers
-# ---------------------------------------------------------------------------
 
 
 def shorten_urls_for_speech(text: str) -> str:
@@ -65,9 +61,7 @@ def strip_wake_word(text: str) -> str:
     return text
 
 
-# ---------------------------------------------------------------------------
 # Extraction functions for voice commands
-# ---------------------------------------------------------------------------
 
 
 def _extract_first_phone_number(text: str) -> str:

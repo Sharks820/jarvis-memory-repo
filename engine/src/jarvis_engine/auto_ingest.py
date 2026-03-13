@@ -31,9 +31,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Module-level state
-# ---------------------------------------------------------------------------
 _auto_ingest_lock = threading.Lock()
 _auto_ingest_store: "MemoryStore | None" = None
 _auto_ingest_store_lock = threading.Lock()
@@ -42,9 +40,7 @@ VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome", "conversati
 VALID_KINDS = {"episodic", "semantic", "procedural"}
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers (ported verbatim from main.py)
-# ---------------------------------------------------------------------------
 
 
 def _get_auto_ingest_store() -> "MemoryStore":
@@ -106,9 +102,7 @@ def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
     _atomic_write_json(path, payload)
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 
 def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) -> str:

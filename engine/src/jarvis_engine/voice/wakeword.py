@@ -63,9 +63,7 @@ class WakeWordDetector:
             wakeword_models=[self._model_name], inference_framework="onnx"
         )
 
-    # ------------------------------------------------------------------
     # Private helpers for start() — setup, listen, process phases
-    # ------------------------------------------------------------------
 
     def _setup_dependencies(self) -> bool:
         """Load model, init VAD, and validate sounddevice is available.
@@ -190,9 +188,7 @@ class WakeWordDetector:
             except (OSError, RuntimeError) as drain_exc:
                 logger.debug("Stream drain failed (may be closed): %s", drain_exc)
 
-    # ------------------------------------------------------------------
     # Public entry point
-    # ------------------------------------------------------------------
 
     def start(
         self,

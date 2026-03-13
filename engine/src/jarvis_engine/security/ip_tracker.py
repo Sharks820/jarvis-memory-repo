@@ -57,9 +57,7 @@ class IPTracker:
         self._lock = write_lock
         self._ensure_schema()
 
-    # ------------------------------------------------------------------
     # Schema
-    # ------------------------------------------------------------------
 
     def _ensure_schema(self) -> None:
         with self._lock:
@@ -79,9 +77,7 @@ class IPTracker:
             )
             self._db.commit()
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def record_attempt(self, ip: str, attack_type: str) -> str:
         """Record an attack attempt from *ip* and return the action taken.

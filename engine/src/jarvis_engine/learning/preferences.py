@@ -18,36 +18,36 @@ logger = logging.getLogger(__name__)
 class PreferenceTracker(LearningTrackerBase):
     """Extracts and stores user preferences from interactions."""
 
-    PREFERENCE_PATTERNS: dict[str, dict[str, list[str]]] = {
+    PREFERENCE_PATTERNS: dict[str, dict[str, tuple[str, ...]]] = {
         "communication_style": {
-            "verbose": ["explain in detail", "tell me more", "elaborate"],
-            "concise": ["briefly", "tldr", "short version", "quick answer"],
+            "verbose": ("explain in detail", "tell me more", "elaborate"),
+            "concise": ("briefly", "tldr", "short version", "quick answer"),
         },
         "time_preferences": {
-            "morning_person": ["morning routine", "early", "first thing"],
-            "night_owl": ["late night", "evening", "after hours"],
+            "morning_person": ("morning routine", "early", "first thing"),
+            "night_owl": ("late night", "evening", "after hours"),
         },
         "format_preferences": {
-            "lists": ["list", "bullet points", "enumerate"],
-            "prose": ["paragraph", "explain", "narrative"],
-            "code": ["show me code", "code example", "implementation"],
+            "lists": ("list", "bullet points", "enumerate"),
+            "prose": ("paragraph", "explain", "narrative"),
+            "code": ("show me code", "code example", "implementation"),
         },
     }
 
-    _NEGATIVE_PATTERNS: dict[str, list[str]] = {
-        "communication_style": [
+    _NEGATIVE_PATTERNS: dict[str, tuple[str, ...]] = {
+        "communication_style": (
             "don't be",
             "stop being",
             "less formal",
             "too formal",
             "too casual",
-        ],
-        "format_preferences": ["no bullet", "no list", "don't use", "stop using"],
-        "time_preferences": [
+        ),
+        "format_preferences": ("no bullet", "no list", "don't use", "stop using"),
+        "time_preferences": (
             "not in the morning",
             "don't remind me",
             "stop scheduling",
-        ],
+        ),
     }
 
     # Maximum score to prevent unbounded growth

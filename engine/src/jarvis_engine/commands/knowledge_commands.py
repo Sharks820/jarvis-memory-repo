@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class KnowledgeStatusCommand:
@@ -11,13 +13,12 @@ class KnowledgeStatusCommand:
 
 
 @dataclass
-class KnowledgeStatusResult:
+class KnowledgeStatusResult(ResultBase):
     node_count: int = 0
     edge_count: int = 0
     locked_count: int = 0
     pending_contradictions: int = 0
     graph_hash: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -27,9 +28,8 @@ class ContradictionListCommand:
 
 
 @dataclass
-class ContradictionListResult:
+class ContradictionListResult(ResultBase):
     contradictions: list = field(default_factory=list)
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,11 +40,10 @@ class ContradictionResolveCommand:
 
 
 @dataclass
-class ContradictionResolveResult:
+class ContradictionResolveResult(ResultBase):
     success: bool = False
     node_id: str = ""
     resolution: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,11 +53,10 @@ class FactLockCommand:
 
 
 @dataclass
-class FactLockResult:
+class FactLockResult(ResultBase):
     success: bool = False
     node_id: str = ""
     locked: bool = False
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -68,6 +66,5 @@ class KnowledgeRegressionCommand:
 
 
 @dataclass
-class KnowledgeRegressionResult:
+class KnowledgeRegressionResult(ResultBase):
     report: dict = field(default_factory=dict)
-    message: str = ""

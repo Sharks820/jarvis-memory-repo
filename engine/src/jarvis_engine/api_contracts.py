@@ -13,9 +13,7 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Optional, Type, get_type_hints, Union
 
 
-# ---------------------------------------------------------------------------
 # Response contracts (dataclasses)
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -163,9 +161,7 @@ class ErrorResponse:
     error: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Contract registry: endpoint name -> contract dataclass
-# ---------------------------------------------------------------------------
 
 _CONTRACT_REGISTRY: Dict[str, Type[Any]] = {
     "GET /health": HealthResponse,
@@ -184,9 +180,7 @@ _CONTRACT_REGISTRY: Dict[str, Type[Any]] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Type mapping for JSON schema generation
-# ---------------------------------------------------------------------------
 
 _PYTHON_TYPE_TO_JSON: Dict[type, str] = {
     bool: "boolean",
@@ -243,9 +237,7 @@ def _type_to_json_schema(tp: Any) -> Dict[str, Any]:
     return {"type": "object"}
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 
 def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List[str]:

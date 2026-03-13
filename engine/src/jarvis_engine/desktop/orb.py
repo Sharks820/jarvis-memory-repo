@@ -103,9 +103,7 @@ class OrbAnimationMixin:
     _orb_after_id: str | None
     _launcher_after_id: str | None
 
-    # ------------------------------------------------------------------
     # Panel status orb
-    # ------------------------------------------------------------------
 
     def _orb_color(self: Any) -> str:
         """Return the current orb color based on widget state."""
@@ -149,9 +147,7 @@ class OrbAnimationMixin:
             logger.debug("Orb animation stopped (widget may be destroyed)")
             return
 
-    # ------------------------------------------------------------------
     # Launcher window (build, drag, position)
-    # ------------------------------------------------------------------
 
     def _build_launcher(self: Any) -> None:
         launcher = tk.Toplevel(cast(tk.Misc, self))
@@ -160,7 +156,7 @@ class OrbAnimationMixin:
         launcher.configure(bg=self.LAUNCHER_TRANSPARENT)
         try:
             launcher.wm_attributes("-transparentcolor", self.LAUNCHER_TRANSPARENT)
-        except Exception as exc:  # boundary: catch-all justified
+        except (tk.TclError, RuntimeError, OSError) as exc:
             logger.debug("Failed to set launcher transparent color attribute: %s", exc)
         size = self._launcher_size
         # Restore saved launcher position or default to bottom-right
@@ -288,12 +284,10 @@ class OrbAnimationMixin:
         self.cfg.launcher_y = y
         try:
             _save_widget_cfg(self.root_path, cast(Any, self.cfg))
-        except Exception as exc:  # boundary: catch-all justified
+        except (OSError, ValueError, TypeError) as exc:
             logger.debug("Failed to save launcher position to config: %s", exc)
 
-    # ------------------------------------------------------------------
     # Launcher animation (arcs, particles, glow, colors)
-    # ------------------------------------------------------------------
 
     def _launcher_state_speed(self: Any) -> float:
         """Return animation speed multiplier based on widget state."""

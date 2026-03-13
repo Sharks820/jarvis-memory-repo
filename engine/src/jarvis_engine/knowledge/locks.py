@@ -21,9 +21,7 @@ LOCK_THRESHOLD_SOURCES = 3
 class FactLockManager(KGManagerBase):
     """Manages fact locking: auto-lock thresholds and owner confirmation."""
 
-    # ------------------------------------------------------------------
     # Threshold check
-    # ------------------------------------------------------------------
 
     def should_auto_lock(self, node: dict) -> bool:
         """Check if a node meets auto-lock criteria.
@@ -47,9 +45,7 @@ class FactLockManager(KGManagerBase):
 
         return len(sources) >= LOCK_THRESHOLD_SOURCES
 
-    # ------------------------------------------------------------------
     # Lock / unlock operations
-    # ------------------------------------------------------------------
 
     def lock_fact(self, node_id: str, locked_by: str = "auto") -> bool:
         """Atomically lock a fact node.
@@ -101,9 +97,7 @@ class FactLockManager(KGManagerBase):
                 return True
             return False
 
-    # ------------------------------------------------------------------
     # Auto-lock after fact update
-    # ------------------------------------------------------------------
 
     def check_and_auto_lock(self, node_id: str) -> bool:
         """Load a node and auto-lock it if it meets the threshold.

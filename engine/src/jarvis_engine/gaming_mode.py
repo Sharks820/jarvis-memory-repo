@@ -44,9 +44,7 @@ class GamingModeState(TypedDict):
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Windows idle detection
-# ---------------------------------------------------------------------------
 
 
 def _windows_idle_seconds() -> float | None:
@@ -70,9 +68,7 @@ def _windows_idle_seconds() -> float | None:
         return None
 
 
-# ---------------------------------------------------------------------------
 # Gaming mode state read/write
-# ---------------------------------------------------------------------------
 
 DEFAULT_GAMING_PROCESSES = (
     "FortniteClient-Win64-Shipping.exe",
@@ -171,9 +167,7 @@ def load_gaming_processes(processes_path: Path | None = None) -> list[str]:
     return processes or list(DEFAULT_GAMING_PROCESSES)
 
 
-# ---------------------------------------------------------------------------
 # Game process detection with cache
-# ---------------------------------------------------------------------------
 
 _game_detect_cache: tuple[float, bool, str] = (0.0, False, "")
 _game_detect_lock = threading.Lock()
@@ -255,9 +249,7 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
     return False, ""
 
 
-# ---------------------------------------------------------------------------
 # No-arg convenience wrappers (resolve paths via repo_root)
-# ---------------------------------------------------------------------------
 
 
 def gaming_mode_state_path() -> Path:

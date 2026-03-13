@@ -43,9 +43,7 @@ class _VadDetector(Protocol):
     def reset(self) -> None: ...
 
 
-# ---------------------------------------------------------------------------
 # Adaptive noise floor calibration
-# ---------------------------------------------------------------------------
 
 # Clamping bounds for the adaptive noise threshold
 _NOISE_FLOOR_MIN = 0.005
@@ -83,9 +81,7 @@ def _calibrate_noise_floor(
     return clamped
 
 
-# ---------------------------------------------------------------------------
 # Shared WAV conversion utility
-# ---------------------------------------------------------------------------
 
 
 def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
@@ -112,9 +108,7 @@ def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Keyterm loading for Deepgram prompting
-# ---------------------------------------------------------------------------
 
 
 def _load_keyterms() -> list[str]:
@@ -132,9 +126,7 @@ def _load_keyterms() -> list[str]:
     return load_personal_vocab_lines(strip_parens=True)
 
 
-# ---------------------------------------------------------------------------
 # Deepgram Nova-3 STT (cloud, keyterm prompting)
-# ---------------------------------------------------------------------------
 
 
 def _prepare_deepgram_audio(audio: np.ndarray | str) -> tuple[bytes, str]:
@@ -356,9 +348,7 @@ def _try_deepgram(
         return None
 
 
-# ---------------------------------------------------------------------------
 # Microphone recording
-# ---------------------------------------------------------------------------
 
 
 def _init_vad(sample_rate: int) -> tuple[_VadDetector | None, bool]:

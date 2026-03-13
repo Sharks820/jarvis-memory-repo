@@ -99,9 +99,7 @@ class KnowledgeGraph:
             self._db, self._write_lock, self._db_lock, kg=self
         )
 
-    # ------------------------------------------------------------------
     # Public accessors (for handlers -- avoids direct access to private attrs)
-    # ------------------------------------------------------------------
 
     @property
     def db(self) -> "sqlite3.Connection":
@@ -143,9 +141,7 @@ class KnowledgeGraph:
         """
         self._ensure_schema()
 
-    # ------------------------------------------------------------------
     # Schema
-    # ------------------------------------------------------------------
 
     def _ensure_schema(self) -> None:
         """Create kg tables if they don't exist (idempotent)."""
@@ -251,9 +247,7 @@ class KnowledgeGraph:
         self._db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)")
         self._db.commit()
 
-    # ------------------------------------------------------------------
     # NetworkX bridge
-    # ------------------------------------------------------------------
 
     def to_networkx(self, *, copy: bool = True) -> "nx.DiGraph":
         """Reconstruct full NetworkX DiGraph from SQLite tables.
@@ -327,13 +321,9 @@ class KnowledgeGraph:
 
         return G.copy() if copy else G
 
-    # ------------------------------------------------------------------
     # Fact CRUD
-    # ------------------------------------------------------------------
 
-    # ------------------------------------------------------------------
     # add_fact helpers
-    # ------------------------------------------------------------------
 
     def _precompute_embedding(self, label: str, node_id: str) -> bytes | None:
         """Compute vec embedding blob for *label*, or None on failure."""
@@ -424,7 +414,6 @@ class KnowledgeGraph:
         except sqlite3.Error as exc:
             logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
 
-    # ------------------------------------------------------------------
 
     def add_fact(
         self,
@@ -513,9 +502,7 @@ class KnowledgeGraph:
                 logger.debug("add_edge transaction failed, rolled back: %s", exc)
                 raise
 
-    # ------------------------------------------------------------------
     # Contradiction quarantine
-    # ------------------------------------------------------------------
 
     def _quarantine_contradiction(
         self,
@@ -553,9 +540,7 @@ class KnowledgeGraph:
             incoming_value,
         )
 
-    # ------------------------------------------------------------------
     # Read queries (protected by _db_lock for cursor interleaving safety)
-    # ------------------------------------------------------------------
 
     def get_node(self, node_id: str) -> dict | None:
         """Fetch a single node by ID."""
@@ -584,9 +569,7 @@ class KnowledgeGraph:
             )
             return [dict(row) for row in cur.fetchall()]
 
-    # ------------------------------------------------------------------
     # Aggregate queries for status reporting
-    # ------------------------------------------------------------------
 
     def count_nodes(self) -> int:
         """Total number of fact nodes."""

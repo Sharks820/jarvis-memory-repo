@@ -19,7 +19,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 from jarvis_engine._compat import UTC
 from jarvis_engine.commands.defense_commands import (
@@ -47,6 +47,13 @@ if TYPE_CHECKING:
     from jarvis_engine.security.memory_provenance import MemoryProvenance
 
 logger = logging.getLogger(__name__)
+
+# Narrowed exception tuple shared by all defense command handlers.
+# These are the only error families the security subsystem can raise
+# during normal (non-catastrophic) operation.
+_DEFENSE_HANDLER_ERRORS = (OSError, ValueError, RuntimeError, KeyError, TypeError)
+
+_T = TypeVar("_T")
 
 # Module-level singleton for shared SecurityOrchestrator and MemoryProvenance.
 # Keyed by (id(db), id(write_lock), log_dir) so a different db/lock combo gets
@@ -130,6 +137,30 @@ class _DefenseHandlerBase:
             )
         return self._orchestrator
 
+    def _safe_handle(
+        self,
+        action: Callable[[], _T],
+        error_result_factory: Callable[[str], _T],
+        handler_name: str,
+    ) -> _T:
+        """Run *action* wrapped in the standard defense error-handling envelope.
+
+        On success returns the result of *action()*.  On failure logs the error
+        and returns *error_result_factory(fail_message)*.
+        """
+        try:
+            return action()
+        except _DEFENSE_HANDLER_ERRORS as exc:
+            logger.warning("%s failed: %s", handler_name, exc)
+            return error_result_factory(str(exc))
+
+    def _require_orchestrator(self, error_result_factory: Callable[[str], _T]) -> "SecurityOrchestrator | _T":
+        """Return orchestrator or an error result if unavailable."""
+        orch = self._ensure_orchestrator()
+        if orch is None:
+            return error_result_factory("Failed to initialize security orchestrator.")
+        return orch
+
     @property
     def _forensic_logger(self) -> "ForensicLogger":
         if self._cached_forensic_logger is None:
@@ -139,115 +170,80 @@ class _DefenseHandlerBase:
         return self._cached_forensic_logger
 
 
-# ---------------------------------------------------------------------------
 # SecurityStatusHandler
-# ---------------------------------------------------------------------------
 
 
 class SecurityStatusHandler(_DefenseHandlerBase):
     """Return aggregate security dashboard via SecurityOrchestrator.status()."""
 
     def handle(self, cmd: SecurityStatusCommand) -> SecurityStatusResult:
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return SecurityStatusResult(
-                    dashboard={"error": "orchestrator_unavailable"},
-                    message="Failed to initialize security orchestrator.",
-                )
-            dashboard = orch.status()
-            return SecurityStatusResult(
-                dashboard=dashboard,
-                message="Security status retrieved successfully.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("SecurityStatusHandler failed: %s", exc)
-            return SecurityStatusResult(
-                dashboard={"error": "internal_error"},
-                message="Failed to retrieve security status.",
-            )
+        def _error(msg: str) -> SecurityStatusResult:
+            return SecurityStatusResult(dashboard={"error": "internal_error"}, message=msg)
+
+        def _action() -> SecurityStatusResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, SecurityStatusResult):
+                return orch
+            return SecurityStatusResult(dashboard=orch.status(), message="Security status retrieved successfully.")
+
+        return self._safe_handle(_action, _error, "SecurityStatusHandler")
 
 
-# ---------------------------------------------------------------------------
 # ThreatReportHandler
-# ---------------------------------------------------------------------------
 
 
 class ThreatReportHandler(_DefenseHandlerBase):
     """Return threat report for a specific IP or all tracked IPs."""
 
     def handle(self, cmd: ThreatReportCommand) -> ThreatReportResult:
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return ThreatReportResult(
-                    report={"error": "orchestrator_unavailable"},
-                    message="Failed to initialize security orchestrator.",
-                )
+        def _error(msg: str) -> ThreatReportResult:
+            return ThreatReportResult(report={"error": "internal_error"}, message=msg)
 
+        def _action() -> ThreatReportResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, ThreatReportResult):
+                return orch
             report = orch.get_threat_report(cmd.ip if cmd.ip else None)
             if cmd.ip and not report:
-                return ThreatReportResult(
-                    report={},
-                    message=f"No threat data found for IP {cmd.ip}.",
-                )
+                return ThreatReportResult(report={}, message=f"No threat data found for IP {cmd.ip}.")
             if cmd.ip:
-                return ThreatReportResult(
-                    report=report,
-                    message=f"Threat report for {cmd.ip} retrieved.",
-                )
+                return ThreatReportResult(report=report, message=f"Threat report for {cmd.ip} retrieved.")
             tracked_report = cast(dict[str, Any], report) if isinstance(report, dict) else {}
             return ThreatReportResult(
                 report=tracked_report,
                 message=f"Found {tracked_report.get('total_tracked', 0)} tracked IP(s).",
             )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("ThreatReportHandler failed: %s", exc)
-            return ThreatReportResult(
-                report={"error": "internal_error"},
-                message="Failed to retrieve threat report.",
-            )
+
+        return self._safe_handle(_action, _error, "ThreatReportHandler")
 
 
-# ---------------------------------------------------------------------------
 # ExportForensicsHandler
-# ---------------------------------------------------------------------------
 
 
 class ExportForensicsHandler(_DefenseHandlerBase):
     """Export forensic log entries to a ZIP archive."""
 
     def handle(self, cmd: ExportForensicsCommand) -> ExportForensicsResult:
-        try:
-            fl = self._forensic_logger
+        def _error(msg: str) -> ExportForensicsResult:
+            return ExportForensicsResult(export_path="", message=msg)
 
+        def _action() -> ExportForensicsResult:
+            fl = self._forensic_logger
             start_date = cmd.start_date or "2020-01-01"
             end_date = cmd.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
-
             from jarvis_engine._shared import runtime_dir
 
             export_dir = runtime_dir(self._root) / "forensic_exports"
             export_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             output_path = export_dir / f"forensic_export_{timestamp}.zip"
-
             fl.export_for_law_enforcement(start_date, end_date, output_path)
+            return ExportForensicsResult(export_path=str(output_path), message=f"Forensic logs exported to {output_path}.")
 
-            return ExportForensicsResult(
-                export_path=str(output_path),
-                message=f"Forensic logs exported to {output_path}.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("ExportForensicsHandler failed: %s", exc)
-            return ExportForensicsResult(
-                export_path="",
-                message="Failed to export forensic logs.",
-            )
+        return self._safe_handle(_action, _error, "ExportForensicsHandler")
 
 
-# ---------------------------------------------------------------------------
 # ContainmentOverrideHandler
-# ---------------------------------------------------------------------------
 
 
 class ContainmentOverrideHandler(_DefenseHandlerBase):
@@ -258,19 +254,15 @@ class ContainmentOverrideHandler(_DefenseHandlerBase):
     """
 
     def handle(self, cmd: ContainmentOverrideCommand) -> ContainmentOverrideResult:
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return ContainmentOverrideResult(
-                    success=False,
-                    message="Failed to initialize security orchestrator.",
-                )
+        def _error(msg: str) -> ContainmentOverrideResult:
+            return ContainmentOverrideResult(success=False, message=msg)
 
+        def _action() -> ContainmentOverrideResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, ContainmentOverrideResult):
+                return orch
             if cmd.action == "recover":
-                result = orch.recover(
-                    level=cmd.level,
-                    master_password=cmd.master_password or None,
-                )
+                result = orch.recover(level=cmd.level, master_password=cmd.master_password or None)
                 return ContainmentOverrideResult(
                     success=result.get("recovered", False),
                     message=result.get("reason", "Recovery complete.")
@@ -278,31 +270,15 @@ class ContainmentOverrideHandler(_DefenseHandlerBase):
                     else f"Recovery from level {cmd.level} completed.",
                 )
             elif cmd.action == "contain":
-                orch.contain(
-                    ip="0.0.0.0",  # system-wide containment
-                    level=cmd.level,
-                    reason="Manual containment override via command bus",
-                )
-                return ContainmentOverrideResult(
-                    success=True,
-                    message=f"Containment level {cmd.level} activated.",
-                )
+                orch.contain(ip="0.0.0.0", level=cmd.level, reason="Manual containment override via command bus")
+                return ContainmentOverrideResult(success=True, message=f"Containment level {cmd.level} activated.")
             else:
-                return ContainmentOverrideResult(
-                    success=False,
-                    message=f"Unknown action: {cmd.action!r}. Use 'recover' or 'contain'.",
-                )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("ContainmentOverrideHandler failed: %s", exc)
-            return ContainmentOverrideResult(
-                success=False,
-                message="Containment override failed.",
-            )
+                return _error(f"Unknown action: {cmd.action!r}. Use 'recover' or 'contain'.")
+
+        return self._safe_handle(_action, _error, "ContainmentOverrideHandler")
 
 
-# ---------------------------------------------------------------------------
 # BlockIPHandler
-# ---------------------------------------------------------------------------
 
 
 class BlockIPHandler(_DefenseHandlerBase):
@@ -310,37 +286,24 @@ class BlockIPHandler(_DefenseHandlerBase):
 
     def handle(self, cmd: BlockIPCommand) -> BlockIPResult:
         if not cmd.ip.strip():
-            return BlockIPResult(
-                success=False,
-                message="IP address must not be empty.",
-            )
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return BlockIPResult(
-                    success=False,
-                    message="Failed to initialize security orchestrator.",
-                )
+            return BlockIPResult(success=False, message="IP address must not be empty.")
+
+        def _error(msg: str) -> BlockIPResult:
+            return BlockIPResult(success=False, message=msg)
+
+        def _action() -> BlockIPResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, BlockIPResult):
+                return orch
             duration = cmd.duration_hours if cmd.duration_hours > 0 else None
             orch.block_ip(cmd.ip, duration_hours=duration)
-            duration_str = (
-                f"{cmd.duration_hours}h" if cmd.duration_hours > 0 else "permanent"
-            )
-            return BlockIPResult(
-                success=True,
-                message=f"IP {cmd.ip} blocked for {duration_str}.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("BlockIPHandler failed: %s", exc)
-            return BlockIPResult(
-                success=False,
-                message="Failed to block IP.",
-            )
+            duration_str = f"{cmd.duration_hours}h" if cmd.duration_hours > 0 else "permanent"
+            return BlockIPResult(success=True, message=f"IP {cmd.ip} blocked for {duration_str}.")
+
+        return self._safe_handle(_action, _error, "BlockIPHandler")
 
 
-# ---------------------------------------------------------------------------
 # UnblockIPHandler
-# ---------------------------------------------------------------------------
 
 
 class UnblockIPHandler(_DefenseHandlerBase):
@@ -348,33 +311,22 @@ class UnblockIPHandler(_DefenseHandlerBase):
 
     def handle(self, cmd: UnblockIPCommand) -> UnblockIPResult:
         if not cmd.ip.strip():
-            return UnblockIPResult(
-                success=False,
-                message="IP address must not be empty.",
-            )
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return UnblockIPResult(
-                    success=False,
-                    message="Failed to initialize security orchestrator.",
-                )
+            return UnblockIPResult(success=False, message="IP address must not be empty.")
+
+        def _error(msg: str) -> UnblockIPResult:
+            return UnblockIPResult(success=False, message=msg)
+
+        def _action() -> UnblockIPResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, UnblockIPResult):
+                return orch
             orch.unblock_ip(cmd.ip)
-            return UnblockIPResult(
-                success=True,
-                message=f"IP {cmd.ip} unblocked.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("UnblockIPHandler failed: %s", exc)
-            return UnblockIPResult(
-                success=False,
-                message="Failed to unblock IP.",
-            )
+            return UnblockIPResult(success=True, message=f"IP {cmd.ip} unblocked.")
+
+        return self._safe_handle(_action, _error, "UnblockIPHandler")
 
 
-# ---------------------------------------------------------------------------
 # ReviewQuarantineHandler
-# ---------------------------------------------------------------------------
 
 
 class ReviewQuarantineHandler(_DefenseHandlerBase):
@@ -385,16 +337,17 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
     """
 
     def handle(self, cmd: ReviewQuarantineCommand) -> ReviewQuarantineResult:
-        try:
+        def _error(msg: str) -> ReviewQuarantineResult:
+            return ReviewQuarantineResult(records=[], message=msg)
+
+        def _action() -> ReviewQuarantineResult:
             global _shared_provenance
             provenance = _shared_provenance
             if provenance is None:
-                # Fallback: try to get it from the orchestrator
                 orch = self._ensure_orchestrator()
                 if orch is not None and hasattr(orch, "memory_provenance"):
                     provenance = orch.memory_provenance
             if provenance is None:
-                # Last resort: create one via the singleton path
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
 
                 with _shared_orchestrator_lock:
@@ -402,21 +355,12 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
                         _shared_provenance = MemoryProvenance()
                     provenance = _shared_provenance
             records = provenance.get_quarantined(limit=50)
-            return ReviewQuarantineResult(
-                records=records,
-                message=f"{len(records)} quarantined record(s) found.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("ReviewQuarantineHandler failed: %s", exc)
-            return ReviewQuarantineResult(
-                records=[],
-                message="Failed to review quarantine.",
-            )
+            return ReviewQuarantineResult(records=records, message=f"{len(records)} quarantined record(s) found.")
+
+        return self._safe_handle(_action, _error, "ReviewQuarantineHandler")
 
 
-# ---------------------------------------------------------------------------
 # SecurityBriefingHandler
-# ---------------------------------------------------------------------------
 
 
 class SecurityBriefingHandler(_DefenseHandlerBase):
@@ -428,21 +372,13 @@ class SecurityBriefingHandler(_DefenseHandlerBase):
     """
 
     def handle(self, cmd: SecurityBriefingCommand) -> SecurityBriefingResult:
-        try:
-            orch = self._ensure_orchestrator()
-            if orch is None:
-                return SecurityBriefingResult(
-                    briefing="",
-                    message="Failed to initialize security orchestrator.",
-                )
-            briefing = orch.generate_briefing()
-            return SecurityBriefingResult(
-                briefing=briefing,
-                message="Security briefing generated.",
-            )
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-            logger.warning("SecurityBriefingHandler failed: %s", exc)
-            return SecurityBriefingResult(
-                briefing="",
-                message="Failed to generate security briefing.",
-            )
+        def _error(msg: str) -> SecurityBriefingResult:
+            return SecurityBriefingResult(briefing="", message=msg)
+
+        def _action() -> SecurityBriefingResult:
+            orch = self._require_orchestrator(_error)
+            if isinstance(orch, SecurityBriefingResult):
+                return orch
+            return SecurityBriefingResult(briefing=orch.generate_briefing(), message="Security briefing generated.")
+
+        return self._safe_handle(_action, _error, "SecurityBriefingHandler")

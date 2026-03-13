@@ -12,9 +12,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Alert dataclass
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -28,9 +26,7 @@ class IdentityAlert:
     recommended_action: str = ""
 
 
-# ---------------------------------------------------------------------------
 # Detection patterns
-# ---------------------------------------------------------------------------
 
 _URGENCY_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
@@ -94,9 +90,7 @@ _IDENTITY_EXTRACTION_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Monitor
-# ---------------------------------------------------------------------------
 
 
 class IdentityMonitor:
@@ -141,9 +135,7 @@ class IdentityMonitor:
                 )
             )
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
 
     def check_request_for_social_engineering(self, text: str) -> IdentityAlert | None:
         """Scan *text* for social engineering indicators.
@@ -184,9 +176,7 @@ class IdentityMonitor:
         alerts.sort(key=lambda a: severity_rank.get(a.severity, 0), reverse=True)
         return alerts[0]
 
-    # ------------------------------------------------------------------
     # Detection rules
-    # ------------------------------------------------------------------
 
     def _check_urgency_manipulation(self, text: str) -> IdentityAlert | None:
         for pat in _URGENCY_PATTERNS:

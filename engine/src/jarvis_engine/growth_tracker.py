@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # TypedDicts for dict-returning functions
-# ---------------------------------------------------------------------------
 
 
 class BranchEvalResult(TypedDict):
@@ -60,9 +58,7 @@ class AuditRunResult(TypedDict):
     prev_run_sha256: str
 
 
-# ---------------------------------------------------------------------------
 # Memory-recall golden task dataclasses
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
