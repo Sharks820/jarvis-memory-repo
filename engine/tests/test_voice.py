@@ -155,7 +155,7 @@ class TestRunPs:
     """Tests for the _run_ps PowerShell helper."""
 
     @patch("jarvis_engine.voice.core.subprocess.run")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_run_ps_invokes_powershell(self, mock_kwargs, mock_run) -> None:
         from jarvis_engine.voice.core import _run_ps
 
@@ -169,7 +169,7 @@ class TestRunPs:
         assert result.returncode == 0
 
     @patch("jarvis_engine.voice.core.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ps", timeout=30))
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_run_ps_timeout_raises(self, mock_kwargs, mock_run) -> None:
         from jarvis_engine.voice.core import _run_ps
 
@@ -185,7 +185,7 @@ class TestRunPsEncoded:
     """Tests for the encoded PowerShell helper."""
 
     @patch("jarvis_engine.voice.core.subprocess.run")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_run_ps_encoded_uses_encoded_command(self, mock_kwargs, mock_run) -> None:
         from jarvis_engine.voice.core import _run_ps_encoded
 
@@ -197,7 +197,7 @@ class TestRunPsEncoded:
         assert "-EncodedCommand" in args
 
     @patch("jarvis_engine.voice.core.subprocess.run")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_run_ps_encoded_passes_custom_env(self, mock_kwargs, mock_run) -> None:
         from jarvis_engine.voice.core import _run_ps_encoded
 
@@ -296,7 +296,7 @@ class TestEdgeTts:
 
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_list_edge_voices_parses_output(self, mock_kwargs, mock_exe, mock_run) -> None:
         from jarvis_engine.voice.core import list_edge_voices, _list_edge_voices_cached
 
@@ -313,7 +313,7 @@ class TestEdgeTts:
 
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_list_edge_voices_returns_empty_on_failure(self, mock_kwargs, mock_exe, mock_run) -> None:
         from jarvis_engine.voice.core import list_edge_voices, _list_edge_voices_cached
 
@@ -365,7 +365,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_speak_text_edge_no_output_wav(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         from jarvis_engine.voice.core import _speak_text_edge
 
@@ -386,7 +386,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_speak_text_edge_with_output_wav(self, mock_kwargs, mock_exe, mock_voice, mock_run) -> None:
         from jarvis_engine.voice.core import _speak_text_edge
 
@@ -436,7 +436,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_speak_text_edge_synthesis_failure(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         from jarvis_engine.voice.core import _speak_text_edge
 
@@ -456,7 +456,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_speak_text_edge_rate_clamping(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         """Rate values are clamped to +-50 percent."""
         from jarvis_engine.voice.core import _speak_text_edge
@@ -833,7 +833,7 @@ class TestStreamingErrorSentinel:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_producer_error_puts_only_error_sentinel(
         self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
     ) -> None:
@@ -875,7 +875,7 @@ class TestStreamingErrorSentinel:
     @patch("jarvis_engine.voice.core.subprocess.run")
     @patch("jarvis_engine.voice.core._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice.core._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    @patch("jarvis_engine.voice.core._win_hidden_subprocess_kwargs", return_value={})
+    @patch("jarvis_engine.voice.core.win_hidden_subprocess_kwargs", return_value={})
     def test_producer_success_puts_none_sentinel(
         self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
     ) -> None:

@@ -307,7 +307,8 @@ def test_cmd_serve_mobile_uses_env_values(monkeypatch) -> None:
 
     monkeypatch.setenv("JARVIS_MOBILE_TOKEN", "env-auth")
     monkeypatch.setenv("JARVIS_MOBILE_SIGNING_KEY", "env-sign")
-    monkeypatch.setattr(main_mod, "run_mobile_server", fake_run_mobile_server)
+    import jarvis_engine.mobile_api_lifecycle as _lifecycle_mod
+    monkeypatch.setattr(_lifecycle_mod, "run_mobile_server", fake_run_mobile_server)
     # Bypass PID-based duplicate detection when mobile API is already running
     import jarvis_engine.ops.process_manager as pm_mod
     monkeypatch.setattr(pm_mod, "is_service_running", lambda *a, **kw: False)

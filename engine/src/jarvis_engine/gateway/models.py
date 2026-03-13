@@ -366,7 +366,8 @@ class ModelGateway:
             return
         self._closed = True
         try:
-            self._http.close()
+            if hasattr(self, "_http"):
+                self._http.close()
         except OSError as exc:
             logger.debug("Failed to close httpx client: %s", exc)
         if hasattr(self, "_anthropic") and self._anthropic is not None:

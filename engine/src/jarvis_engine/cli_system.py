@@ -18,7 +18,6 @@ from pathlib import Path
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import ACTIONS_FILENAME
 from jarvis_engine._constants import DEFAULT_API_PORT
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
 from jarvis_engine._shared import make_task_id
