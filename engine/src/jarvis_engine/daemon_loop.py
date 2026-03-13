@@ -280,7 +280,6 @@ def _restart_mobile_api(service_name: str) -> None:
 
 
 def _register_daemon_pid(root: Path) -> bool:
-    """Register daemon PID file.  Returns True if registration succeeded."""
     from jarvis_engine.ops.process_manager import is_service_running, write_pid_file
 
     if is_service_running("daemon", root):
@@ -321,7 +320,6 @@ def _print_cycle_status(
     cycle_start_ts: str,
     state: CycleState | dict,
 ) -> None:
-    """Print all per-cycle status lines to stdout."""
     _emit(f"cycle={cycles} ts={cycle_start_ts}")
     _emit(f"daemon_paused={state['daemon_paused']}")
     _emit(f"safe_mode={state['safe_mode']}")
@@ -915,7 +913,6 @@ def _run_core_autopilot(
     safe_mode: bool,
     cmd_ops_autopilot,
 ) -> int:
-    """Run the core ops-autopilot cycle. Returns the autopilot return code."""
     exec_cycle = execute and not safe_mode
     approve_cycle = approve_privileged and not safe_mode
     if safe_mode and (execute or approve_privileged):
@@ -960,7 +957,6 @@ def _emit_cycle_status(
     state: CycleState | dict,
     last_pressure_level: str,
 ) -> None:
-    """Log and print all per-cycle status and resource pressure info."""
     cycle_start_ts = now_iso()
     _log_cycle_start(cycles, cycle_start_ts)
     _print_cycle_status(cycles, cycle_start_ts, state)

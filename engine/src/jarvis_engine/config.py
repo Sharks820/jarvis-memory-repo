@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import load_json_file
+from jarvis_engine._shared import load_json_file, memory_db_path, runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -103,4 +103,3 @@ def load_config() -> EngineConfig:
 # Path helpers — re-exported from _shared.py so that modules importing
 # config.py can also access them without an extra import.
 # ---------------------------------------------------------------------------
-from jarvis_engine._shared import memory_db_path, runtime_dir  # noqa: F401

@@ -332,7 +332,6 @@ class ConversationTimeline:
                 self._using_db = False
 
     def _init_schema(self) -> None:
-        """Create the timeline table if it does not exist."""
         assert self._db is not None
         self._db.executescript(
             """
@@ -356,7 +355,6 @@ class ConversationTimeline:
         )
 
     def add_turn(self, entry: TimelineEntry) -> None:
-        """Append a turn to the timeline.  Thread-safe."""
         with self._lock:
             if self._using_db and self._db is not None:
                 try:
