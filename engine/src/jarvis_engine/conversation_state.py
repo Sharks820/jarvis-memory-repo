@@ -461,7 +461,6 @@ class ConversationTimeline:
                 return matches[:limit]
 
     def count(self) -> int:
-        """Return the total number of timeline entries."""
         with self._lock:
             if self._using_db and self._db is not None:
                 try:
@@ -507,7 +506,6 @@ class ConversationTimeline:
                 return before - len(self._in_memory)
 
     def vacuum(self) -> None:
-        """Run VACUUM on the timeline database to reclaim space (S4)."""
         with self._lock:
             if self._using_db and self._db is not None:
                 try:
@@ -517,7 +515,6 @@ class ConversationTimeline:
                     logger.warning("Timeline VACUUM failed: %s", exc)
 
     def close(self) -> None:
-        """Close the database connection (idempotent)."""
         with self._lock:
             if self._db is not None:
                 try:
@@ -588,7 +585,6 @@ def _derive_fernet_key(signing_key: str, salt: bytes) -> bytes:
 
 
 def _encrypt_json(payload: dict[str, Any], fernet_key: bytes) -> bytes:
-    """Serialize *payload* to JSON and encrypt with Fernet."""
     from cryptography.fernet import Fernet
 
     raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
@@ -597,7 +593,6 @@ def _encrypt_json(payload: dict[str, Any], fernet_key: bytes) -> bytes:
 
 
 def _decrypt_json(data: bytes, fernet_key: bytes) -> dict[str, Any]:
-    """Decrypt Fernet-encrypted JSON data."""
     from cryptography.fernet import Fernet
 
     if data.startswith(_ENCRYPTED_HEADER):
@@ -1434,7 +1429,6 @@ class ConversationStateManager:
 
     @property
     def timeline(self) -> ConversationTimeline:
-        """Return the conversation timeline instance."""
         return self._timeline
 
     @property
@@ -1450,14 +1444,12 @@ class ConversationStateManager:
     # Cleanup
 
     def close(self) -> None:
-        """Close the timeline database and persist final state."""
         self.save()
         self._timeline.close()
 
     # Telemetry helpers (private)
 
     def _emit_entity_telemetry(self, entities: set[str]) -> None:
-        """Emit an entity_extraction telemetry event."""
         if not entities:
             return
         try:
@@ -1522,7 +1514,6 @@ def get_conversation_state(
 
 
 def _reset_manager() -> None:
-    """Close and discard the module-level singleton.  Test-only."""
     global _conversation_state
     with _manager_lock:
         if _conversation_state is not None:

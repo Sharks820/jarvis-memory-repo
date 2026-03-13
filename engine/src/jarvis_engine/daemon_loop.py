@@ -291,7 +291,6 @@ def _register_daemon_pid(root: Path) -> bool:
 
 
 def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
-    """Log to activity feed, suppressing all errors (lazy import)."""
     try:
         from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
@@ -302,7 +301,6 @@ def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
 
 
 def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
-    """Log daemon cycle start to activity feed (never raises)."""
     _safe_log_activity(
         "DAEMON_CYCLE",
         f"Daemon cycle {cycles} started",
@@ -311,7 +309,6 @@ def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
 
 
 def _log_cycle_end(cycles: int, rc: int) -> None:
-    """Log daemon cycle end to activity feed (never raises)."""
     _safe_log_activity(
         "DAEMON_CYCLE",
         f"Daemon cycle {cycles} ended (rc={rc})",
@@ -364,7 +361,6 @@ def _log_resource_pressure(
     sleep_seconds: int,
     skip_heavy_tasks: bool,
 ) -> None:
-    """Log resource pressure changes to activity feed (never raises)."""
     if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
         _safe_log_activity(
             "RESOURCE_PRESSURE",
@@ -433,7 +429,6 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
 
 
 def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
-    """Run mobile-desktop sync (never raises)."""
     try:
         sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
     except SUBSYSTEM_ERRORS_DB as exc:
@@ -444,7 +439,6 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
 
 
 def _run_watchdog_cycle(root: Path) -> None:
-    """Check if mobile_api crashed and restart it (never raises)."""
     try:
         from jarvis_engine.ops.process_manager import check_and_restart_services
 
@@ -456,7 +450,6 @@ def _run_watchdog_cycle(root: Path) -> None:
 
 
 def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
-    """Run self-heal and collect KG metrics (never raises)."""
     try:
         heal_rc = cmd_self_heal(
             force_maintenance=False,
@@ -519,7 +512,6 @@ def _collect_kg_metrics(root: Path) -> None:
 
 
 def _run_self_test_cycle(root: Path) -> None:
-    """Run adversarial self-test: memory quiz + regression detection (never raises)."""
     try:
         from jarvis_engine.proactive.self_test import AdversarialSelfTest
 
@@ -543,7 +535,6 @@ def _run_self_test_cycle(root: Path) -> None:
 
 
 def _run_db_optimize_cycle(cycles: int) -> None:
-    """Run SQLite ANALYZE (every 100 cycles) and VACUUM (every 500) (never raises)."""
     try:
         bus = _get_daemon_bus()
         engine = bus.ctx.engine
@@ -562,7 +553,6 @@ def _run_db_optimize_cycle(cycles: int) -> None:
 
 
 def _run_kg_regression_cycle(root: Path) -> None:
-    """Run KG regression check with auto-restore on failure (never raises)."""
     try:
         from jarvis_engine.knowledge.regression import RegressionChecker
 
@@ -606,7 +596,6 @@ def _run_kg_regression_cycle(root: Path) -> None:
 
 
 def _run_usage_prediction_cycle() -> None:
-    """Run usage pattern prediction (never raises)."""
     try:
         bus = _get_daemon_bus()
         usage_tracker = bus.ctx.usage_tracker
@@ -625,7 +614,6 @@ def _run_usage_prediction_cycle() -> None:
 
 
 def _run_memory_consolidation_cycle() -> None:
-    """Run memory consolidation (never raises)."""
     try:
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
@@ -640,7 +628,6 @@ def _run_memory_consolidation_cycle() -> None:
 
 
 def _run_entity_resolution_cycle() -> None:
-    """Run entity resolution with KG backup (never raises)."""
     try:
         from jarvis_engine.knowledge.entity_resolver import EntityResolver
         from jarvis_engine.knowledge.regression import RegressionChecker
@@ -681,7 +668,6 @@ def _run_entity_resolution_cycle() -> None:
 
 
 def _run_auto_harvest_cycle(root: Path) -> None:
-    """Run autonomous knowledge harvesting (never raises)."""
     try:
         from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
         from jarvis_engine.harvesting.providers import (
@@ -894,7 +880,6 @@ def _run_periodic_subsystems(
 
 
 def _run_diagnostic_scan_cycle(root: Path) -> None:
-    """Run a quick diagnostic scan and persist results to JSONL history."""
     try:
         from jarvis_engine.self_diagnosis import DiagnosticEngine
 
@@ -949,7 +934,6 @@ def _run_core_autopilot(
 
 
 def _interruptible_sleep(seconds: float) -> None:
-    """Sleep in 1-second chunks so KeyboardInterrupt is handled promptly."""
     remaining = float(seconds)
     while remaining > 0:
         chunk = min(1.0, remaining)

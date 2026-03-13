@@ -93,7 +93,6 @@ class ActivityFeed:
     # Schema
 
     def _init_schema(self) -> None:
-        """Create the activity_log table if it doesn't exist (idempotent)."""
         self._db.executescript("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id TEXT PRIMARY KEY,
@@ -115,7 +114,6 @@ class ActivityFeed:
     # Public API
 
     def _check_open(self) -> None:
-        """Raise RuntimeError if the feed has been closed."""
         if self._closed:
             raise RuntimeError("ActivityFeed is closed")
 
@@ -199,7 +197,6 @@ class ActivityFeed:
         ]
 
     def clear_old(self, keep_days: int = 30) -> int:
-        """Prune events older than *keep_days*.  Returns count deleted."""
         cutoff = (datetime.now(UTC) - timedelta(days=keep_days)).isoformat()
         with self._lock:
             self._check_open()
@@ -210,7 +207,6 @@ class ActivityFeed:
             return cur.rowcount
 
     def stats(self) -> dict[str, int]:
-        """Return event count per category for the last 24 hours."""
         cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         with self._lock:
             self._check_open()
@@ -274,7 +270,6 @@ _feed_lock = threading.Lock()
 
 
 def get_activity_feed(db_path: Path | str | None = None) -> ActivityFeed:
-    """Return (or create) the module-level ActivityFeed singleton."""
     global _feed  # lazy singleton: one shared DB connection for the process
     if _feed is not None and not _feed._closed:
         return _feed
@@ -291,12 +286,10 @@ def log_activity(
     summary: str,
     details: dict | None = None,
 ) -> str:
-    """Convenience: log an event via the module singleton."""
     return get_activity_feed().log(category, summary, details)
 
 
 def _reset_feed() -> None:
-    """Close and discard the module-level singleton.  Test-only."""
     global _feed  # teardown: clear the lazy singleton for test isolation
     with _feed_lock:
         if _feed is not None:
