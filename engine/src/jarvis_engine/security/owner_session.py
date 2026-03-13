@@ -99,6 +99,8 @@ class OwnerSessionManager:
         self._failure_count: int = 0
         self._lockout_until: float = 0.0
         self._lockout_count: int = 0  # for exponential backoff
+        self._last_lockout_time: float = 0.0  # monotonic time of last lockout
+        self._lockout_decay_seconds: float = 86400.0  # 24h decay for lockout_count
 
         # Decide which hasher to use
         self._use_argon2 = _HAS_ARGON2 and not force_pbkdf2
@@ -178,6 +180,7 @@ class OwnerSessionManager:
                 self._failure_count += 1
                 if self._failure_count >= self._max_failures:
                     self._lockout_count += 1
+                    self._last_lockout_time = time.monotonic()
                     duration = self._lockout_duration * (2 ** (self._lockout_count - 1))
                     self._lockout_until = time.monotonic() + duration
                     logger.warning(
@@ -196,9 +199,15 @@ class OwnerSessionManager:
                 )
                 return None
 
-            # Success — reset failure and lockout counters, create session
+            # Success — reset failure counter; lockout_count decays after 24h
             self._failure_count = 0
-            self._lockout_count = 0
+            if (
+                self._lockout_count > 0
+                and self._last_lockout_time > 0
+                and (time.monotonic() - self._last_lockout_time)
+                >= self._lockout_decay_seconds
+            ):
+                self._lockout_count = 0
             token = secrets.token_hex(32)
             self._sessions[token] = time.monotonic() + self._session_timeout
             logger.info("Owner authenticated, session ...%s created", token[-4:])

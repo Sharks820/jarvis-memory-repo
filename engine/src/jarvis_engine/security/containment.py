@@ -16,6 +16,7 @@ import threading
 import time
 from collections import deque
 from enum import IntEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypedDict
 
 from jarvis_engine._constants import PBKDF2_ITERATIONS
@@ -406,9 +407,26 @@ class ContainmentEngine:
         Returns the new key as a hex string.  If ``on_credential_rotate``
         callback was provided at construction, it is called with the new key
         so the HTTP server's signing key is updated in real-time.
+
+        The rotated key is also persisted to disk at
+        ``<repo_root>/.planning/security/signing_key`` so it survives
+        process restarts.
         """
         new_key = os.urandom(32).hex()
         self._current_hmac_key = new_key
+
+        # Persist to disk so the key survives restarts
+        try:
+            # Walk up from this file to find the repo root
+            # containment.py -> security/ -> jarvis_engine/ -> src/ -> engine/ -> repo_root
+            _repo_root = Path(__file__).resolve().parents[4]
+            key_path = _repo_root / ".planning" / "security" / "signing_key"
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            key_path.write_text(new_key, encoding="utf-8")
+            logger.info("Rotated HMAC key persisted to %s", key_path)
+        except OSError as exc:
+            logger.error("Failed to persist rotated HMAC key to disk: %s", exc)
+
         if callable(self._on_credential_rotate):
             try:
                 self._on_credential_rotate(new_key)

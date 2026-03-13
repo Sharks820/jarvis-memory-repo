@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from jarvis_engine._constants import PBKDF2_ITERATIONS
 from jarvis_engine.owner_guard import (
     DEFAULT_OWNER_GUARD,
     clear_master_password,
@@ -54,7 +55,7 @@ class TestReadOwnerGuard:
         assert state["trusted_mobile_devices"] == []
         assert state["master_password_hash"] == ""
         assert state["master_password_salt_b64"] == ""
-        assert state["master_password_iterations"] == 200000
+        assert state["master_password_iterations"] == PBKDF2_ITERATIONS
 
     def test_defaults_on_corrupt_json(self, root: Path) -> None:
         path = owner_guard_path(root)
@@ -226,7 +227,7 @@ class TestMasterPassword:
         state = clear_master_password(root)
         assert state["master_password_hash"] == ""
         assert state["master_password_salt_b64"] == ""
-        assert state["master_password_iterations"] == 200000
+        assert state["master_password_iterations"] == PBKDF2_ITERATIONS
 
     def test_minimum_iterations_enforced(self, root: Path) -> None:
         state = set_master_password(root, "SecurePass123!", iterations=50)

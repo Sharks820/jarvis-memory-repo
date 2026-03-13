@@ -8,6 +8,7 @@ import secrets
 from pathlib import Path
 from typing import TypedDict
 
+from jarvis_engine._constants import PBKDF2_ITERATIONS
 from jarvis_engine._shared import atomic_write_json, now_iso, safe_int
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ DEFAULT_OWNER_GUARD: OwnerGuardState = {
     "trusted_mobile_devices": [],
     "master_password_hash": "",  # nosec B105
     "master_password_salt_b64": "",  # nosec B105
-    "master_password_iterations": 200000,  # nosec B105
+    "master_password_iterations": PBKDF2_ITERATIONS,  # nosec B105
     "updated_utc": "",
 }
 
@@ -50,7 +51,7 @@ def read_owner_guard(root: Path) -> OwnerGuardState:
             "trusted_mobile_devices": [],
             "master_password_hash": "",
             "master_password_salt_b64": "",
-            "master_password_iterations": 200000,
+            "master_password_iterations": PBKDF2_ITERATIONS,
             "updated_utc": "",
         }
     devices = raw.get("trusted_mobile_devices", [])
@@ -67,7 +68,7 @@ def read_owner_guard(root: Path) -> OwnerGuardState:
             raw.get("master_password_salt_b64", "")
         ).strip(),
         "master_password_iterations": safe_int(
-            raw.get("master_password_iterations", 200000), 200000
+            raw.get("master_password_iterations", PBKDF2_ITERATIONS), PBKDF2_ITERATIONS
         ),
         "updated_utc": str(raw.get("updated_utc", "")),
     }
@@ -100,7 +101,7 @@ def _hash_master_password(password: str, *, salt: bytes, iterations: int) -> str
 
 
 def set_master_password(
-    root: Path, password: str, *, iterations: int = 200000
+    root: Path, password: str, *, iterations: int = PBKDF2_ITERATIONS
 ) -> OwnerGuardState:
     cleaned = password.strip()
     if len(cleaned) < 10:
@@ -123,7 +124,7 @@ def clear_master_password(root: Path) -> OwnerGuardState:
     state = read_owner_guard(root)
     state["master_password_hash"] = ""  # nosec B105
     state["master_password_salt_b64"] = ""  # nosec B105
-    state["master_password_iterations"] = 200000
+    state["master_password_iterations"] = PBKDF2_ITERATIONS
     atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
@@ -132,7 +133,7 @@ def verify_master_password(root: Path, password: str) -> bool:
     state = read_owner_guard(root)
     expected = str(state.get("master_password_hash", "")).strip()
     salt_b64 = str(state.get("master_password_salt_b64", "")).strip()
-    iterations = int(state.get("master_password_iterations", 200000))
+    iterations = int(state.get("master_password_iterations", PBKDF2_ITERATIONS))
     if not expected or not salt_b64:
         return False
     try:
@@ -143,7 +144,22 @@ def verify_master_password(root: Path, password: str) -> bool:
     actual = _hash_master_password(
         password.strip(), salt=salt, iterations=max(100000, iterations)
     )
-    return hmac.compare_digest(actual, expected)
+    if not hmac.compare_digest(actual, expected):
+        return False
+
+    # Migration: rehash with current iteration count if stored count is outdated
+    if iterations < PBKDF2_ITERATIONS:
+        try:
+            set_master_password(root, password.strip(), iterations=PBKDF2_ITERATIONS)
+            logger.info(
+                "Migrated master password hash from %d to %d PBKDF2 iterations",
+                iterations,
+                PBKDF2_ITERATIONS,
+            )
+        except (OSError, ValueError) as exc:
+            logger.warning("Failed to migrate master password iterations: %s", exc)
+
+    return True
 
 
 def trust_mobile_device(root: Path, device_id: str) -> OwnerGuardState:
