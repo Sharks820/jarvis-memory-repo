@@ -6,7 +6,6 @@ import logging
 from http import HTTPStatus
 
 from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG
-from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
 from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
 
