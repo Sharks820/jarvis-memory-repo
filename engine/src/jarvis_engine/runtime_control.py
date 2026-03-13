@@ -10,7 +10,7 @@ from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONTROL_STATE = {
+DEFAULT_CONTROL_STATE: "ControlState" = {
     "daemon_paused": False,
     "safe_mode": False,
     "muted": False,
@@ -59,6 +59,17 @@ class DaemonSleepRecommendation(TypedDict):
     skip_heavy_tasks: bool
 
 
+def _default_control_state() -> ControlState:
+    return {
+        "daemon_paused": False,
+        "safe_mode": False,
+        "muted": False,
+        "mute_until_utc": "",
+        "reason": "",
+        "updated_utc": "",
+    }
+
+
 from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
@@ -82,8 +93,8 @@ def read_control_state(root: Path) -> ControlState:
     path = control_state_path(root)
     raw = load_json_file(path, None, expected_type=dict)
     if raw is None:
-        return dict(DEFAULT_CONTROL_STATE)
-    state = {
+        return _default_control_state()
+    state: ControlState = {
         "daemon_paused": bool(raw.get("daemon_paused", False)),
         "safe_mode": bool(raw.get("safe_mode", False)),
         "muted": bool(raw.get("muted", False)),
@@ -208,9 +219,9 @@ def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
     conversation_buffer_mb = _file_size_mb(
         root / ".planning" / "brain" / "conversation_history.json"
     )
-    mission_state_mb = _file_size_mb(
-        root / ".planning" / "missions.json"
-    ) + _dir_size_mb(root / ".planning" / "missions")
+    mission_state_mb = _file_size_mb(root / ".planning" / "missions.json") + _dir_size_mb(
+        root / ".planning" / "missions"
+    )
 
     current = {
         "embedding_cache_mb": embedding_cache_mb,
@@ -252,22 +263,22 @@ def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
 
 
 def write_resource_pressure_state(
-    root: Path, snapshot: dict[str, Any]
+    root: Path,
+    snapshot: ResourceSnapshot | dict[str, Any],
 ) -> dict[str, Any]:
-    payload = snapshot if isinstance(snapshot, dict) else {}
-    _atomic_write_json(resource_pressure_path(root), payload)
+    payload: dict[str, Any] = dict(snapshot) if isinstance(snapshot, dict) else {}
+    _atomic_write_json(resource_pressure_path(root), dict(payload))
     return payload
 
 
 def recommend_daemon_sleep(
-    base_sleep_s: int, snapshot: dict[str, Any]
+    base_sleep_s: int,
+    snapshot: ResourceSnapshot | dict[str, Any],
 ) -> DaemonSleepRecommendation:
     level = str(snapshot.get("pressure_level", "none")).lower()
     throttle = snapshot.get("throttle", {})
     mild_scale = float(throttle.get("mild_scale", _DEFAULT_THROTTLE["mild_scale"]))
-    severe_scale = float(
-        throttle.get("severe_scale", _DEFAULT_THROTTLE["severe_scale"])
-    )
+    severe_scale = float(throttle.get("severe_scale", _DEFAULT_THROTTLE["severe_scale"]))
     max_sleep = int(throttle.get("max_sleep_s", _DEFAULT_THROTTLE["max_sleep_s"]))
     max_sleep = max(60, max_sleep)
     adjusted = int(base_sleep_s)
@@ -309,13 +320,13 @@ def write_control_state(
     state["updated_utc"] = _now_iso()
 
     path = control_state_path(root)
-    _atomic_write_json(path, state)
+    _atomic_write_json(path, dict(state))
     return state
 
 
 def reset_control_state(root: Path) -> ControlState:
-    state = dict(DEFAULT_CONTROL_STATE)
+    state = _default_control_state()
     state["updated_utc"] = _now_iso()
     path = control_state_path(root)
-    _atomic_write_json(path, state)
+    _atomic_write_json(path, dict(state))
     return state

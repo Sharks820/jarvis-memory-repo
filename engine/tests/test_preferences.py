@@ -105,3 +105,14 @@ class TestPreferenceTracker:
         categories = [cat for cat, _ in detected]
         assert "time_preferences" in categories
         assert "format_preferences" in categories
+
+    def test_preference_writes_learning_provenance(self, db, tracker):
+        tracker.observe("give me the tldr")
+        row = db.execute(
+            "SELECT trust_level, promotion_state FROM learning_provenance "
+            "WHERE subject_type = 'preference' AND subject_id = ?",
+            ("communication_style:concise",),
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "T3_trusted"
+        assert row[1] == "trusted"

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import sqlite3
 import threading
 import time
@@ -107,6 +108,22 @@ def _recency_weight(ts_str: str) -> float:
     return _recency_weight_core(ts_str, default=0.0, decay_hours=168.0)
 
 
+def _trust_retrieval_mode() -> str:
+    raw = os.getenv("JARVIS_TRUST_RETRIEVAL_MODE", "shadow").strip().lower()
+    return raw or "shadow"
+
+
+def _trust_shadow_penalty(trust_level: str) -> float:
+    return {
+        "T4_blocked": 0.0,
+        "T1_observed": 0.7,
+        "T0_untrusted": 0.5,
+        "T2_verified": 1.0,
+        "T3_trusted": 1.0,
+        "unknown": 1.0,
+    }.get(trust_level, 1.0)
+
+
 def hybrid_search(
     engine: "MemoryEngine",
     query: str,
@@ -156,6 +173,8 @@ def hybrid_search(
     candidate_ids = list(scores.keys())
     records_list = engine.get_records_batch(candidate_ids)
     records_by_id = {r["record_id"]: r for r in records_list}
+    provenance_by_id = engine.get_learning_provenance_batch(candidate_ids)
+    retrieval_mode = _trust_retrieval_mode()
 
     # 5. Recency + frequency boost
     scored_records: list[tuple[float, dict]] = []
@@ -171,7 +190,19 @@ def hybrid_search(
         # Avoids double-counting recency (already handled above)
         access_count = record.get("access_count", 0) or 0
         freq_factor = math.log1p(max(access_count, 0)) / math.log1p(10)
-        boosted_score *= 0.9 + 0.2 * min(freq_factor, 1.0)
+        boosted_score *= (0.9 + 0.2 * min(freq_factor, 1.0))
+        trust_meta = provenance_by_id.get(rid, {})
+        trust_level = str(trust_meta.get("trust_level", "unknown"))
+        shadow_penalty = _trust_shadow_penalty(trust_level)
+        shadow_score = boosted_score * shadow_penalty
+        record["trust_level"] = trust_level
+        record["learning_lane"] = str(trust_meta.get("learning_lane", "unknown"))
+        record["promotion_state"] = str(trust_meta.get("promotion_state", "unknown"))
+        record["artifact_kind"] = str(trust_meta.get("artifact_kind", ""))
+        record["trust_policy_mode"] = str(trust_meta.get("policy_mode", retrieval_mode))
+        record["_trust_shadow_penalty"] = round(shadow_penalty, 4)
+        record["_trust_shadow_score"] = round(shadow_score, 4)
+        record["_trust_would_downrank"] = shadow_score < boosted_score
 
         scored_records.append((boosted_score, record))
 

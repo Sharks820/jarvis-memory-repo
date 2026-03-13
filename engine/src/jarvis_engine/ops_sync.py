@@ -218,7 +218,7 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
         return []
     try:
         from icalendar import Calendar
-        import recurring_ical_events
+        import recurring_ical_events  # type: ignore[import-untyped]
     except ImportError:
         return _parse_ics_fallback(text, target_date)
 
@@ -349,7 +349,7 @@ def _load_todoist_tasks() -> list[dict]:
     if not token:
         return []
     try:
-        from todoist_api_python.api import TodoistAPI
+        from todoist_api_python.api import TodoistAPI  # type: ignore[import-not-found]
 
         api = TodoistAPI(token)
         tasks = api.get_tasks(filter="today | overdue")
@@ -530,7 +530,7 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
     for item in resolved:
         if not item[4]:
             continue
-        raw_ip = item[4][0]
+        raw_ip: str = str(item[4][0])
         try:
             ip = ip_address(raw_ip)
         except ValueError:
@@ -550,3 +550,4 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
     if first_safe_ip is None:
         return None
     return (first_safe_ip, host)
+

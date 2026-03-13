@@ -5,11 +5,35 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable, Protocol
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+class _WakeWordStream(Protocol):
+    read_available: int
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]: ...
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class _WakeWordModel(Protocol):
+    prediction_buffer: dict[str, list[float]]
+
+    def reset(self) -> None: ...
+
+    def predict(self, audio: np.ndarray) -> None: ...
+
+
+class _SoundDeviceModule(Protocol):
+    def InputStream(self, *, samplerate: int, channels: int, dtype: str, blocksize: int) -> _WakeWordStream: ...
 
 
 class WakeWordDetector:
@@ -24,16 +48,16 @@ class WakeWordDetector:
         self._threshold = threshold
         self._model_name = model_name
         self._cooldown_seconds = cooldown_seconds
-        self._model = None
-        self._vad = None  # SileroVADDetector (set in start())
+        self._model: _WakeWordModel | None = None
+        self._vad: Any | None = None  # SileroVADDetector (set in start())
         self._vad_available = False
         self._stop_event = threading.Event()
-        self._stream = None  # Active mic stream (for pause/resume)
+        self._stream: _WakeWordStream | None = None  # Active mic stream (for pause/resume)
         self._stream_lock = threading.Lock()
 
     def _load_model(self) -> None:
         """Lazy-load the openwakeword model."""
-        from openwakeword.model import Model  # type: ignore[import-untyped]
+        from openwakeword.model import Model  # type: ignore[import-not-found,import-untyped]
 
         self._model = Model(
             wakeword_models=[self._model_name], inference_framework="onnx"
@@ -81,9 +105,9 @@ class WakeWordDetector:
             )
 
         try:
-            import sounddevice as sd  # type: ignore[import-untyped]
+            import sounddevice as sd  # type: ignore[import-not-found,import-untyped]
 
-            self._sd_module = sd
+            self._sd_module: _SoundDeviceModule = sd
         except ImportError:
             logger.warning(
                 "sounddevice not installed. Wake word detection unavailable. "
@@ -95,7 +119,7 @@ class WakeWordDetector:
 
     def _read_audio_chunk(
         self,
-        stream: object,
+        stream: _WakeWordStream,
         chunk_size: int,
         mic_lock: threading.Lock | None,
     ) -> np.ndarray | None:
@@ -141,7 +165,8 @@ class WakeWordDetector:
     def _process_detection(self, on_detected: Callable) -> None:
         """Handle a confirmed wake word detection: callback, cooldown, drain."""
         # Reset prediction buffer and VAD state
-        self._model.reset()
+        if self._model is not None:
+            self._model.reset()
         if self._vad is not None:
             self._vad.reset()
 
@@ -188,7 +213,9 @@ class WakeWordDetector:
         if not self._setup_dependencies():
             return
 
-        sd = self._sd_module
+        sd = getattr(self, "_sd_module", None)
+        if sd is None:
+            return
         chunk_size = 1280  # frames at 16kHz
 
         try:
@@ -225,17 +252,22 @@ class WakeWordDetector:
 
                 # Reset prediction buffer on silence-to-speech transition
                 if _was_silent:
-                    self._model.reset()
+                    if self._model is not None:
+                        self._model.reset()
                     _was_silent = False
 
                 audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(
                     np.int16
                 )
-                self._model.predict(audio_int16)
+                model = self._model
+                if model is None:
+                    time.sleep(0.05)
+                    continue
+                model.predict(audio_int16)
 
                 target_key = self._model_name
-                if target_key in self._model.prediction_buffer:
-                    scores = list(self._model.prediction_buffer[target_key])
+                if target_key in model.prediction_buffer:
+                    scores = list(model.prediction_buffer[target_key])
                     if len(scores) >= 3 and sum(scores[-3:]) / 3 > self._threshold:
                         logger.info(
                             "Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3
@@ -271,7 +303,7 @@ class WakeWordDetector:
                     logger.debug("Error pausing wake word stream: %s", exc)
                 self._stream = None
 
-    def resume(self, sd_module: object | None = None) -> None:
+    def resume(self, sd_module: _SoundDeviceModule | None = None) -> None:
         """Re-open the mic stream after STT recording completes.
 
         *sd_module* must be the ``sounddevice`` module (passed in to avoid a
@@ -282,7 +314,7 @@ class WakeWordDetector:
                 return  # Already running
             if sd_module is None:
                 try:
-                    import sounddevice as _sd  # type: ignore[import-untyped]
+                    import sounddevice as _sd  # type: ignore[import-not-found,import-untyped]
 
                     sd_module = _sd
                 except ImportError:

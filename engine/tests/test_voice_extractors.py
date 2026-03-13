@@ -237,8 +237,8 @@ class TestIsReadOnlyVoiceRequest:
     def test_mutation_pause(self) -> None:
         assert _is_read_only_voice_request("pause daemon", execute=False, approve_privileged=False) is False
 
-    def test_execute_flag_forces_non_readonly(self) -> None:
-        assert _is_read_only_voice_request("runtime status", execute=True, approve_privileged=False) is False
+    def test_execute_flag_still_allows_read_only_status(self) -> None:
+        assert _is_read_only_voice_request("runtime status", execute=True, approve_privileged=False) is True
 
     def test_approve_privileged_forces_non_readonly(self) -> None:
         assert _is_read_only_voice_request("runtime status", execute=False, approve_privileged=True) is False
@@ -267,3 +267,17 @@ class TestIsReadOnlyVoiceRequest:
 
     def test_generate_code_is_mutation(self) -> None:
         assert _is_read_only_voice_request("generate code", execute=False, approve_privileged=False) is False
+
+    def test_sentence_shaped_brain_status_is_read_only(self) -> None:
+        assert _is_read_only_voice_request(
+            "hey jarvis can you check how your memory is holding up today",
+            execute=True,
+            approve_privileged=False,
+        ) is True
+
+    def test_sentence_shaped_system_status_is_read_only(self) -> None:
+        assert _is_read_only_voice_request(
+            "jarvis are you still running okay right now",
+            execute=True,
+            approve_privileged=False,
+        ) is True

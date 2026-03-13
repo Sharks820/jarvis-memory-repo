@@ -7,6 +7,7 @@ __all__ = ["upsert_fts_kg", "delete_fts_kg", "KGManagerBase"]
 import logging
 import sqlite3
 import threading
+from typing import Protocol
 
 _logger = logging.getLogger(__name__)
 
@@ -69,12 +70,15 @@ class KGManagerBase:
     DB lock and optional KnowledgeGraph back-reference.
     """
 
+    class _KnowledgeGraphBackref(Protocol):
+        _mutation_counter: int
+
     def __init__(
         self,
         db: sqlite3.Connection,
         write_lock: threading.Lock,
         db_lock: threading.Lock | None = None,
-        kg: "object | None" = None,
+        kg: "_KnowledgeGraphBackref | None" = None,
     ) -> None:
         self._db = db
         self._write_lock = write_lock

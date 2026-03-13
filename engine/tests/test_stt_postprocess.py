@@ -115,8 +115,9 @@ def test_detect_hallucination_exact_vs_substring() -> None:
     # But NOT when embedded in longer speech
     assert detect_hallucination("That's the end of my question") is False
     assert detect_hallucination("Bye bye see you later") is False
-    # Substring phrases still trigger inside longer text
-    assert detect_hallucination("He said thanks for watching the game") is True
+    # Outro-style phrases should dominate the utterance before they are discarded.
+    assert detect_hallucination("Thanks for watching everyone") is True
+    assert detect_hallucination("He said thanks for watching the game") is False
 
 
 def test_detect_hallucination_repeated_sequences() -> None:
@@ -187,6 +188,33 @@ def test_remove_fillers_normalizes_whitespace() -> None:
     assert "  " not in result
 
 
+def test_normalize_sentence_text_restores_sentence_case() -> None:
+    """Sentence cleanup restores leading capitalization and standalone I."""
+    from jarvis_engine.stt_postprocess import normalize_sentence_text
+
+    result = normalize_sentence_text("i need jarvis to remind me tomorrow")
+    assert result == "I need jarvis to remind me tomorrow"
+
+
+def test_postprocess_transcription_segments_preserves_utterance_structure() -> None:
+    """Utterance spans are cleaned while word spans stay token-level."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription_segments
+
+    result = postprocess_transcription_segments(
+        [
+            {"start": 0.0, "end": 1.0, "text": "hello conner", "kind": "utterance"},
+            {"start": 1.1, "end": 1.3, "text": "jarvis", "kind": "word"},
+        ],
+        entity_list=["Conner", "Jarvis"],
+    )
+
+    assert result is not None
+    assert result[0]["text"] == "Hello Conner"
+    assert result[0]["kind"] == "utterance"
+    assert result[1]["text"] == "Jarvis"
+    assert result[1]["kind"] == "word"
+
+
 # ---------------------------------------------------------------------------
 # 4. correct_with_llm
 # ---------------------------------------------------------------------------
@@ -214,6 +242,31 @@ def test_correct_with_llm_returns_corrected_text() -> None:
 
     result = correct_with_llm("hello conner", mock_gateway)
     assert result == "Hello, Conner!"
+
+
+def test_correct_with_llm_strips_simple_labels() -> None:
+    """Simple wrapper labels are stripped before acceptance."""
+    from jarvis_engine.stt_postprocess import correct_with_llm
+
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Corrected text: Hello, Conner!")
+
+    result = correct_with_llm("hello conner", mock_gateway)
+    assert result == "Hello, Conner!"
+
+
+def test_correct_with_llm_rejects_commentary_output() -> None:
+    """Commentary-style outputs are rejected to avoid semantic drift."""
+    from jarvis_engine.stt_postprocess import correct_with_llm
+
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(
+        spec=GatewayResponse,
+        text="Here is the corrected text: Hello, Conner!",
+    )
+
+    result = correct_with_llm("hello conner", mock_gateway)
+    assert result == "hello conner"
 
 
 def test_correct_with_llm_fallback_on_error() -> None:
@@ -257,6 +310,31 @@ def test_correct_entities_phonetic_match() -> None:
     assert "Conner" in result
 
 
+def test_postprocess_short_command_still_corrects_entities() -> None:
+    """Short-command skip path should still preserve Jarvis-specific entity fixes."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription
+
+    result = postprocess_transcription(
+        "hey jarvis open ollama",
+        0.99,
+        entity_list=["Jarvis", "Ollama"],
+    )
+    assert result == "Hey Jarvis open Ollama"
+
+
+def test_postprocess_longer_text_normalizes_after_filler_removal() -> None:
+    """Sentence cleanup should survive filler stripping and keep readable phrasing."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription
+
+    result = postprocess_transcription(
+        "um i think jarvis should check the knowledge graph",
+        0.8,
+        gateway=None,
+        entity_list=["Jarvis"],
+    )
+    assert result == "I think Jarvis should check the knowledge graph"
+
+
 @pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_no_match() -> None:
     """Text without entity matches passes through unchanged."""
@@ -274,6 +352,17 @@ def test_correct_entities_multiple_entities() -> None:
     result = correct_entities("hey jarvis tell conner", ["Jarvis", "Conner"])
     assert "Jarvis" in result
     assert "Conner" in result
+
+
+def test_correct_entities_phrase_exact_match() -> None:
+    """Multi-word entities are corrected as phrases, not as unrelated tokens."""
+    from jarvis_engine.stt_postprocess import correct_entities
+
+    result = correct_entities(
+        "run ops brief after brain status",
+        ["Ops Brief", "Brain Status"],
+    )
+    assert result == "run Ops Brief after Brain Status"
 
 
 def test_correct_entities_empty_list() -> None:
@@ -318,7 +407,7 @@ def test_postprocess_skip_path_short_command() -> None:
         entity_list=["Conner"],
     )
     mock_gateway.complete.assert_not_called()
-    assert result == "brain status"
+    assert result == "Brain status"
 
 
 def test_postprocess_hallucination_returns_empty() -> None:
@@ -348,6 +437,24 @@ def test_postprocess_no_gateway_still_cleans() -> None:
     assert "um" not in result
     assert "uh" not in result
     assert "Jarvis" in result
+
+
+def test_postprocess_segments_preserves_sentence_boundaries() -> None:
+    """Timed segments should keep sentence structure after cleanup."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription_segments
+
+    result = postprocess_transcription_segments(
+        [
+            {"start": 0.0, "end": 1.2, "text": "um hello jarvis"},
+            {"start": 1.3, "end": 2.7, "text": "i need conner on the call"},
+        ],
+        entity_list=["Jarvis", "Conner"],
+    )
+
+    assert result == [
+        {"start": 0.0, "end": 1.2, "text": "Hello Jarvis"},
+        {"start": 1.3, "end": 2.7, "text": "I need Conner on the call"},
+    ]
 
 
 # ---------------------------------------------------------------------------

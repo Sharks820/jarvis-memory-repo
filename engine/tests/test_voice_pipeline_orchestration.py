@@ -16,6 +16,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 _VP = "jarvis_engine.voice_pipeline"
 
 
@@ -45,6 +47,28 @@ class TestConversationState:
         state.add_to_history("user", long_msg)
         history = state.get_history_messages()
         assert len(history[0]["content"]) <= 2000
+
+    def test_add_to_history_creates_checkpoint_for_evicted_messages(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        state = self._make_state(tmp_path)
+        csm = MagicMock()
+
+        monkeypatch.setattr(
+            "jarvis_engine.conversation_state.get_conversation_state",
+            lambda: csm,
+        )
+
+        from jarvis_engine.voice_pipeline import _CONVERSATION_MAX_TURNS
+
+        for i in range((_CONVERSATION_MAX_TURNS * 2) + 1):
+            state.add_to_history("user", f"msg-{i}")
+
+        csm.create_checkpoint.assert_called_once()
+        dropped = csm.create_checkpoint.call_args.kwargs["dropped_messages"]
+        assert dropped == [{"role": "user", "content": "msg-0"}]
 
     def test_save_and_load_round_trip(self, tmp_path: Path) -> None:
         state = self._make_state(tmp_path)
@@ -597,3 +621,76 @@ class TestLearnConversation:
         bus.dispatch.side_effect = RuntimeError("handler not registered")
         # Should not raise
         _learn_conversation(bus, "hello", "hi", "routine", "kimi-k2")
+
+
+class TestPrepareHistory:
+    """Tests for _prepare_history() mission/context assembly."""
+
+    @patch(f"{_VP}._add_to_history")
+    def test_prepare_history_includes_active_learning_mission(
+        self,
+        mock_add_to_history,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from jarvis_engine.voice_pipeline import _prepare_history
+
+        monkeypatch.setattr(
+            f"{_VP}._get_history_messages",
+            lambda: [{"role": "assistant", "content": "Earlier reply"}],
+        )
+        monkeypatch.setattr(
+            f"{_VP}._conversation_continuity_instruction",
+            lambda *_args: None,
+        )
+        monkeypatch.setattr(
+            "jarvis_engine.learning_missions.get_now_working_on",
+            lambda _root: {
+                "mission_topic": "Desktop redesign",
+                "current_step": "Animating live capsule",
+                "progress_pct": 42,
+                "artifacts_so_far": 3,
+            },
+        )
+        csm = MagicMock()
+        csm.get_prompt_injection.return_value = {}
+        monkeypatch.setattr(
+            "jarvis_engine.conversation_state.get_conversation_state",
+            lambda: csm,
+        )
+
+        system_prompt, history = _prepare_history(["Base system"], "kimi-k2", "hello")
+
+        assert "Active learning mission: Desktop redesign" in system_prompt
+        assert "Animating live capsule" in system_prompt
+        assert "42% complete" in system_prompt
+        assert "3 artifacts so far" in system_prompt
+        assert history == (("assistant", "Earlier reply"),)
+        mock_add_to_history.assert_called_once_with("user", "hello")
+        csm.update_turn.assert_called_once_with("user", "hello", "kimi-k2")
+
+    @patch(f"{_VP}._add_to_history")
+    def test_prepare_history_skips_empty_mission_context(
+        self,
+        mock_add_to_history,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from jarvis_engine.voice_pipeline import _prepare_history
+
+        monkeypatch.setattr(f"{_VP}._get_history_messages", lambda: [])
+        monkeypatch.setattr(f"{_VP}._conversation_continuity_instruction", lambda *_args: None)
+        monkeypatch.setattr(
+            "jarvis_engine.learning_missions.get_now_working_on",
+            lambda _root: None,
+        )
+        csm = MagicMock()
+        csm.get_prompt_injection.return_value = {}
+        monkeypatch.setattr(
+            "jarvis_engine.conversation_state.get_conversation_state",
+            lambda: csm,
+        )
+
+        system_prompt, history = _prepare_history(["Base system"], "kimi-k2", "hello")
+
+        assert "Active learning mission:" not in system_prompt
+        assert history == ()
+        mock_add_to_history.assert_called_once_with("user", "hello")

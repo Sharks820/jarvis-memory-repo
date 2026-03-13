@@ -16,12 +16,25 @@ import threading
 import time
 from collections import deque
 from enum import IntEnum
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class _IPTrackerProtocol(Protocol):
+    def block_ip(self, ip: str, duration_hours: int | None = None) -> None:
+        ...
+
+    def unblock_ip(self, ip: str) -> None:
+        ...
+
+
+class _SessionManagerProtocol(Protocol):
+    def terminate_all_sessions(self) -> None:
+        ...
 
 
 class ContainResult(TypedDict, total=False):
@@ -118,8 +131,8 @@ class ContainmentEngine:
     def __init__(
         self,
         forensic_logger: ForensicLoggerProtocol | None = None,
-        ip_tracker: object | None = None,
-        session_manager: object | None = None,
+        ip_tracker: _IPTrackerProtocol | None = None,
+        session_manager: _SessionManagerProtocol | None = None,
         on_credential_rotate: object | None = None,
         _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
     ) -> None:
@@ -137,7 +150,7 @@ class ContainmentEngine:
         self._lockdown_active: bool = False
         self._killed: bool = False
         self._current_level: int = 0  # 0 = no containment active
-        self._containment_history: deque[dict] = deque(maxlen=1000)
+        self._containment_history: deque[ContainResult] = deque(maxlen=1000)
         self._current_hmac_key: str | None = None
 
     # ------------------------------------------------------------------

@@ -20,18 +20,33 @@ import logging
 import socket
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import TypedDict
 
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
-
     _HAS_THREADPOOL = True
 except ImportError:  # pragma: no cover
     _HAS_THREADPOOL = False
 
 logger = logging.getLogger(__name__)
+
+
+def _sha1_hexdigest_not_for_security(text: str) -> str:
+    """Return the HIBP-compatible SHA-1 digest without declaring security use."""
+    data = text.encode("utf-8")
+    digest = hashlib.sha1(data, usedforsecurity=False)
+    return digest.hexdigest().upper()
+
+
+def _validated_https_url(url: str) -> str:
+    """Allow only absolute HTTPS URLs for remote identity-shield requests."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"Only absolute https URLs are allowed, got {url!r}")
+    return url
 
 
 class FamilyShieldStatus(TypedDict):
@@ -238,9 +253,7 @@ class FamilyShield:
                 "module": "FamilyShield",
                 "member_count": len(self._members),
                 "total_emails": sum(len(m.get("emails", [])) for m in self._members),
-                "total_usernames": sum(
-                    len(m.get("usernames", [])) for m in self._members
-                ),
+                "total_usernames": sum(len(m.get("usernames", [])) for m in self._members),
                 "total_domains": sum(len(m.get("domains", [])) for m in self._members),
             }
 
@@ -289,21 +302,15 @@ class BreachMonitor:
 
         Returns ``{compromised: bool, count: int}``.
         """
-        sha1 = (
-            hashlib.sha1(password.encode("utf-8"), usedforsecurity=False)
-            .hexdigest()
-            .upper()
-        )  # noqa: S324 — k-anonymity prefix only, not used as a security hash
+        sha1 = _sha1_hexdigest_not_for_security(password)
         prefix, suffix = sha1[:5], sha1[5:]
 
-        url = self._HIBP_RANGE_URL.format(prefix=prefix)
+        url = _validated_https_url(self._HIBP_RANGE_URL.format(prefix=prefix))
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "Jarvis-IdentityShield"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis-IdentityShield"})
+            with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
                 body = resp.read().decode("utf-8")
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             logger.warning("HIBP password check failed: %s", type(exc).__name__)
             return {"compromised": False, "count": 0}
 
@@ -328,14 +335,16 @@ class BreachMonitor:
             logger.info("No HIBP API key — skipping email breach check for %s", email)
             return []
 
-        url = self._HIBP_BREACH_URL.format(email=urllib.request.quote(email, safe=""))
+        url = _validated_https_url(
+            self._HIBP_BREACH_URL.format(email=urllib.parse.quote(email, safe=""))
+        )
         headers = {
             "hibp-api-key": self._api_key,
             "User-Agent": "Jarvis-IdentityShield",
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
@@ -343,19 +352,17 @@ class BreachMonitor:
                 return []
             logger.warning("HIBP email check error for %s: %s", email, exc)
             return []
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             logger.warning("HIBP email check failed for %s: %s", email, exc)
             return []
 
         results: list[BreachRecord] = []
         for breach in data:
-            results.append(
-                {
-                    "name": breach.get("Name", "Unknown"),
-                    "breach_date": breach.get("BreachDate", "Unknown"),
-                    "data_classes": breach.get("DataClasses", []),
-                }
-            )
+            results.append({
+                "name": breach.get("Name", "Unknown"),
+                "breach_date": breach.get("BreachDate", "Unknown"),
+                "data_classes": breach.get("DataClasses", []),
+            })
         return results
 
     # ------------------------------------------------------------------
@@ -419,22 +426,22 @@ class TyposquatMonitor:
 
         # 1. Character omission
         for i in range(len(name)):
-            _add(name[:i] + name[i + 1 :] + tld)
+            _add(name[:i] + name[i + 1:] + tld)
 
         # 2. Adjacent key substitution
         for i, ch in enumerate(name):
             for adj in _ADJACENT_KEYS.get(ch.lower(), ""):
-                _add(name[:i] + adj + name[i + 1 :] + tld)
+                _add(name[:i] + adj + name[i + 1:] + tld)
 
         # 3. Character doubling
         for i, ch in enumerate(name):
             if ch.isalpha():
-                _add(name[:i] + ch + ch + name[i + 1 :] + tld)
+                _add(name[:i] + ch + ch + name[i + 1:] + tld)
 
         # 4. Homoglyph substitution
         for i, ch in enumerate(name):
             for glyph in _HOMOGLYPHS.get(ch.lower(), []):
-                _add(name[:i] + glyph + name[i + 1 :] + tld)
+                _add(name[:i] + glyph + name[i + 1:] + tld)
 
         # 5. TLD swap
         if tld:
@@ -458,16 +465,10 @@ class TyposquatMonitor:
         variants = self.generate_variants(domain)
 
         def _lookup(variant: str) -> BreachLookupResult:
-            entry: BreachLookupResult = {
-                "variant": variant,
-                "registered": False,
-                "ips": [],
-            }
+            entry: BreachLookupResult = {"variant": variant, "registered": False, "ips": []}
             try:
-                infos = socket.getaddrinfo(
-                    variant, 80, socket.AF_INET, socket.SOCK_STREAM
-                )
-                ips = list({info[4][0] for info in infos})
+                infos = socket.getaddrinfo(variant, 80, socket.AF_INET, socket.SOCK_STREAM)
+                ips = sorted({str(info[4][0]) for info in infos})
                 if ips:
                     entry["registered"] = True
                     entry["ips"] = ips
@@ -480,9 +481,10 @@ class TyposquatMonitor:
             # Preserve order: submit all, collect by index
             with ThreadPoolExecutor(max_workers=20) as pool:
                 future_to_idx = {
-                    pool.submit(_lookup, v): i for i, v in enumerate(variants)
+                    pool.submit(_lookup, v): i
+                    for i, v in enumerate(variants)
                 }
-                ordered = [None] * len(variants)
+                ordered: list[BreachLookupResult | None] = [None] * len(variants)
                 for future in as_completed(future_to_idx):
                     idx = future_to_idx[future]
                     ordered[idx] = future.result()
@@ -568,7 +570,7 @@ class ImpersonationDetector:
             for glyph in _HOMOGLYPHS.get(ch.lower(), []):
                 # Only use alphanumeric glyphs for usernames
                 if glyph.isalnum():
-                    _add(username[:i] + glyph + username[i + 1 :])
+                    _add(username[:i] + glyph + username[i + 1:])
 
         return variants
 
@@ -576,9 +578,7 @@ class ImpersonationDetector:
     # Platform profile check
     # ------------------------------------------------------------------
 
-    def check_platform(
-        self, username: str, platform: str
-    ) -> PlatformCheckResult | None:
+    def check_platform(self, username: str, platform: str) -> PlatformCheckResult | None:
         """Check if *username* exists on *platform*.
 
         Returns ``{platform, username, exists: bool, url: str}``
@@ -589,7 +589,7 @@ class ImpersonationDetector:
             logger.warning("Unsupported platform: %s", platform)
             return None
 
-        url = template.format(username=username)
+        url = _validated_https_url(template.format(username=username))
         result: PlatformCheckResult = {
             "platform": platform,
             "username": username,
@@ -602,13 +602,13 @@ class ImpersonationDetector:
                 url,
                 headers={"User-Agent": "Jarvis-IdentityShield"},
             )
-            with urllib.request.urlopen(req, timeout=self._TIMEOUT_SECONDS) as resp:
+            with urllib.request.urlopen(req, timeout=self._TIMEOUT_SECONDS) as resp:  # nosec B310
                 if resp.status == 200:
                     result["exists"] = True
         except urllib.error.HTTPError as exc:
             if exc.code != 404:
                 logger.debug("HTTP %d checking %s on %s", exc.code, username, platform)
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             logger.debug("Network error checking %s on %s: %s", username, platform, exc)
 
         return result
@@ -641,7 +641,7 @@ class ImpersonationDetector:
                         pool.submit(self.check_platform, v, p): i
                         for i, (v, p) in enumerate(tasks)
                     }
-                    ordered = [None] * len(tasks)
+                    ordered: list[PlatformCheckResult | None] = [None] * len(tasks)
                     for future in as_completed(futures):
                         idx = futures[future]
                         try:

@@ -191,6 +191,7 @@ class VoiceListenHandler:
             result = listen_and_transcribe(
                 max_duration_seconds=cmd.max_duration_seconds,
                 language=cmd.language,
+                mode=cmd.utterance_mode,
                 root_dir=self._root,
                 gateway=self._gateway,
             )
@@ -202,6 +203,7 @@ class VoiceListenHandler:
             text=result.text,
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
+            segments=getattr(result, "segments", None),
         )
 
 

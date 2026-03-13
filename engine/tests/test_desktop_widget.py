@@ -20,6 +20,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.desktop_controller import DesktopInteractionController, DesktopWidgetState
+
 try:
     import pystray
     _PYSTRAY_ICON_SPEC = pystray.Icon
@@ -177,6 +179,9 @@ class TestIsSafeWidgetBaseUrl:
     def test_no_scheme(self):
         # urlparse without scheme puts everything in path, hostname is None
         assert _is_safe_widget_base_url("127.0.0.1:8787") is False
+
+    def test_non_http_scheme_unsafe(self):
+        assert _is_safe_widget_base_url("file://127.0.0.1:8787") is False
 
 
 # ---- Config loading ---------------------------------------------------------
@@ -959,7 +964,7 @@ class TestShowToast:
         mock_popen.assert_called_once()
         args = mock_popen.call_args
         cmd_list = args[0][0]
-        assert cmd_list[0] == "powershell"
+        assert cmd_list[0].lower().endswith("powershell.exe") or cmd_list[0] == "powershell"
         assert "-NoProfile" in cmd_list
         # The script should contain our title and message
         script = cmd_list[-1]
@@ -1449,13 +1454,12 @@ class TestWidgetStateMachine:
             assert widget._widget_state == state
 
     def test_send_command_sets_processing_state(self):
-        """_send_command_async should set processing state before HTTP call."""
+        """_send_command_async should move controller/widget into processing state."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.command_text = MagicMock(spec=tk.Text)
         widget.command_text.get.return_value = "hello\n"
         widget._log = MagicMock()
-        widget._set_state = MagicMock()
         widget._current_cfg = MagicMock(return_value=WidgetConfig(
             "http://127.0.0.1:8787", "t", "k", "d", "p"))
         widget.execute_var = MagicMock(spec=tk.BooleanVar)
@@ -1472,7 +1476,7 @@ class TestWidgetStateMachine:
 
         JarvisDesktopWidget._send_command_async(widget)
 
-        widget._set_state.assert_called_once_with("processing")
+        assert widget._widget_state == "processing"
 
     def test_on_escape_cancels_when_processing(self):
         """ESC should cancel command when widget is processing."""
@@ -1501,17 +1505,331 @@ class TestWidgetStateMachine:
         widget._cancel_command.assert_not_called()
 
     def test_dictate_sets_listening_state(self):
-        """_dictate_async should set listening state before dictation."""
+        """_dictate_async should move controller/widget into listening state."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.auto_send_var = MagicMock(spec=tk.BooleanVar)
         widget.auto_send_var.get.return_value = False
-        widget._set_state = MagicMock()
         widget._thread = MagicMock()
 
         JarvisDesktopWidget._dictate_async(widget)
 
-        widget._set_state.assert_called_once_with("listening")
+        assert widget._widget_state == "listening"
+
+    def test_push_session_snapshot_tracks_route_and_posture(self):
+        """Local widget toggles should flow into the controller-owned session snapshot."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = next(
+            index for index, row in enumerate(widget.MODEL_ROTATION)
+            if row[0] == "claude-cli"
+        )
+        widget._controller = DesktopInteractionController()
+        widget.execute_var = MagicMock(spec=tk.BooleanVar)
+        widget.execute_var.get.return_value = True
+        widget.priv_var = MagicMock(spec=tk.BooleanVar)
+        widget.priv_var.get.return_value = False
+        widget.hotword_var = MagicMock(spec=tk.BooleanVar)
+        widget.hotword_var.get.return_value = True
+        widget.speak_var = MagicMock(spec=tk.BooleanVar)
+        widget.speak_var.get.return_value = False
+        widget._render_live_snapshot = MagicMock()
+
+        JarvisDesktopWidget._push_session_snapshot(widget)
+
+        session = widget._controller.snapshot().session
+        assert session.route_label == "Claude CLI"
+        assert session.route_family == "cli"
+        assert session.control_armed is True
+        assert session.auto_approve is False
+        assert session.wakeword_enabled is True
+        assert session.speech_enabled is False
+        widget._render_live_snapshot.assert_called_once()
+
+    def test_model_rotation_includes_qwen_35_local_models(self):
+        """Desktop model rotation should expose the promoted Qwen 3.5 local models."""
+        from jarvis_engine._constants import DEFAULT_LOCAL_MODEL, FAST_LOCAL_MODEL
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        aliases = {row[0] for row in JarvisDesktopWidget.MODEL_ROTATION}
+
+        assert FAST_LOCAL_MODEL in aliases
+        assert DEFAULT_LOCAL_MODEL in aliases
+
+    def test_snapshot_voice_chip_includes_silent_posture(self):
+        """Voice chip should expose both wakeword and silent-response posture."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_session_snapshot(
+            route_label="Auto Router",
+            route_accent="#12c9b1",
+            route_family="auto",
+            control_armed=False,
+            auto_approve=False,
+            wakeword_enabled=True,
+            speech_enabled=False,
+        )
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_voice_chip(widget, controller.snapshot())
+
+        assert text == "Wake word live · Silent"
+        assert bg == "#0f2b5b"
+        assert fg == "#bfdbfe"
+
+    def test_snapshot_conversation_status_processing_uses_route_and_activity(self):
+        """Conversation status should surface active route and processing detail."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.set_state(DesktopWidgetState.PROCESSING)
+        controller.apply_session_snapshot(
+            route_label="Qwen 3.5 9B",
+            route_accent="#38bdf8",
+            route_family="local",
+            control_armed=False,
+            auto_approve=False,
+            wakeword_enabled=False,
+            speech_enabled=True,
+        )
+        controller.apply_health_snapshot(
+            online=True,
+            recent_events=[{
+                "id": "evt-1",
+                "timestamp": "12:00:00",
+                "category": "mission",
+                "summary": "Indexing desktop redesign prompts",
+            }],
+        )
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_conversation_status(widget, controller.snapshot())
+
+        assert "Processing with Qwen 3.5 9B" in text
+        assert "Indexing desktop redesign prompts" in text
+        assert bg == "#2d1d08"
+        assert fg == "#ffe2b6"
+
+    def test_snapshot_conversation_status_ready_mentions_shortcuts(self):
+        """Idle online state should keep the transcript header informative."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_health_snapshot(online=True)
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_conversation_status(widget, controller.snapshot())
+
+        assert text == "Ready with Auto Router. Enter sends, Shift+Enter adds a newline."
+        assert bg == "#101b31"
+        assert fg == "#d7e6ff"
+
+    def test_snapshot_continuity_items_summarizes_overflow(self):
+        """Continuity rows should stay compact instead of exploding the panel height."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        text = JarvisDesktopWidget._snapshot_continuity_items(
+            ["Qwen 3.5 9B", "Desktop redesign", "March 12, 2026", "Follow-up pass"],
+            "No anchors yet",
+        )
+
+        assert text == "Qwen 3.5 9B · Desktop redesign · March 12, 2026 +1 more"
+
+    def test_snapshot_health_chip_flags_issue_count(self):
+        """Health chip should surface quick-scan degradations compactly."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_diagnostics_snapshot(
+            score=68,
+            healthy=False,
+            issues=[{"id": "diag-1", "description": "WAL file is large"}],
+        )
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_health_chip(widget, controller.snapshot())
+
+        assert text == "Health 68 · 1"
+        assert bg == "#3b1212"
+        assert fg == "#fecaca"
+
+    def test_snapshot_intelligence_text_uses_below_target_copy(self):
+        """Regression flag should read as a below-target score, not a percent regression drop."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MUTED = "#8ea4c5"
+        widget.WARN = "#d15a5a"
+        widget.ACCENT = "#12c9b1"
+        snapshot = DesktopInteractionController().snapshot()
+        snapshot = snapshot.__class__(
+            state=snapshot.state,
+            online=snapshot.online,
+            intelligence_score_pct=44,
+            intelligence_regression=True,
+            facts_total=snapshot.facts_total,
+            facts_last_7d=snapshot.facts_last_7d,
+            kg_nodes=snapshot.kg_nodes,
+            kg_edges=snapshot.kg_edges,
+            memory_records=snapshot.memory_records,
+            self_test_score_pct=snapshot.self_test_score_pct,
+            growth_trend=snapshot.growth_trend,
+            mission=snapshot.mission,
+            activity=snapshot.activity,
+            session=snapshot.session,
+            continuity=snapshot.continuity,
+            diagnostics=snapshot.diagnostics,
+        )
+
+        text, color = JarvisDesktopWidget._snapshot_intelligence_text(widget, snapshot)
+
+        assert text == "Intel: 44% · Below Target"
+        assert color == "#d15a5a"
+
+    def test_mission_progress_palette_processing(self):
+        """Processing state should drive the warm mission-progress palette."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        snapshot = DesktopInteractionController().snapshot()
+        snapshot = snapshot.__class__(
+            state=DesktopWidgetState.PROCESSING,
+            online=snapshot.online,
+            intelligence_score_pct=snapshot.intelligence_score_pct,
+            intelligence_regression=snapshot.intelligence_regression,
+            facts_total=snapshot.facts_total,
+            facts_last_7d=snapshot.facts_last_7d,
+            kg_nodes=snapshot.kg_nodes,
+            kg_edges=snapshot.kg_edges,
+            memory_records=snapshot.memory_records,
+            self_test_score_pct=snapshot.self_test_score_pct,
+            growth_trend=snapshot.growth_trend,
+            mission=snapshot.mission,
+            activity=snapshot.activity,
+            session=snapshot.session,
+            continuity=snapshot.continuity,
+            diagnostics=snapshot.diagnostics,
+        )
+
+        palette = JarvisDesktopWidget._mission_progress_palette(widget, snapshot)
+
+        assert palette == ("#ffb347", "#ffe2a6", "#ffe2b6")
+
+    def test_panel_visible_false_when_withdrawn(self):
+        """Hidden panels should report not visible for animation throttling."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.state.return_value = "withdrawn"
+        widget.winfo_viewable.return_value = False
+
+        assert JarvisDesktopWidget._panel_visible(widget) is False
+
+    def test_panel_size_for_screen_preserves_default_on_large_display(self):
+        """Large displays should keep the premium default widget footprint."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._panel_size_for_screen(1920, 1080) == (470, 840)
+
+    def test_panel_size_for_screen_clamps_to_small_display(self):
+        """Small displays should get a panel that actually fits on-screen."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._panel_size_for_screen(1366, 768) == (470, 680)
+
+    def test_compact_layout_enabled_for_short_screens(self):
+        """Short screens should switch the widget into compact vertical layout."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._use_compact_layout(768) is True
+        assert JarvisDesktopWidget._use_compact_layout(1080) is False
+
+    def test_command_box_height_shrinks_in_compact_layout(self):
+        """Compact layout should trim the command box so output keeps more vertical space."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._command_box_height(True) == 3
+        assert JarvisDesktopWidget._command_box_height(False) == 5
+
+    def test_compact_layout_collapses_live_and_snapshot_sections_by_default(self):
+        """Compact layout should prioritize output space over secondary telemetry panels."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._collapse_live_details_by_default(True) is True
+        assert JarvisDesktopWidget._collapse_live_details_by_default(False) is False
+        assert JarvisDesktopWidget._collapse_system_snapshot_by_default(True) is True
+        assert JarvisDesktopWidget._collapse_system_snapshot_by_default(False) is False
+
+    def test_flag_grid_columns_switch_for_compact_layout(self):
+        """Compact layout should wrap posture controls into a responsive grid."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        assert JarvisDesktopWidget._flag_grid_columns(True) == 3
+        assert JarvisDesktopWidget._flag_grid_columns(False) == 6
+
+    def test_live_capsule_animation_interval_throttles_when_hidden(self):
+        """Hero animation should slow down when the panel is hidden."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._panel_visible = MagicMock(return_value=False)
+
+        assert JarvisDesktopWidget._live_capsule_animation_interval(widget) == 280
+
+    def test_orb_animation_interval_throttles_when_panel_hidden(self):
+        """The hidden panel orb should not keep running at full animation cadence."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._panel_visible = MagicMock(return_value=False)
+
+        assert JarvisDesktopWidget._orb_animation_interval(widget) == 220
+
+    def test_launcher_animation_interval_throttles_when_launcher_hidden(self):
+        """The launcher animation should slow down while the launcher window is hidden."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._launcher_visible = MagicMock(return_value=False)
+
+        assert JarvisDesktopWidget._launcher_animation_interval(widget) == 180
+
+    def test_launcher_badge_payload_prefers_processing_state(self):
+        """The launcher badge should show active processing before generic mission counts."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_health_snapshot(
+            online=True,
+            growth_data={"metrics": {"mission_count": 3}},
+            now_working_on={"mission_topic": "Desktop redesign", "progress_pct": 42},
+            clear_missing=True,
+        )
+        controller.set_state(DesktopWidgetState.PROCESSING)
+
+        payload = JarvisDesktopWidget._launcher_badge_payload(widget, controller.snapshot())
+
+        assert payload == ("AI", "#92400e", "#fde68a", True)
+
+    def test_launcher_badge_payload_uses_mission_count_when_idle(self):
+        """The launcher badge should surface active mission count while idle."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_health_snapshot(
+            online=True,
+            growth_data={"metrics": {"mission_count": 4}},
+            clear_missing=True,
+        )
+
+        payload = JarvisDesktopWidget._launcher_badge_payload(widget, controller.snapshot())
+
+        assert payload == ("4", "#115e59", "#ccfbf1", True)
 
 
 # ---- Position Persistence & Edge Snapping -----------------------------------
@@ -1933,7 +2251,10 @@ class TestModelTabCycling:
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
-        widget._model_index = 1  # Claude CLI (first non-auto entry)
+        widget._model_index = next(
+            index for index, row in enumerate(widget.MODEL_ROTATION)
+            if row[0] == "claude-cli"
+        )
         result = JarvisDesktopWidget._selected_model_override(widget)
         assert result == "claude-cli"
 

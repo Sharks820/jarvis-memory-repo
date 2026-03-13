@@ -201,6 +201,36 @@ class TestSystemStatusIntent:
         assert rc == 0
         assert "cmd_status" in calls
 
+    def test_sentence_shaped_status_execute_path_stays_read_only(self, tmp_path: Path, capsys) -> None:
+        rc, calls = _call_impl(
+            "jarvis are you still running okay right now",
+            tmp_path=tmp_path,
+            execute=True,
+            skip_voice_auth_guard=False,
+            voice_auth_wav="",
+        )
+        assert rc == 0
+        assert "cmd_status" in calls
+        output = capsys.readouterr().out
+        assert "voice_auth_required" not in output
+
+
+class TestBrainStatusIntent:
+    def test_sentence_shaped_brain_status_execute_path_stays_read_only(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        rc, calls = _call_impl(
+            "hey jarvis can you check how your memory is holding up today",
+            tmp_path=tmp_path,
+            execute=True,
+            skip_voice_auth_guard=False,
+            voice_auth_wav="",
+        )
+        assert rc == 0
+        assert "cmd_brain_status" in calls
+        output = capsys.readouterr().out
+        assert "voice_auth_required" not in output
+
 
 class TestMemoryIntent:
     def test_brain_context_query(self, tmp_path: Path, capsys) -> None:

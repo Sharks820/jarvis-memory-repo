@@ -234,6 +234,84 @@ class TestFuzzyMatching:
         assert "safe mode off" in target_phrases
         assert "system status" in target_phrases
 
+    def test_natural_aliases_expand_brain_status_sentence(self):
+        """Sentence-shaped memory/brain questions should map to brain status."""
+        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+
+        expanded = _expand_natural_command_aliases(
+            "hey jarvis can you check how your memory is holding up today"
+        )
+
+        assert "brain status" in expanded
+
+    def test_natural_aliases_expand_system_status_sentence(self):
+        """Sentence-shaped health checks should map to system status."""
+        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+
+        expanded = _expand_natural_command_aliases(
+            "jarvis are you still running okay right now"
+        )
+
+        assert "system status" in expanded
+
+    def test_natural_aliases_expand_pause_sentence(self):
+        """Natural pause requests should map to the canonical runtime pause phrase."""
+        from jarvis_engine.voice_intents import _expand_natural_command_aliases
+
+        expanded = _expand_natural_command_aliases(
+            "jarvis please pause yourself for a minute"
+        )
+
+        assert "pause jarvis" in expanded
+
+    def test_dispatch_uses_natural_alias_for_brain_status(self):
+        """Dispatch should honor expanded aliases for sentence-shaped requests."""
+        from jarvis_engine.voice_intents import _dispatch_voice_intent
+
+        responses: list[str] = []
+        ctx = types.SimpleNamespace(
+            cmd_brain_status=MagicMock(return_value=0),
+            _respond=responses.append,
+        )
+
+        intent, rc = _dispatch_voice_intent(
+            "hey jarvis can you check how your memory is holding up today",
+            "hey jarvis can you check how your memory is holding up today",
+            ctx,
+            MagicMock(return_value=99),
+            False,
+            "",
+            responses.append,
+        )
+
+        assert intent == "brain_status"
+        assert rc == 0
+        ctx.cmd_brain_status.assert_called_once_with(as_json=False)
+
+    def test_dispatch_uses_natural_alias_for_system_status(self):
+        """Dispatch should map sentence-shaped health checks to system status."""
+        from jarvis_engine.voice_intents import _dispatch_voice_intent
+
+        responses: list[str] = []
+        ctx = types.SimpleNamespace(
+            cmd_status=MagicMock(return_value=0),
+            _respond=responses.append,
+        )
+
+        intent, rc = _dispatch_voice_intent(
+            "jarvis are you still running okay right now",
+            "jarvis are you still running okay right now",
+            ctx,
+            MagicMock(return_value=99),
+            False,
+            "",
+            responses.append,
+        )
+
+        assert intent == "system_status"
+        assert rc == 0
+        ctx.cmd_status.assert_called_once_with()
+
 
 # ---------------------------------------------------------------------------
 # 3. Warm-start Parakeet
@@ -474,3 +552,4 @@ class TestParakeetProperNounThreshold:
             mock_auto.assert_called_once()
             call_kwargs = mock_auto.call_args[1]
             assert call_kwargs["entity_list"] == ["Conner", "Jarvis"]
+

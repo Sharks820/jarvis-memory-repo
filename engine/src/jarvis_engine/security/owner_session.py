@@ -16,7 +16,7 @@ import logging
 import secrets
 import threading
 import time
-from typing import TypedDict
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -28,22 +28,22 @@ class SessionStatus(TypedDict):
     locked_out: bool
     session_count: int
 
-
 # ---------------------------------------------------------------------------
 # Argon2id — optional, fall back to PBKDF2 if not installed
 # ---------------------------------------------------------------------------
 
 _HAS_ARGON2 = False
+_Argon2Hasher: type[Any] | None = None
+_Argon2Mismatch: type[Exception] = Exception
 try:
-    from argon2 import PasswordHasher as _Argon2Hasher
-    from argon2.exceptions import VerifyMismatchError as _Argon2Mismatch
+    from argon2 import PasswordHasher as _ImportedArgon2Hasher  # type: ignore[import-not-found]
+    from argon2.exceptions import VerifyMismatchError as _ImportedArgon2Mismatch  # type: ignore[import-not-found]
 
+    _Argon2Hasher = _ImportedArgon2Hasher
+    _Argon2Mismatch = _ImportedArgon2Mismatch
     _HAS_ARGON2 = True
 except ImportError:  # pragma: no cover
-    logger.debug(
-        "argon2-cffi not installed; falling back to PBKDF2 for password hashing"
-    )
-    pass
+    logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
 
 # ---------------------------------------------------------------------------
 # PBKDF2 constants
@@ -74,10 +74,6 @@ class OwnerSessionManager:
     force_pbkdf2:
         When ``True``, always use PBKDF2 even if argon2 is available.
         Useful for testing without the optional dependency.
-    _pbkdf2_iterations:
-        Override the PBKDF2 iteration count.  ``None`` (default) uses the
-        production value of 600 000.  Pass a small integer (e.g. ``1``) only
-        in unit tests to avoid saturating CPUs with expensive hashing.
     """
 
     MAX_SESSIONS: int = 10
@@ -88,15 +84,13 @@ class OwnerSessionManager:
         max_failures: int = 5,
         lockout_duration: int = 300,
         force_pbkdf2: bool = False,
-        _pbkdf2_iterations: int | None = None,
+        _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
     ) -> None:
         self._session_timeout = session_timeout
         self._max_failures = max(max_failures, 1)
         self._lockout_duration = lockout_duration
         self._force_pbkdf2 = force_pbkdf2
-        self._pbkdf2_iters: int = (
-            _pbkdf2_iterations if _pbkdf2_iterations is not None else _PBKDF2_ITERATIONS
-        )
+        self._pbkdf2_iterations = max(int(_pbkdf2_iterations), 1)
         self._lock = threading.Lock()
 
         # Password state
@@ -139,6 +133,8 @@ class OwnerSessionManager:
         """
         with self._lock:
             if self._use_argon2:
+                if _Argon2Hasher is None:
+                    raise RuntimeError("argon2 hasher unavailable")
                 ph = _Argon2Hasher(
                     memory_cost=65536,
                     time_cost=3,
@@ -154,7 +150,7 @@ class OwnerSessionManager:
                     "sha256",
                     password.encode("utf-8"),
                     salt,
-                    self._pbkdf2_iters,
+                    self._pbkdf2_iterations,
                 )
                 self._password_hash = dk.hex()
                 self._password_salt = salt
@@ -329,10 +325,9 @@ class OwnerSessionManager:
     def _verify_password_internal(self, password: str) -> bool:
         """Verify *password* against stored hash.  Caller must hold lock."""
         if self._hash_algo == "argon2":
-            if not _HAS_ARGON2:
-                logger.error(
-                    "Password stored with argon2 but argon2-cffi not installed"
-                )
+            stored_hash = self._password_hash
+            if not _HAS_ARGON2 or _Argon2Hasher is None or stored_hash is None:
+                logger.error("Password stored with argon2 but argon2-cffi not installed")
                 return False
             ph = _Argon2Hasher(
                 memory_cost=65536,
@@ -341,15 +336,20 @@ class OwnerSessionManager:
                 type=2,
             )
             try:
-                return ph.verify(self._password_hash, password)
+                return ph.verify(stored_hash, password)
             except _Argon2Mismatch:
                 return False
         elif self._hash_algo == "pbkdf2":
+            stored_hash = self._password_hash
+            salt = self._password_salt
+            if stored_hash is None or salt is None:
+                logger.error("Password stored with PBKDF2 but salt/hash is missing")
+                return False
             dk = hashlib.pbkdf2_hmac(
                 "sha256",
                 password.encode("utf-8"),
-                self._password_salt,
-                self._pbkdf2_iters,
+                salt,
+                self._pbkdf2_iterations,
             )
-            return secrets.compare_digest(dk.hex(), self._password_hash)
+            return secrets.compare_digest(dk.hex(), stored_hash)
         return False

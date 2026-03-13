@@ -159,14 +159,23 @@ class ConversationState:
 
     def add_to_history(self, role: str, content: str) -> None:
         """Append a message to the conversation history, capping at max turns."""
+        dropped_messages: list[dict[str, str]] = []
         with self._conversation_history_lock:
             self._conversation_history.append(
                 {"role": role, "content": content[:_CONVERSATION_MAX_CHARS_PER_MESSAGE]}
             )
             # Keep only the last N user/assistant pairs
             while len(self._conversation_history) > _CONVERSATION_MAX_TURNS * 2:
-                self._conversation_history.pop(0)
+                dropped_messages.append(self._conversation_history.pop(0))
             self._dirty = True
+        if dropped_messages:
+            try:
+                from jarvis_engine.conversation_state import get_conversation_state
+
+                csm = get_conversation_state()
+                csm.create_checkpoint(dropped_messages=dropped_messages)
+            except (ImportError, OSError, ValueError) as exc:
+                logger.debug("Conversation state checkpoint creation failed: %s", exc)
         self.save_conversation_history()  # respects debounce unless forced
 
     def get_history_messages(self) -> list[dict[str, str]]:
@@ -804,6 +813,43 @@ def _resolve_max_tokens(route: str, web_searched: bool, force_web: bool) -> int:
     return tokens
 
 
+def _append_runtime_mission_context(system_parts: list[str]) -> None:
+    """Inject the currently running learning mission into prompt assembly."""
+    try:
+        from jarvis_engine.learning_missions import get_now_working_on
+
+        now_working = get_now_working_on(repo_root())
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        logger.debug("Runtime mission context lookup failed: %s", exc)
+        return
+
+    if not isinstance(now_working, dict):
+        return
+
+    topic = str(now_working.get("mission_topic", "")).strip()
+    step = str(now_working.get("current_step", "")).strip()
+    progress_pct = int(now_working.get("progress_pct", 0) or 0)
+    artifacts = int(now_working.get("artifacts_so_far", 0) or 0)
+
+    if not topic and not step:
+        return
+
+    detail_parts = []
+    if step:
+        detail_parts.append(step)
+    if progress_pct > 0:
+        detail_parts.append(f"{progress_pct}% complete")
+    if artifacts > 0:
+        detail_parts.append(f"{artifacts} artifacts so far")
+
+    if detail_parts:
+        system_parts.append(
+            f"Active learning mission: {topic or 'untitled mission'} — {'; '.join(detail_parts)}."
+        )
+    else:
+        system_parts.append(f"Active learning mission: {topic}.")
+
+
 def _prepare_history(
     system_parts: list[str],
     llm_model: str,
@@ -843,6 +889,8 @@ def _prepare_history(
             system_parts.append(f"Prior decisions made: {'; '.join(decisions)}")
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Conversation state injection failed: %s", exc)
+
+    _append_runtime_mission_context(system_parts)
 
     system_prompt = "\n\n".join(system_parts)
     hist_tuples = tuple(

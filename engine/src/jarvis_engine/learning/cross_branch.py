@@ -62,6 +62,7 @@ def cross_branch_query(
 
     # Step 2: Vector search
     vec_results = engine.search_vec(embedding, limit=k * 2)
+    provenance_by_id = engine.get_learning_provenance_batch([record_id for record_id, _ in vec_results[:k]])
 
     # Step 3: Build direct results and find cross-branch connections
     G = kg.to_networkx(copy=False)
@@ -70,12 +71,14 @@ def cross_branch_query(
     branches_seen: set[str] = set()
 
     for record_id, distance in vec_results[:k]:
-        direct_results.append(
-            {
-                "record_id": record_id,
-                "distance": distance,
-            }
-        )
+        trust_meta = provenance_by_id.get(record_id, {})
+        direct_results.append({
+            "record_id": record_id,
+            "distance": distance,
+            "trust_level": trust_meta.get("trust_level", "unknown"),
+            "learning_lane": trust_meta.get("learning_lane", "unknown"),
+            "promotion_state": trust_meta.get("promotion_state", "unknown"),
+        })
 
         # Look for KG neighbors in other branches
         # Check if this record has a provenance node in the graph
@@ -94,15 +97,13 @@ def cross_branch_query(
             if neighbor_branch and neighbor_branch != source_branch:
                 branches_seen.add(neighbor_branch)
                 edge_data = G.edges[provenance_id, neighbor]
-                cross_branch_connections.append(
-                    {
-                        "source": provenance_id,
-                        "target": neighbor,
-                        "source_branch": source_branch or "unknown",
-                        "target_branch": neighbor_branch,
-                        "relation": edge_data.get("relation", "related"),
-                    }
-                )
+                cross_branch_connections.append({
+                    "source": provenance_id,
+                    "target": neighbor,
+                    "source_branch": source_branch or "unknown",
+                    "target_branch": neighbor_branch,
+                    "relation": edge_data.get("relation", "related"),
+                })
 
         # Also check predecessors (incoming edges)
         for predecessor in G.predecessors(provenance_id):
@@ -110,15 +111,13 @@ def cross_branch_query(
             if pred_branch and pred_branch != source_branch:
                 branches_seen.add(pred_branch)
                 edge_data = G.edges[predecessor, provenance_id]
-                cross_branch_connections.append(
-                    {
-                        "source": predecessor,
-                        "target": provenance_id,
-                        "source_branch": pred_branch,
-                        "target_branch": source_branch or "unknown",
-                        "relation": edge_data.get("relation", "related"),
-                    }
-                )
+                cross_branch_connections.append({
+                    "source": predecessor,
+                    "target": provenance_id,
+                    "source_branch": pred_branch,
+                    "target_branch": source_branch or "unknown",
+                    "relation": edge_data.get("relation", "related"),
+                })
 
     return {
         "direct_results": direct_results,
@@ -196,16 +195,11 @@ def create_cross_branch_edges(
                        WHERE label LIKE ? ESCAPE '\\'
                        AND node_id NOT LIKE ? ESCAPE '\\'
                        LIMIT 10""",
-                    (
-                        f"%{safe_keyword}%",
-                        f"{safe_branch}.%" if source_branch else new_fact_id,
-                    ),
+                    (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
                 )
                 matches = cursor.fetchall()
         except (sqlite3.Error, OSError, ValueError) as exc:
-            logger.warning(
-                "Cross-branch keyword search failed for %r: %s", keyword, exc
-            )
+            logger.warning("Cross-branch keyword search failed for %r: %s", keyword, exc)
             continue
 
         for match in matches:
@@ -242,16 +236,8 @@ def create_cross_branch_edges(
             # Filter candidates first, then batch-embed for performance
             filtered: list[tuple[str, str]] = []
             for candidate in candidates:
-                cand_id = (
-                    candidate[0]
-                    if not isinstance(candidate, dict)
-                    else candidate["node_id"]
-                )
-                cand_label = (
-                    candidate[1]
-                    if not isinstance(candidate, dict)
-                    else candidate["label"]
-                )
+                cand_id = candidate[0] if not isinstance(candidate, dict) else candidate["node_id"]
+                cand_label = candidate[1] if not isinstance(candidate, dict) else candidate["label"]
                 cand_branch = _extract_branch(cand_id)
 
                 if cand_branch == source_branch or cand_id == new_fact_id:
@@ -265,13 +251,9 @@ def create_cross_branch_edges(
             if filtered:
                 # Batch embed all candidate labels at once (much faster than N individual calls)
                 cand_labels = [lbl for _, lbl in filtered]
-                cand_embeddings = embed_service.embed_batch(
-                    cand_labels, prefix="search_document"
-                )
+                cand_embeddings = embed_service.embed_batch(cand_labels, prefix="search_document")
 
-                for (cand_id, _cand_label), cand_embedding in zip(
-                    filtered, cand_embeddings
-                ):
+                for (cand_id, _cand_label), cand_embedding in zip(filtered, cand_embeddings):
                     sim = _cosine_similarity(new_embedding, cand_embedding)
 
                     if sim >= _EMBEDDING_SIMILARITY_THRESHOLD:

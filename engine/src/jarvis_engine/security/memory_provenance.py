@@ -59,7 +59,7 @@ class MemoryProvenance:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # record_hash -> provenance dict
-        self._records: dict[str, dict[str, Any]] = {}
+        self._records: dict[str, ProvenanceRecord] = {}
 
     # ------------------------------------------------------------------
     # Tagging
@@ -96,7 +96,7 @@ class MemoryProvenance:
             "verified" if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL) else "pending"
         )
 
-        prov: dict[str, Any] = {
+        prov: ProvenanceRecord = {
             "record_hash": record_hash,
             "source": source,
             "trust_level": trust_level,
@@ -122,11 +122,20 @@ class MemoryProvenance:
     # Retrieval
     # ------------------------------------------------------------------
 
-    def get_provenance(self, record_hash: str) -> dict[str, Any] | None:
-        """Return a copy of the provenance dict for *record_hash*, or ``None``."""
+    def get_provenance(self, record_hash: str) -> ProvenanceRecord | None:
+        """Return a copy of the provenance record for *record_hash*, or ``None``."""
         with self._lock:
             prov = self._records.get(record_hash)
-            return dict(prov) if prov is not None else None
+            if prov is None:
+                return None
+            return ProvenanceRecord(
+                record_hash=prov["record_hash"],
+                source=prov["source"],
+                trust_level=prov["trust_level"],
+                ingestion_timestamp=prov["ingestion_timestamp"],
+                verification_status=prov["verification_status"],
+                quarantine_reason=prov["quarantine_reason"],
+            )
 
     # ------------------------------------------------------------------
     # Lifecycle transitions

@@ -672,6 +672,12 @@ def build_context_packet(
                 "kind": str(row.get("kind", "")),
                 "ts": str(row.get("ts", "")),
                 "score": round(score, 4),
+                "trust_level": str(row.get("trust_level", "unknown")),
+                "learning_lane": str(row.get("learning_lane", "unknown")),
+                "promotion_state": str(row.get("promotion_state", "unknown")),
+                "artifact_kind": str(row.get("artifact_kind", "")),
+                "trust_shadow_score": row.get("_trust_shadow_score", round(score, 4)),
+                "would_downrank": bool(row.get("_trust_would_downrank", False)),
             }
         )
         used_branches[branch] = used_branches.get(branch, 0) + 1

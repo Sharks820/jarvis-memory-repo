@@ -23,11 +23,13 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any, Protocol, cast
 from pathlib import Path
 
 import numpy as np
 
 from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine.stt_contracts import TranscriptionSegment
 from jarvis_engine.stt_backends import (  # noqa: F401 -- re-exports
     _load_keyterms,
     _numpy_to_wav_bytes,
@@ -36,6 +38,13 @@ from jarvis_engine.stt_backends import (  # noqa: F401 -- re-exports
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _HTTPJsonResponse(Protocol):
+    status_code: int
+    text: str
+
+    def json(self) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -48,7 +57,7 @@ class TranscriptionResult:
     duration_seconds: float = 0.0
     backend: str = ""
     retried: bool = False
-    segments: list[dict] | None = None
+    segments: list[TranscriptionSegment] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +78,71 @@ JARVIS_DEFAULT_PROMPT = (
     "Groq, Anthropic, SQLite, Kotlin, Jetpack Compose, "
     "brain status, daily brief, self heal, daemon, safe mode."
 )
+
+_DEFAULT_STT_ENTITY_TERMS: tuple[str, ...] = (
+    "Jarvis",
+    "Conner",
+    "ops brief",
+    "brain status",
+    "daily brief",
+    "self heal",
+    "safe mode",
+    "knowledge graph",
+    "proactive engine",
+    "Ollama",
+    "Groq",
+    "Anthropic",
+    "SQLite",
+    "Kotlin",
+    "Jetpack Compose",
+    "daemon",
+)
+
+
+def _build_default_entity_list(
+    entity_list: list[str] | None,
+) -> list[str]:
+    """Return a deduplicated entity list biased toward Jarvis-specific terms."""
+    if entity_list:
+        explicit_entities: list[str] = []
+        explicit_seen: set[str] = set()
+        for value in entity_list:
+            cleaned = str(value).strip()
+            if not cleaned:
+                continue
+            lowered = cleaned.lower()
+            if lowered in explicit_seen:
+                continue
+            explicit_seen.add(lowered)
+            explicit_entities.append(cleaned)
+        return explicit_entities
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for value in [*(_load_keyterms() or []), *_DEFAULT_STT_ENTITY_TERMS]:
+        cleaned = str(value).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        merged.append(cleaned)
+    return merged
+
+
+def _build_stt_prompt(prompt: str, entity_list: list[str]) -> str:
+    """Return the backend prompt enriched with Jarvis-specific vocabulary hints."""
+    base_prompt = prompt.strip() or JARVIS_DEFAULT_PROMPT
+    if not entity_list:
+        return base_prompt
+    hint_terms = ", ".join(entity_list[:40])
+    if not hint_terms:
+        return base_prompt
+    return (
+        f"{base_prompt} "
+        f"Recognize names and phrases exactly when spoken: {hint_terms}."
+    )[:1200]
 
 
 def _log_stt_metric(
@@ -144,7 +218,7 @@ def _groq_api_call(
     language: str,
     prompt: str,
     t0: float,
-) -> "object":
+) -> _HTTPJsonResponse | TranscriptionResult:
     """Send the audio to Groq Whisper API with retry on transient errors.
 
     Returns the httpx Response on success.
@@ -199,13 +273,13 @@ def _groq_api_call(
         text = resp.text[:200] if resp is not None else "no response"
         raise RuntimeError(f"Groq STT API error {status}: {text}")
 
-    return resp
+    return cast(_HTTPJsonResponse, resp)
 
 
 def _groq_parse_response(
     data: dict,
     language: str,
-) -> tuple[str, str, float, list[dict] | None]:
+) -> tuple[str, str, float, list[TranscriptionSegment] | None]:
     """Parse Groq API JSON response into (text, language, confidence, segments).
 
     Computes real confidence from segment-level avg_logprob and no_speech_prob.
@@ -214,7 +288,7 @@ def _groq_parse_response(
     detected_lang = data.get("language", language)
 
     raw_segments = data.get("segments", [])
-    parsed_segments: list[dict] | None = None
+    parsed_segments: list[TranscriptionSegment] | None = None
 
     if raw_segments and isinstance(raw_segments, list):
         logprobs: list[float] = []
@@ -348,14 +422,14 @@ class SpeechToText:
         self.model_size: str = env_model if env_model else model_size
         self.device: str = device
         self.compute_type: str = compute_type
-        self._model = None
+        self._model: Any | None = None
 
     def _ensure_model(self) -> None:
         """Lazy-load the WhisperModel on first use."""
         if self._model is not None:
             return
         try:
-            from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+            from faster_whisper import WhisperModel  # type: ignore[import-not-found,import-untyped]
         except ImportError as exc:
             raise RuntimeError(
                 "faster-whisper is not installed. "
@@ -400,7 +474,10 @@ class SpeechToText:
         self._ensure_model()
         t0 = time.monotonic()
         initial_prompt = prompt or JARVIS_DEFAULT_PROMPT
-        segments_gen, info = self._model.transcribe(
+        model = self._model
+        if model is None:
+            raise RuntimeError("Whisper model failed to load")
+        segments_gen, info = model.transcribe(
             audio,
             language=language,
             vad_filter=vad_filter,
@@ -419,7 +496,7 @@ class SpeechToText:
         )
         segments = list(segments_gen)
         texts: list[str] = []
-        parsed_segments: list[dict] = []
+        parsed_segments: list[TranscriptionSegment] = []
         for segment in segments:
             texts.append(segment.text.strip())
             seg_start = getattr(segment, "start", None)
@@ -475,7 +552,7 @@ def _try_groq(
 _local_stt_instance: SpeechToText | None = None
 _local_stt_lock = threading.Lock()
 
-_parakeet_model = None
+_parakeet_model: Any | None = None
 _parakeet_lock = threading.Lock()
 
 _local_emergency_instance: SpeechToText | None = None
@@ -511,7 +588,7 @@ def _try_parakeet(
 
     try:
         try:
-            import onnx_asr  # type: ignore[import-untyped]
+            import onnx_asr  # type: ignore[import-not-found,import-untyped]
         except ImportError:
             logger.warning(
                 "onnx-asr is not installed; Parakeet backend unavailable. "
@@ -670,20 +747,21 @@ def _transcribe_forced(
     root_dir: Path | None,
 ) -> TranscriptionResult:
     """Run a single forced backend and return its result."""
-    _forced_backends: dict[str, object] = {
-        "groq": _try_groq,
-        "local": _try_local_emergency,
-        "parakeet": _try_parakeet,
-        "deepgram": _try_deepgram,
-    }
-
-    try_fn = _forced_backends[backend]
-    if backend == "deepgram":
-        result = try_fn(
-            audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+    if backend == "groq":
+        result = _try_groq(audio, language=language, prompt=prompt)
+    elif backend == "local":
+        result = _try_local_emergency(audio, language=language, prompt=prompt)
+    elif backend == "parakeet":
+        result = _try_parakeet(audio, language=language, prompt=prompt)
+    elif backend == "deepgram":
+        result = _try_deepgram(
+            audio,
+            language=language,
+            prompt=prompt,
+            keyterms=_load_keyterms(),
         )
     else:
-        result = try_fn(audio, language=language, prompt=prompt)
+        result = None
 
     if result is None:
         logger.warning("%s transcription returned None in forced mode", backend)
@@ -820,12 +898,19 @@ def _apply_postprocessing(
     if not result.text.strip():
         return result
     try:
-        from jarvis_engine.stt_postprocess import postprocess_transcription
+        from jarvis_engine.stt_postprocess import (
+            postprocess_transcription,
+            postprocess_transcription_segments,
+        )
 
         processed = postprocess_transcription(
             result.text,
             result.confidence,
             gateway=gateway,
+            entity_list=entity_list,
+        )
+        processed_segments = postprocess_transcription_segments(
+            result.segments,
             entity_list=entity_list,
         )
         return TranscriptionResult(
@@ -834,7 +919,7 @@ def _apply_postprocessing(
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
             backend=result.backend,
-            segments=result.segments,
+            segments=processed_segments,
             retried=result.retried,
         )
     except (ImportError, OSError, RuntimeError, ValueError) as exc:
@@ -876,6 +961,8 @@ def transcribe_smart(
     to the final transcription text.
     """
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
+    resolved_entities = _build_default_entity_list(entity_list)
+    resolved_prompt = _build_stt_prompt(prompt, resolved_entities)
 
     audio, early_result = _preprocess_audio_if_needed(audio, language=language)
     if early_result is not None:
@@ -888,19 +975,19 @@ def transcribe_smart(
             audio,
             backend=backend,
             language=language,
-            prompt=prompt,
+            prompt=resolved_prompt,
             root_dir=root_dir,
         )
     else:
         final = _transcribe_auto(
             audio,
             language=language,
-            prompt=prompt,
+            prompt=resolved_prompt,
             root_dir=root_dir,
-            entity_list=entity_list,
+            entity_list=resolved_entities,
         )
 
-    return _apply_postprocessing(final, gateway=gateway, entity_list=entity_list)
+    return _apply_postprocessing(final, gateway=gateway, entity_list=resolved_entities)
 
 
 def warmup_stt_backends() -> None:
@@ -947,6 +1034,7 @@ def listen_and_transcribe(
     *,
     max_duration_seconds: float = 30.0,
     language: str = "en",
+    mode: str = "conversation",
     root_dir: Path | None = None,
     gateway: object | None = None,
     entity_list: list[str] | None = None,
@@ -956,7 +1044,10 @@ def listen_and_transcribe(
     Uses smart backend selection: Groq Whisper if GROQ_API_KEY is set,
     otherwise falls back to local faster-whisper.
     """
-    audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
+    audio = record_from_microphone(
+        max_duration_seconds=max_duration_seconds,
+        mode=mode,
+    )
     return transcribe_smart(
         audio,
         language=language,

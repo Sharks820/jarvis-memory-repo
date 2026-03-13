@@ -25,6 +25,14 @@ class EmbedServiceProtocol(Protocol):
         """Return a dense embedding vector for *text*."""
         ...
 
+    def embed_batch(
+        self,
+        texts: list[str],
+        prefix: str = "search_document",
+    ) -> list[list[float]]:
+        """Return dense embedding vectors for *texts*."""
+        ...
+
 
 @runtime_checkable
 class ForensicLoggerProtocol(Protocol):

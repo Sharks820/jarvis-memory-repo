@@ -31,10 +31,10 @@ class TrayMixin:
         ``self._send_text()``, ``self._confirm_exit()``
     """
 
-    def _build_tray_icon(self) -> None:
+    def _build_tray_icon(self: Any) -> None:
         """Create a system tray icon using pystray. Runs in a daemon thread."""
         try:
-            import pystray  # noqa: E402
+            import pystray  # type: ignore[import-not-found]  # noqa: E402
         except ImportError:
             logger.info("pystray or Pillow not installed; system tray icon disabled")
             return
@@ -56,22 +56,22 @@ class TrayMixin:
         tray_thread = threading.Thread(target=icon.run, daemon=True)
         tray_thread.start()
 
-    def _tray_show_widget(self, icon: Any = None, item: Any = None) -> None:
+    def _tray_show_widget(self: Any, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Show Widget (also handles double-click)."""
         try:
             self.after(0, self._show_panel)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray show-widget failed (widget may be destroyed)")
 
-    def _tray_voice_dictate(self, icon: Any = None, item: Any = None) -> None:
+    def _tray_voice_dictate(self: Any, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Voice Dictate."""
         try:
             self.after(0, self._show_panel)
-            self.after(100, self._voice_dictate)
+            self.after(100, self._dictate_async)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray voice-dictate failed (widget may be destroyed)")
 
-    def _tray_ops_brief(self, icon: Any = None, item: Any = None) -> None:
+    def _tray_ops_brief(self: Any, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Ops Brief."""
         try:
             self.after(0, self._show_panel)
@@ -79,14 +79,14 @@ class TrayMixin:
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray ops-brief failed (widget may be destroyed)")
 
-    def _tray_quit(self, icon: Any = None, item: Any = None) -> None:
+    def _tray_quit(self: Any, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Quit."""
         try:
             self.after(0, self._confirm_exit)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray quit failed (widget may be destroyed)")
 
-    def _stop_tray_icon(self) -> None:
+    def _stop_tray_icon(self: Any) -> None:
         """Stop the tray icon cleanly."""
         if self._tray_icon is not None:
             try:

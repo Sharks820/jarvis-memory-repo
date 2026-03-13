@@ -46,6 +46,19 @@ class ThreatIntelStatus(TypedDict):
 
 logger = logging.getLogger(__name__)
 
+
+def _copy_enrichment(data: ThreatEnrichment, *, cache_hit: bool | None = None) -> ThreatEnrichment:
+    """Clone an enrichment payload while preserving its TypedDict contract."""
+    return {
+        "ip": data["ip"],
+        "abuseipdb_score": data["abuseipdb_score"],
+        "otx_pulses": data["otx_pulses"],
+        "feodo_listed": data["feodo_listed"],
+        "is_known_bad": data["is_known_bad"],
+        "cache_hit": data["cache_hit"] if cache_hit is None else cache_hit,
+        "sources_checked": list(data["sources_checked"]),
+    }
+
 _ABUSEIPDB_CHECK_URL = "https://api.abuseipdb.com/api/v2/check"
 _OTX_INDICATOR_URL = "https://otx.alienvault.com/api/v1/indicators/IPv4"
 _FEODO_BLOCKLIST_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
@@ -136,9 +149,8 @@ class ThreatIntelFeed:
                 if time.time() - ts < self._cache_ttl:
                     self._cache.move_to_end(ip)  # LRU: mark as recently used
                     self._requests_total += 1
-                    result = dict(data)
-                    result["cache_hit"] = True
-                    return result
+                    cached_result = _copy_enrichment(data, cache_hit=True)
+                    return cached_result
 
         # Build fresh enrichment — run all applicable feeds in parallel
         abuseipdb_score: int | None = None
@@ -196,7 +208,7 @@ class ThreatIntelFeed:
                 self._cache.move_to_end(ip)
             elif len(self._cache) >= self.MAX_CACHE_SIZE:
                 self._cache.popitem(last=False)  # evict oldest
-            self._cache[ip] = (dict(result), now)
+            self._cache[ip] = (_copy_enrichment(result), now)
             self._requests_total += 1
 
         return result

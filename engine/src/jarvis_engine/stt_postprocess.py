@@ -14,12 +14,74 @@ from __future__ import annotations
 import logging
 import re
 import zlib
+from importlib import import_module
+from typing import Any, Protocol, cast
 
 import numpy as np
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+from jarvis_engine.stt_contracts import TranscriptionSegment
 
 logger = logging.getLogger(__name__)
+
+
+class _LLMCompletionResponse(Protocol):
+    text: str
+
+
+class _LLMCompletionGateway(Protocol):
+    def complete(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        route_reason: str,
+    ) -> _LLMCompletionResponse: ...
+
+
+class _LibrosaDecomposeModule(Protocol):
+    def hpss(self, stft: np.ndarray, margin: float = 1.0) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+class _LibrosaEffectsModule(Protocol):
+    def trim(self, audio: np.ndarray, top_db: float) -> tuple[np.ndarray, Any]: ...
+
+
+class _LibrosaModule(Protocol):
+    decompose: _LibrosaDecomposeModule
+    effects: _LibrosaEffectsModule
+
+    def stft(self, audio: np.ndarray) -> np.ndarray: ...
+    def istft(self, harmonic: np.ndarray, *, length: int) -> np.ndarray: ...
+
+
+class _NoiseReduceModule(Protocol):
+    def reduce_noise(
+        self,
+        *,
+        y: np.ndarray,
+        sr: int,
+        prop_decrease: float,
+        stationary: bool,
+    ) -> np.ndarray: ...
+
+
+class _JellyfishModule(Protocol):
+    def metaphone(self, value: str) -> str: ...
+    def jaro_winkler_similarity(self, left: str, right: str) -> float: ...
+
+
+def _load_librosa() -> _LibrosaModule:
+    return cast(_LibrosaModule, import_module("librosa"))
+
+
+def _load_noisereduce() -> _NoiseReduceModule:
+    return cast(_NoiseReduceModule, import_module("noisereduce"))
+
+
+def _load_jellyfish() -> _JellyfishModule:
+    return cast(_JellyfishModule, import_module("jellyfish"))
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +128,7 @@ def preprocess_audio(
         )
     else:
         try:
-            import librosa
+            librosa = _load_librosa()
 
             stft = librosa.stft(audio)
             harmonic, _ = librosa.decompose.hpss(stft, margin=3.0)
@@ -79,7 +141,7 @@ def preprocess_audio(
 
     # 3. Spectral noise reduction
     try:
-        import noisereduce as nr
+        nr = _load_noisereduce()
 
         audio = nr.reduce_noise(
             y=audio, sr=sample_rate, prop_decrease=0.6, stationary=True
@@ -92,7 +154,7 @@ def preprocess_audio(
 
     # 4. Trim silence
     try:
-        import librosa
+        librosa = _load_librosa()
 
         trimmed, _ = librosa.effects.trim(audio, top_db=abs(silence_threshold_db))
         audio = trimmed.astype(np.float32)
@@ -198,13 +260,18 @@ def detect_hallucination(text: str) -> bool:
     if lower in _EXACT_HALLUCINATION_PHRASES:
         return True
 
-    # Substring match: phrase appears anywhere in text
+    words = lower.split()
+
+    # Substring hallucinations should dominate the utterance, not merely appear inside a valid sentence.
+    total_words = len(words)
     for phrase in _SUBSTRING_HALLUCINATION_PHRASES:
-        if phrase in lower:
+        if phrase not in lower:
+            continue
+        phrase_words = len(phrase.split())
+        if total_words <= phrase_words + 1:
             return True
 
     # Check for repeated word sequences (1+ words repeated)
-    words = lower.split()
 
     # Single-word repetition: same word appears 4+ times in sequence
     if len(words) >= 4:
@@ -277,6 +344,8 @@ _SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECAS
 _MULTI_WORD_FILLERS = re.compile(
     r"\b(?:you know|I mean|sort of|kind of)\b", re.IGNORECASE
 )
+_SENTENCE_START_RE = re.compile(r"(^|[.!?]\s+)([a-z])")
+_FIRST_PERSON_RE = re.compile(r"\bi\b")
 
 
 def remove_fillers(text: str) -> str:
@@ -298,6 +367,22 @@ def remove_fillers(text: str) -> str:
     # Normalize whitespace
     result = re.sub(r"\s{2,}", " ", result).strip()
     return result
+
+
+def normalize_sentence_text(text: str) -> str:
+    """Clean spacing and restore lightweight sentence casing without changing meaning."""
+    if not text.strip():
+        return ""
+    result = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    result = re.sub(r"([,.;:!?])([^\s])", r"\1 \2", result)
+    result = re.sub(r"\s{2,}", " ", result).strip()
+    result = _FIRST_PERSON_RE.sub("I", result)
+
+    def _capitalize(match: re.Match[str]) -> str:
+        prefix, letter = match.groups()
+        return f"{prefix}{letter.upper()}"
+
+    return _SENTENCE_START_RE.sub(_capitalize, result)
 
 
 # ---------------------------------------------------------------------------
@@ -327,9 +412,62 @@ def _load_personal_vocab() -> list[str]:
     return load_personal_vocab_lines(strip_parens=False)
 
 
+def _clean_llm_correction_candidate(text: str) -> str:
+    """Normalize common wrapper noise around LLM correction output."""
+    candidate = text.strip().strip("`")
+    candidate = candidate.strip().strip('"').strip("'")
+    lower = candidate.lower()
+    for prefix in ("corrected text:", "corrected:", "transcription:", "output:"):
+        if lower.startswith(prefix):
+            candidate = candidate[len(prefix) :].strip().strip('"').strip("'")
+            break
+    return candidate
+
+
+_COMMENTARY_PREFIXES: tuple[str, ...] = (
+    "here is",
+    "here's",
+    "i corrected",
+    "the corrected",
+    "note:",
+    "explanation:",
+)
+_WORDISH_RE = re.compile(r"[a-z0-9']+")
+
+
+def _accept_llm_correction(original: str, candidate: str) -> bool:
+    """Return True when an LLM correction stays close enough to the source."""
+    if not candidate:
+        return False
+    lower = candidate.lower()
+    if lower.startswith(_COMMENTARY_PREFIXES):
+        return False
+    if "\n" in candidate or "```" in candidate:
+        return False
+    if len(candidate) > max(len(original) * 2, len(original) + 40):
+        return False
+
+    original_words = _WORDISH_RE.findall(original.lower())
+    candidate_words = _WORDISH_RE.findall(lower)
+    if candidate_words and len(candidate_words) > max(
+        len(original_words) + 4,
+        int(len(original_words) * 1.5) + 2,
+    ):
+        return False
+
+    if original_words:
+        original_set = set(original_words)
+        overlap = len(original_set & set(candidate_words))
+        required_overlap = 1 if len(original_set) <= 2 else max(2, len(original_set) // 2)
+        if overlap < required_overlap:
+            return False
+
+    return True
+
+
 def correct_with_llm(
     text: str,
-    gateway: object | None,
+    gateway: _LLMCompletionGateway | None,
     *,
     vocab_lines: list[str] | None = None,
 ) -> str:
@@ -361,8 +499,8 @@ def correct_with_llm(
             max_tokens=512,
             route_reason="stt-post-correction",
         )
-        corrected = response.text.strip()
-        if corrected:
+        corrected = _clean_llm_correction_candidate(response.text)
+        if _accept_llm_correction(text, corrected):
             return corrected
         return text
     except (
@@ -384,68 +522,79 @@ def correct_with_llm(
 
 
 def correct_entities(text: str, entity_list: list[str]) -> str:
-    """Correct entity names using exact and phonetic matching.
-
-    For each word in the text, checks:
-    1. Case-insensitive exact match against entity_list
-    2. Phonetic similarity (Metaphone) for near-misses
-    """
+    """Correct entity names using exact phrase, exact token, and phonetic matching."""
     if not entity_list or not text:
         return text
 
+    jellyfish: _JellyfishModule | None = None
     try:
-        import jellyfish
+        jellyfish = _load_jellyfish()
     except ImportError:
-        logger.warning("jellyfish not installed, skipping entity correction")
-        return text
+        logger.debug("jellyfish not installed, using exact-match entity correction only")
 
-    # Build lookup maps
+    cleaned_entities: list[str] = []
+    seen_entities: set[str] = set()
+    for entity in entity_list:
+        cleaned = str(entity).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen_entities:
+            continue
+        seen_entities.add(lowered)
+        cleaned_entities.append(cleaned)
+
+    corrected_text = text
+    for entity in sorted((value for value in cleaned_entities if " " in value), key=len, reverse=True):
+        pattern = re.compile(
+            rf"(?<!\w){re.escape(entity).replace(r'\ ', r'\s+')}(?!\w)",
+            re.IGNORECASE,
+        )
+        corrected_text = pattern.sub(entity, corrected_text)
+
     exact_map: dict[str, str] = {}
     phonetic_map: dict[str, str] = {}
-    for entity in entity_list:
+    for entity in cleaned_entities:
         exact_map[entity.lower()] = entity
-        try:
-            code = jellyfish.metaphone(entity)
-            phonetic_map[code] = entity
-        except (ValueError, TypeError) as exc:
-            logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
+        if jellyfish is not None and " " not in entity:
+            try:
+                code = jellyfish.metaphone(entity)
+                phonetic_map[code] = entity
+            except (ValueError, TypeError) as exc:
+                logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
 
     _PUNCT = ".,!?;:'\""
-    words = text.split()
+    words = corrected_text.split()
     corrected_words = []
     for word in words:
-        # Strip punctuation for matching
         stripped = word.strip(_PUNCT)
         if not stripped:
-            # Word is entirely punctuation — keep as-is
             corrected_words.append(word)
             continue
         prefix = word[: word.index(stripped[0])]
         suffix = word[word.rindex(stripped[-1]) + 1 :]
 
-        # Exact match
         if stripped.lower() in exact_map:
             corrected_words.append(prefix + exact_map[stripped.lower()] + suffix)
             continue
 
-        # Phonetic match
-        try:
-            word_code = jellyfish.metaphone(stripped)
-            if word_code in phonetic_map:
-                canonical = phonetic_map[word_code]
-                similarity = jellyfish.jaro_winkler_similarity(
-                    stripped.lower(), canonical.lower()
-                )
-                if similarity > 0.75:
-                    corrected_words.append(prefix + canonical + suffix)
-                    continue
-        except (ValueError, TypeError) as exc:
-            logger.debug("Jaro-winkler similarity failed: %s", exc)
+        if jellyfish is not None:
+            try:
+                word_code = jellyfish.metaphone(stripped)
+                if word_code in phonetic_map:
+                    canonical = phonetic_map[word_code]
+                    similarity = jellyfish.jaro_winkler_similarity(
+                        stripped.lower(), canonical.lower()
+                    )
+                    if similarity > 0.75:
+                        corrected_words.append(prefix + canonical + suffix)
+                        continue
+            except (ValueError, TypeError) as exc:
+                logger.debug("Jaro-winkler similarity failed: %s", exc)
 
         corrected_words.append(word)
 
     return " ".join(corrected_words)
-
 
 # ---------------------------------------------------------------------------
 # Stage 6: Full Pipeline Orchestration
@@ -499,6 +648,7 @@ def postprocess_transcription(
 
     # Stage 2: Filler removal
     text = remove_fillers(text)
+    text = normalize_sentence_text(text)
 
     if not text.strip():
         return ""
@@ -514,14 +664,63 @@ def postprocess_transcription(
             word_count,
             confidence,
         )
-        return text
+        if entity_list:
+            text = correct_entities(text, entity_list)
+        return normalize_sentence_text(text)
 
     # Stage 3: LLM post-correction
     if gateway is not None:
-        text = correct_with_llm(text, gateway, vocab_lines=vocab_lines)
+        text = correct_with_llm(
+            text,
+            cast(_LLMCompletionGateway, gateway),
+            vocab_lines=vocab_lines,
+        )
 
     # Stage 4: NER entity correction
     if entity_list:
         text = correct_entities(text, entity_list)
 
-    return text
+    return normalize_sentence_text(text)
+
+
+def postprocess_transcription_segments(
+    segments: list[TranscriptionSegment] | None,
+    *,
+    entity_list: list[str] | None = None,
+) -> list[TranscriptionSegment] | None:
+    """Apply deterministic cleanup to timed transcript spans."""
+    if not segments:
+        return None
+
+    cleaned_segments: list[TranscriptionSegment] = []
+    for segment in segments:
+        segment_text = str(segment["text"]).strip()
+        if not segment_text:
+            continue
+
+        kind = str(segment.get("kind", "")).strip().lower()
+        if kind == "word":
+            cleaned_text = segment_text
+            if entity_list:
+                cleaned_text = correct_entities(cleaned_text, entity_list)
+            cleaned_text = cleaned_text.strip()
+        else:
+            cleaned_text = postprocess_transcription(
+                segment_text,
+                confidence=0.9,
+                gateway=None,
+                entity_list=entity_list,
+            )
+
+        if not cleaned_text:
+            continue
+
+        cleaned_segment: TranscriptionSegment = {
+            "start": segment["start"],
+            "end": segment["end"],
+            "text": cleaned_text,
+        }
+        if kind:
+            cleaned_segment["kind"] = kind
+        cleaned_segments.append(cleaned_segment)
+    return cleaned_segments if cleaned_segments else None

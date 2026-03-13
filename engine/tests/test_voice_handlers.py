@@ -421,6 +421,7 @@ class TestVoiceListenHandler:
             text="hello world",
             confidence=0.95,
             duration_seconds=3.2,
+            segments=[{"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}],
         )
 
         with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
@@ -430,6 +431,9 @@ class TestVoiceListenHandler:
         assert result.text == "hello world"
         assert result.confidence == 0.95
         assert result.duration_seconds == 3.2
+        assert result.segments == [
+            {"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}
+        ]
 
     def test_parameters_forwarded(self, tmp_path: Path) -> None:
         mock_stt = MagicMock()
@@ -449,9 +453,28 @@ class TestVoiceListenHandler:
         mock_stt.listen_and_transcribe.assert_called_once_with(
             max_duration_seconds=10.0,
             language="fr",
+            mode="conversation",
             root_dir=tmp_path,
             gateway=None,
         )
+
+    def test_mode_forwarded(self, tmp_path: Path) -> None:
+        mock_stt = MagicMock()
+        mock_stt.listen_and_transcribe.return_value = SimpleNamespace(
+            text="", confidence=0.0, duration_seconds=0.0
+        )
+
+        with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
+            handler = VoiceListenHandler(root=tmp_path)
+            handler.handle(
+                VoiceListenCommand(
+                    max_duration_seconds=6.0,
+                    language="en",
+                    utterance_mode="command",
+                )
+            )
+
+        assert mock_stt.listen_and_transcribe.call_args.kwargs["mode"] == "command"
 
     def test_exception_during_listen(self, tmp_path: Path) -> None:
         """Generic exception during listen returns error message."""
