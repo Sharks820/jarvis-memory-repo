@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing + utterance-sidecar tranches shipped; repo runtime green at 5611 passed, repo-wide mypy improved to 94/26, ruff clean)
+Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing + utterance-sidecar + voice-context contract tranches shipped; repo runtime green at 5611 passed, repo-wide mypy improved to 77/22, ruff clean)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -34,7 +34,7 @@ Progress (v5.0): [██████░░░░] 55%
 **v5.0 Reliability & Continuity**: IN PROGRESS
 - Latest full test run (2026-03-12): 5611 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
-- Typed debt baseline: mypy 94 errors across 26 files
+- Typed debt baseline: mypy 77 errors across 22 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
 - Plan active: `.planning/phases/14-world-class-assistant-reliability/14-02-PLAN.md`
 
@@ -128,6 +128,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-12: completed the wakeword follow-up + STT typing tranche. `WakeWordStartHandler` now captures the post-wake utterance in `conversation` mode so natural sentence pauses do not clip the follow-up request, and `stt.py` / `stt_backends.py` now use explicit HTTP-response, audio-stream, and VAD typing contracts with stricter dynamic import annotations. Verification snapshot: focused `mypy --follow-imports=silent` now clean on `stt.py` and `stt_backends.py`; repo-wide `mypy engine/src` improved from `118 errors / 31 files` to `105 errors / 29 files`; focused STT pytest gates green plus `test_proactive_handlers.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5602 passed, 15 skipped, 15 warnings` in 5m50s.
 - 2026-03-12: completed the voice-auth read-only alignment follow-up. `_check_voice_auth()` now classifies read-only requests using the expanded natural-command alias surface before auth gates run, while `voice_extractors.py` now explicitly keeps sync/connect-style spoken requests mutating so phrases like `sync my calendar and inbox` still require voice auth. Added regression coverage in `test_voice_extractors.py`, `test_main_helpers.py`, `test_main_security.py`, and `test_voice_intents.py`. Verification snapshot: focused `ruff` clean; focused pytest gates green for the extractor/main-security/voice-intent slice; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5609 passed, 15 skipped, 15 warnings` in 5m39s.
 - 2026-03-12: completed the additive voice utterance-sidecar tranche. `stt_contracts.py` now defines a shared `VoiceUtterance` contract, `VoiceListenHandler` now preserves raw text/language/backend/confidence/segments in `VoiceListenResult.utterance`, `cmd_voice_listen()` and `VoiceRunCommand` now carry that metadata through execution without changing the existing text/stdout contract, `WakeWordStartHandler` now preserves both raw wakeword follow-up speech and stripped command text, and `voice_intents.py` now records STT backend/confidence/raw text into the post-dispatch learning trail while keeping routing/auth text-based. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_main_voice.py`, `test_voice_handlers.py`, `test_proactive_handlers.py`, `test_voice_intents.py`, and `test_stt_core.py`; focused `mypy --follow-imports=silent` clean on the touched voice/STT files; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5611 passed, 15 skipped, 15 warnings` in 6m16s; repo-wide `mypy engine/src` improved from `105 errors / 29 files` to `94 errors / 26 files`.
+- 2026-03-12: completed the follow-on voice-context contract tranche. `command_bus.py` now points `AppContext` at the real learning subsystem types (`ConversationLearningEngine`, `ResponseFeedbackTracker`, `UsagePatternTracker`), `gateway/models.py` now treats optional activity logging as an explicitly optional callable instead of leaking an invalid `None` assignment into import-time typing, `voice_context.py` now uses concrete `MemoryEngine` / `EmbeddingService` / `KnowledgeGraph` types instead of generic `object` surfaces for memory, KG, cross-branch, and preference assembly, and `voice_pipeline.py` now types its web-research payload and command-bus dispatch path without changing stdout/mobile contracts. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_voice_context.py`, `test_main_voice.py`, and `test_voice_pipeline_orchestration.py`; focused `mypy --follow-imports=silent` clean on `command_bus.py`, `gateway/models.py`, `voice_context.py`, and `voice_pipeline.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5611 passed, 15 skipped, 15 warnings` in 6m38s; repo-wide `mypy engine/src` improved from `94 errors / 26 files` to `77 errors / 22 files`.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -137,7 +138,7 @@ Progress (v5.0): [██████░░░░] 55%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 94 errors / 26 files
+  - mypy: 77 errors / 22 files
   - bandit: 66 findings (0 high, 9 medium, 57 low)
 - Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
 - User-reported runtime issues persist in real-world usage:

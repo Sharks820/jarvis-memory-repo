@@ -17,6 +17,10 @@ from jarvis_engine._constants import (
 
 if TYPE_CHECKING:
     from jarvis_engine._bus import CommandBus
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.preferences import PreferenceTracker
+    from jarvis_engine.memory.embeddings import EmbeddingService
+    from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +38,8 @@ def _current_datetime_prompt_line() -> str:
 
 
 def _retrieve_memories_hybrid(
-    engine: object,
-    embed_service: object,
+    engine: "MemoryEngine",
+    embed_service: "EmbeddingService",
     query: str,
     max_items: int,
 ) -> list[str]:
@@ -97,18 +101,18 @@ def _retrieve_memories_legacy(
 
 def _inject_kg_facts(
     bus: "CommandBus",
-    engine: object,
-    embed_service: object | None,
+    engine: "MemoryEngine",
+    embed_service: "EmbeddingService | None",
     query: str,
     max_fact_items: int,
-) -> tuple[list[str], object | None]:
+) -> tuple[list[str], "KnowledgeGraph | None"]:
     """Query KG for personal facts (keyword + semantic).
 
     Returns (fact_lines, kg_reference) where kg_reference is the
     KnowledgeGraph instance for downstream cross-branch queries.
     """
     fact_lines: list[str] = []
-    kg = None
+    kg: KnowledgeGraph | None = None
     try:
         kg = bus.ctx.kg
         if kg is None:
@@ -154,8 +158,8 @@ def _inject_kg_facts(
 
 
 def _inject_semantic_facts(
-    kg: object,
-    embed_service: object,
+    kg: "KnowledgeGraph",
+    embed_service: "EmbeddingService",
     query: str,
     max_fact_items: int,
     fact_lines: list[str],
@@ -191,9 +195,9 @@ def _inject_semantic_facts(
 
 
 def _query_cross_branch(
-    kg: object,
-    engine: object,
-    embed_service: object,
+    kg: "KnowledgeGraph",
+    engine: "MemoryEngine",
+    embed_service: "EmbeddingService",
     query: str,
 ) -> list[str]:
     """Query cross-branch knowledge connections.
@@ -237,7 +241,7 @@ def _load_preferences(bus: "CommandBus") -> list[str]:
     Returns formatted preference lines.
     """
     preference_lines: list[str] = []
-    pref_tracker = bus.ctx.pref_tracker
+    pref_tracker: PreferenceTracker | None = bus.ctx.pref_tracker
     if pref_tracker is not None:
         try:
             prefs = pref_tracker.get_preferences()
@@ -284,7 +288,7 @@ def _build_smart_context(
 
     # KG fact injection
     fact_lines: list[str] = []
-    kg = None
+    kg: KnowledgeGraph | None = None
     if engine is not None:
         fact_lines, kg = _inject_kg_facts(
             bus,

@@ -16,10 +16,10 @@ if TYPE_CHECKING:
     from jarvis_engine.gateway.classifier import IntentClassifier
     from jarvis_engine.gateway.models import ModelGateway
     from jarvis_engine.knowledge.graph import KnowledgeGraph
-    from jarvis_engine.learning.engine import LearningEngine
-    from jarvis_engine.learning.feedback import FeedbackTracker
     from jarvis_engine.learning.preferences import PreferenceTracker
-    from jarvis_engine.learning.usage import UsageTracker
+    from jarvis_engine.learning.engine import ConversationLearningEngine
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+    from jarvis_engine.learning.usage_patterns import UsagePatternTracker
     from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
 
@@ -44,9 +44,9 @@ class AppContext:
     kg: KnowledgeGraph | None = None
     gateway: ModelGateway | None = None
     pref_tracker: PreferenceTracker | None = None
-    feedback_tracker: FeedbackTracker | None = None
-    usage_tracker: UsageTracker | None = None
-    learning_engine: LearningEngine | None = None
+    feedback_tracker: ResponseFeedbackTracker | None = None
+    usage_tracker: UsagePatternTracker | None = None
+    learning_engine: ConversationLearningEngine | None = None
 
 
 class CommandBus:
