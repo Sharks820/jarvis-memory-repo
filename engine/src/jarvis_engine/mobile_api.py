@@ -39,8 +39,7 @@ from jarvis_engine._constants import (
     REPLAY_WINDOW_SECONDS,
     SUBSYSTEM_ERRORS,
 )
-from jarvis_engine._shared import memory_db_path
-from jarvis_engine._shared import runtime_dir
+from jarvis_engine._shared import memory_db_path, runtime_dir
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
@@ -52,7 +51,7 @@ from jarvis_engine.mobile_routes import (
     ScamRoutesMixin,
     SecurityRoutesMixin,
     SyncRoutesMixin,
-    VoiceCommandMixin,
+    VoiceRoutesMixin,
 )
 logger = logging.getLogger(__name__)
 
@@ -629,7 +628,7 @@ class MobileIngestHandler(
     DataRoutesMixin,
     ScamRoutesMixin,
     SecurityRoutesMixin,
-    VoiceCommandMixin,
+    VoiceRoutesMixin,
     BaseHTTPRequestHandler,
 ):
     server: MobileIngestServer  # type: ignore[assignment]  # narrow from HTTPServer

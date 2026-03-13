@@ -1,4 +1,4 @@
-"""Voice command execution mixin for MobileIngestHandler.
+"""Voice routes mixin for MobileIngestHandler.
 
 Extracted from mobile_api.py to reduce file size. Contains voice command
 validation, in-process execution, subprocess fallback, and result building.
@@ -75,7 +75,7 @@ class _VoiceHandlerProtocol(Protocol):
         ...
 
 
-class VoiceCommandMixin:
+class VoiceRoutesMixin:
     """Voice command validation, execution, and result building.
 
     Extracted from MobileIngestHandler to reduce mobile_api.py line count.

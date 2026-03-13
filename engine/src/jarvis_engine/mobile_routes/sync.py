@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
 
-from ._helpers import HeaderProtocol
+from jarvis_engine.mobile_routes._helpers import HeaderProtocol
 
 if TYPE_CHECKING:
     from jarvis_engine.sync.auto_sync import AutoSyncConfig

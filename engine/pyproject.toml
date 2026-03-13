@@ -30,7 +30,7 @@ harvesting = [
     "google-genai>=1.0.0",
 ]
 tasks = [
-    "todoist-api-python",
+    "todoist-api-python>=2.1.0",
 ]
 proctitle = [
     "setproctitle>=1.3.0",
