@@ -60,9 +60,11 @@ _T = TypeVar("_T")
 # Keyed by (id(db), id(write_lock), log_dir) so a different db/lock combo gets
 # its own orchestrator (important for tests), but repeated calls with the same
 # arguments reuse the existing instance.
-_shared_orchestrator: "SecurityOrchestrator | None" = None
-_shared_orchestrator_key: tuple | None = None
-_shared_provenance: "MemoryProvenance | None" = None
+_shared_defense_state: dict[str, Any] = {
+    "orchestrator": None,
+    "orchestrator_key": None,
+    "provenance": None,
+}
 _shared_orchestrator_lock = threading.Lock()
 
 
@@ -76,14 +78,13 @@ def _get_or_create_orchestrator(
     If called with different *db*/*write_lock*/*log_dir* arguments than the
     cached instance, creates a new one (handles test isolation).
     """
-    global _shared_orchestrator, _shared_orchestrator_key, _shared_provenance
     key = (id(db), id(write_lock), str(log_dir))
-    if _shared_orchestrator is not None and _shared_orchestrator_key == key:
-        return _shared_orchestrator
+    if _shared_defense_state["orchestrator"] is not None and _shared_defense_state["orchestrator_key"] == key:
+        return _shared_defense_state["orchestrator"]
     with _shared_orchestrator_lock:
         # Double-checked locking
-        if _shared_orchestrator is not None and _shared_orchestrator_key == key:
-            return _shared_orchestrator
+        if _shared_defense_state["orchestrator"] is not None and _shared_defense_state["orchestrator_key"] == key:
+            return _shared_defense_state["orchestrator"]
         try:
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
 
@@ -93,12 +94,12 @@ def _get_or_create_orchestrator(
                 log_dir=log_dir,
             )
             # Also create the shared MemoryProvenance
-            if _shared_provenance is None:
+            if _shared_defense_state["provenance"] is None:
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
 
-                _shared_provenance = MemoryProvenance()
-            _shared_orchestrator = orch
-            _shared_orchestrator_key = key
+                _shared_defense_state["provenance"] = MemoryProvenance()
+            _shared_defense_state["orchestrator"] = orch
+            _shared_defense_state["orchestrator_key"] = key
             return orch
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("SecurityOrchestrator init failed: %s", exc)
@@ -342,8 +343,7 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
             return ReviewQuarantineResult(records=[], message=msg)
 
         def _action() -> ReviewQuarantineResult:
-            global _shared_provenance
-            provenance = _shared_provenance
+            provenance = _shared_defense_state["provenance"]
             if provenance is None:
                 orch = self._ensure_orchestrator()
                 if orch is not None and hasattr(orch, "memory_provenance"):
@@ -352,9 +352,9 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
 
                 with _shared_orchestrator_lock:
-                    if _shared_provenance is None:
-                        _shared_provenance = MemoryProvenance()
-                    provenance = _shared_provenance
+                    if _shared_defense_state["provenance"] is None:
+                        _shared_defense_state["provenance"] = MemoryProvenance()
+                    provenance = _shared_defense_state["provenance"]
             records = provenance.get_quarantined(limit=50)
             return ReviewQuarantineResult(records=records, message=f"{len(records)} quarantined record(s) found.")
 

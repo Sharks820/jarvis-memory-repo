@@ -671,27 +671,25 @@ def _percentile(data: list[float] | deque[float], pct: float) -> float:
     return sorted_data[lower] + frac * (sorted_data[upper] - sorted_data[lower])
 
 
-# Module-level singleton
+# Module-level singleton (mutable container avoids ``global`` keyword)
 
-_telemetry: VoiceTelemetry | None = None
+_telemetry_state: dict[str, VoiceTelemetry | None] = {"instance": None}
 _telemetry_lock = threading.Lock()
 
 
 def get_voice_telemetry() -> VoiceTelemetry:
     """Return (or create) the module-level VoiceTelemetry singleton."""
-    global _telemetry
-    if _telemetry is not None:
-        return _telemetry
+    if _telemetry_state["instance"] is not None:
+        return _telemetry_state["instance"]
     with _telemetry_lock:
         # Double-checked locking
-        if _telemetry is not None:
-            return _telemetry
-        _telemetry = VoiceTelemetry()
-        return _telemetry
+        if _telemetry_state["instance"] is not None:
+            return _telemetry_state["instance"]
+        _telemetry_state["instance"] = VoiceTelemetry()
+        return _telemetry_state["instance"]
 
 
 def _reset_telemetry() -> None:
     """Discard the module-level singleton.  Test-only."""
-    global _telemetry
     with _telemetry_lock:
-        _telemetry = None
+        _telemetry_state["instance"] = None

@@ -693,7 +693,7 @@ _TOAST_MAX_MESSAGE = 256
 _TOAST_COOLDOWN_SECONDS = 120  # Max 1 toast per 2 minutes
 
 # Module-level throttle state (thread-safe via GIL for simple reads/writes)
-_last_toast_time: float = 0.0
+_last_toast_time: list[float] = [0.0]
 _toast_lock = threading.Lock()
 
 
@@ -708,8 +708,6 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         message: Notification body (truncated to 256 chars).
         icon: One of "Info", "Warning", "Error".
     """
-    global _last_toast_time  # mutable throttle timestamp shared across calls
-
     if icon not in _TOAST_ICON_TYPES:
         icon = "Info"
     title = (title or "Jarvis")[:_TOAST_MAX_TITLE]
@@ -718,10 +716,10 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
     # Throttle: max 1 toast per cooldown period
     with _toast_lock:
         now = time.time()
-        if now - _last_toast_time < _TOAST_COOLDOWN_SECONDS:
+        if now - _last_toast_time[0] < _TOAST_COOLDOWN_SECONDS:
             logger.debug("Toast throttled (cooldown active)")
             return
-        _last_toast_time = now
+        _last_toast_time[0] = now
 
     # Escape PowerShell special characters to prevent injection
     safe_title = title.replace("'", "''").replace("`", "``").replace("$", "`$").replace(";", "`;")

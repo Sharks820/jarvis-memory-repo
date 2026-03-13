@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level state
 _auto_ingest_lock = threading.Lock()
-_auto_ingest_store: "MemoryStore | None" = None
+_auto_ingest_state: dict[str, "MemoryStore | None"] = {"store": None}
 _auto_ingest_store_lock = threading.Lock()
 
 VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome", "conversation"}
@@ -44,15 +44,14 @@ VALID_KINDS = {"episodic", "semantic", "procedural"}
 
 def _get_auto_ingest_store() -> "MemoryStore":
     """Return a cached MemoryStore for auto-ingest, creating once on first call."""
-    global _auto_ingest_store
-    if _auto_ingest_store is not None:
-        return _auto_ingest_store
+    if _auto_ingest_state["store"] is not None:
+        return _auto_ingest_state["store"]
     with _auto_ingest_store_lock:
-        if _auto_ingest_store is None:
+        if _auto_ingest_state["store"] is None:
             from jarvis_engine.memory.store import MemoryStore
 
-            _auto_ingest_store = MemoryStore(repo_root())
-        return _auto_ingest_store
+            _auto_ingest_state["store"] = MemoryStore(repo_root())
+        return _auto_ingest_state["store"]
 
 
 def _auto_ingest_dedupe_path() -> Path:

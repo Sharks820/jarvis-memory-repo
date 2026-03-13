@@ -265,20 +265,19 @@ class ActivityFeed:
 
 # Module-level singleton
 
-_feed: ActivityFeed | None = None
+_feed_holder: dict[str, ActivityFeed | None] = {"instance": None}
 _feed_lock = threading.Lock()
 
 
 def get_activity_feed(db_path: Path | str | None = None) -> ActivityFeed:
-    global _feed  # lazy singleton: one shared DB connection for the process
-    if _feed is not None and not _feed._closed:
-        return _feed
+    if _feed_holder["instance"] is not None and not _feed_holder["instance"]._closed:
+        return _feed_holder["instance"]
     with _feed_lock:
         # Double-checked locking
-        if _feed is not None and not _feed._closed:
-            return _feed
-        _feed = ActivityFeed(db_path=db_path)
-        return _feed
+        if _feed_holder["instance"] is not None and not _feed_holder["instance"]._closed:
+            return _feed_holder["instance"]
+        _feed_holder["instance"] = ActivityFeed(db_path=db_path)
+        return _feed_holder["instance"]
 
 
 def log_activity(
@@ -290,13 +289,12 @@ def log_activity(
 
 
 def _reset_feed() -> None:
-    global _feed  # teardown: clear the lazy singleton for test isolation
     with _feed_lock:
-        if _feed is not None:
+        if _feed_holder["instance"] is not None:
             try:
-                _feed.close()
+                _feed_holder["instance"].close()
             except (OSError, sqlite3.Error) as exc:
                 logger.warning(
                     "Failed to close activity feed singleton during reset: %s", exc
                 )
-            _feed = None
+            _feed_holder["instance"] = None

@@ -955,7 +955,7 @@ class TestShowToast:
     def _reset_throttle(self):
         """Reset the module-level toast throttle state for test isolation."""
         import jarvis_engine.desktop.helpers as wh
-        wh._last_toast_time = 0.0
+        wh._last_toast_time[0] = 0.0
 
     @patch("jarvis_engine.desktop.helpers.subprocess.Popen")
     def test_basic_toast_launches_powershell(self, mock_popen):
@@ -1053,7 +1053,7 @@ class TestToastThrottle:
 
     def _reset_throttle(self):
         import jarvis_engine.desktop.helpers as wh
-        wh._last_toast_time = 0.0
+        wh._last_toast_time[0] = 0.0
 
     @patch("jarvis_engine.desktop.helpers.subprocess.Popen")
     def test_second_toast_within_cooldown_is_throttled(self, mock_popen):
@@ -1071,7 +1071,7 @@ class TestToastThrottle:
         assert mock_popen.call_count == 1
         # Simulate time passing beyond cooldown
         import jarvis_engine.desktop.helpers as wh
-        wh._last_toast_time = time.time() - _TOAST_COOLDOWN_SECONDS - 1
+        wh._last_toast_time[0] = time.time() - _TOAST_COOLDOWN_SECONDS - 1
         _show_toast("Second", "msg")
         assert mock_popen.call_count == 2
 

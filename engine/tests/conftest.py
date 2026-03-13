@@ -63,7 +63,7 @@ def _isolate_activity_feed():
         _af._reset_feed()
         # Pre-seed the singleton with an in-memory feed so any test that
         # calls log_activity() / get_activity_feed() writes to RAM, not disk.
-        _af._feed = _af.ActivityFeed(db_path=":memory:")
+        _af._feed_holder["instance"] = _af.ActivityFeed(db_path=":memory:")
     except (ImportError, OSError, AttributeError):
         pass
     yield

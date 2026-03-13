@@ -426,42 +426,42 @@ class TestWatchdogCycleTimeout:
 
     def test_watchdog_healthy_when_not_started(self):
         import jarvis_engine.daemon_loop as dl
-        old_start = dl._cycle_start
+        old_start = dl._cycle_start[0]
         try:
-            dl._cycle_start = 0.0  # Reset to "not started" state
+            dl._cycle_start[0] = 0.0  # Reset to "not started" state
             result = dl._watchdog_check()
             assert result["healthy"] is True
             assert result["elapsed_s"] == 0.0
             assert result["timeout_s"] == 600
         finally:
-            dl._cycle_start = old_start
+            dl._cycle_start[0] = old_start
 
     def test_watchdog_healthy_during_normal_cycle(self):
         import jarvis_engine.daemon_loop as dl
-        old_start = dl._cycle_start
+        old_start = dl._cycle_start[0]
         try:
-            dl._cycle_start = time.monotonic()  # Just started
+            dl._cycle_start[0] = time.monotonic()  # Just started
             result = dl._watchdog_check()
             assert result["healthy"] is True
             assert result["elapsed_s"] < 5.0  # Should be near-instant
         finally:
-            dl._cycle_start = old_start
+            dl._cycle_start[0] = old_start
 
     def test_watchdog_unhealthy_after_timeout(self):
         import jarvis_engine.daemon_loop as dl
-        old_start = dl._cycle_start
+        old_start = dl._cycle_start[0]
         try:
             # Use a fixed "now" so the test is robust on freshly-booted machines
             # where time.monotonic() < 700 (making monotonic() - 700 negative,
             # which would trip the "not started" guard and return healthy=True).
             fake_now = 10_000.0
-            dl._cycle_start = fake_now - 700  # 700 seconds ago
+            dl._cycle_start[0] = fake_now - 700  # 700 seconds ago
             with patch.object(dl.time, "monotonic", return_value=fake_now):
                 result = dl._watchdog_check()
             assert result["healthy"] is False
             assert result["elapsed_s"] >= 699.0
         finally:
-            dl._cycle_start = old_start
+            dl._cycle_start[0] = old_start
 
     def test_cycle_timeout_constant(self):
         from jarvis_engine.daemon_loop import _CYCLE_TIMEOUT_S
@@ -478,27 +478,27 @@ class TestWatchdogCycleTimeout:
     def test_cycle_start_reflects_in_watchdog(self):
         """Setting _cycle_start should be reflected in _watchdog_check."""
         import jarvis_engine.daemon_loop as dl
-        old_start = dl._cycle_start
+        old_start = dl._cycle_start[0]
         try:
             # Simulate setting cycle start as the main loop does
-            dl._cycle_start = time.monotonic() - 10  # 10s ago
+            dl._cycle_start[0] = time.monotonic() - 10  # 10s ago
             result = dl._watchdog_check()
             assert result["healthy"] is True
             assert 9.0 <= result["elapsed_s"] <= 12.0
         finally:
-            dl._cycle_start = old_start
+            dl._cycle_start[0] = old_start
 
     def test_watchdog_exactly_at_boundary(self):
         """A cycle exactly at the timeout should still be healthy (< not <=)."""
         import jarvis_engine.daemon_loop as dl
-        old_start = dl._cycle_start
+        old_start = dl._cycle_start[0]
         try:
             # Slightly under timeout
-            dl._cycle_start = time.monotonic() - (dl._CYCLE_TIMEOUT_S - 1)
+            dl._cycle_start[0] = time.monotonic() - (dl._CYCLE_TIMEOUT_S - 1)
             result = dl._watchdog_check()
             assert result["healthy"] is True
         finally:
-            dl._cycle_start = old_start
+            dl._cycle_start[0] = old_start
 
 
 # ---------------------------------------------------------------------------

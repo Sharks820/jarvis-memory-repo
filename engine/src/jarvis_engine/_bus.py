@@ -19,8 +19,7 @@ from jarvis_engine.config import repo_root
 
 # Caching state
 
-_cached_bus: CommandBus | None = None
-_cached_bus_root: Path | None = None
+_bus_cache: dict[str, object] = {"bus": None, "root": None}
 _cached_bus_lock = threading.Lock()
 
 
@@ -34,14 +33,13 @@ def get_bus() -> CommandBus:
     in-process calls).  Falls back to creating a fresh bus when
     repo_root() changes (e.g. tests monkeypatching repo_root).
     """
-    global _cached_bus, _cached_bus_root
     from jarvis_engine.app import create_app
 
     root = repo_root()
     with _cached_bus_lock:
-        if _cached_bus is not None and _cached_bus_root == root:
-            return _cached_bus
+        if _bus_cache["bus"] is not None and _bus_cache["root"] == root:
+            return _bus_cache["bus"]  # type: ignore[return-value]
         bus = create_app(root)
-        _cached_bus = bus
-        _cached_bus_root = root
+        _bus_cache["bus"] = bus
+        _bus_cache["root"] = root
         return bus

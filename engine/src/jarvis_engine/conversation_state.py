@@ -1485,7 +1485,7 @@ class ConversationStateManager:
 
 # Module-level singleton
 
-_conversation_state: ConversationStateManager | None = None
+_state_holder: dict[str, ConversationStateManager | None] = {"instance": None}
 _manager_lock = threading.Lock()
 
 
@@ -1503,26 +1503,24 @@ def get_conversation_state(
         Directory for persistence files.  Only used on first call.
         Defaults to ``<repo>/.planning/runtime/``.
     """
-    global _conversation_state
-    if _conversation_state is not None:
-        return _conversation_state
+    if _state_holder["instance"] is not None:
+        return _state_holder["instance"]
     with _manager_lock:
         # Double-checked locking
-        if _conversation_state is not None:
-            return _conversation_state
-        _conversation_state = ConversationStateManager(state_dir=state_dir)
-        return _conversation_state
+        if _state_holder["instance"] is not None:
+            return _state_holder["instance"]
+        _state_holder["instance"] = ConversationStateManager(state_dir=state_dir)
+        return _state_holder["instance"]
 
 
 def _reset_manager() -> None:
-    global _conversation_state
     with _manager_lock:
-        if _conversation_state is not None:
+        if _state_holder["instance"] is not None:
             try:
-                _conversation_state.close()
+                _state_holder["instance"].close()
             except (OSError, sqlite3.Error) as exc:
                 logger.warning(
                     "Failed to close conversation state singleton during reset: %s",
                     exc,
                 )
-            _conversation_state = None
+            _state_holder["instance"] = None

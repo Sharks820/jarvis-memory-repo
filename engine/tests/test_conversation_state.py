@@ -45,17 +45,17 @@ def _reset_singleton():
     """Reset the module-level singleton before and after the test."""
     import jarvis_engine.conversation_state as _cs
 
-    old = getattr(_cs, "_conversation_state", None)
-    _cs._conversation_state = None
+    old = _cs._state_holder.get("instance")
+    _cs._state_holder["instance"] = None
     yield
     # Close any manager created during the test to avoid leaking SQLite connections
-    current = getattr(_cs, "_conversation_state", None)
+    current = _cs._state_holder.get("instance")
     if current is not None:
         try:
             current.close()
         except Exception:  # noqa: BLE001
             pass
-    _cs._conversation_state = old
+    _cs._state_holder["instance"] = old
 
 
 # ---------------------------------------------------------------------------

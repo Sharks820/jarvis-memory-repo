@@ -69,25 +69,24 @@ _ACCESS_FLUSH_INTERVAL = 10.0  # seconds
 
 _access_lock = threading.Lock()
 _access_pending: set[str] = set()
-_access_first_ts: float = 0.0
+_access_first_ts: list[float] = [0.0]
 
 
 def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> None:
     """Buffer record IDs and flush to DB when batch or time threshold is met."""
-    global _access_first_ts
     flush_ids: list[str] | None = None
     with _access_lock:
         if not _access_pending:
-            _access_first_ts = time.monotonic()
+            _access_first_ts[0] = time.monotonic()
         _access_pending.update(record_ids)
-        elapsed = time.monotonic() - _access_first_ts if _access_first_ts else 0.0
+        elapsed = time.monotonic() - _access_first_ts[0] if _access_first_ts[0] else 0.0
         if (
             len(_access_pending) >= _ACCESS_BATCH_SIZE
             or elapsed >= _ACCESS_FLUSH_INTERVAL
         ):
             flush_ids = list(_access_pending)
             _access_pending.clear()
-            _access_first_ts = 0.0
+            _access_first_ts[0] = 0.0
     if flush_ids:
         try:
             engine.update_access_batch(flush_ids)

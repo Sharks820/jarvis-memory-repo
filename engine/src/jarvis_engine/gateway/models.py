@@ -94,6 +94,15 @@ _CLI_REFRESH_DEFAULT_S = 30.0
 
 # Defer ollama import to avoid blocking when Ollama server isn't running.
 # Some ollama versions attempt a connection check during import/init.
+# Mutable container for ollama lazy-import state (avoids ``global`` keyword).
+_ollama_state: dict[str, Any] = {
+    "has_ollama": False,
+    "client_cls": None,
+    "response_error_cls": None,
+}
+
+# Module-level names kept for backward compatibility with test patches
+# (e.g. ``@patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)``).
 _HAS_OLLAMA = False
 OllamaClient = None  # type: ignore[assignment,misc]
 
@@ -102,6 +111,9 @@ class ResponseError(Exception):  # type: ignore[no-redef]
     """Placeholder until real ollama.ResponseError is loaded."""
 
     pass
+
+
+import sys as _sys
 
 
 def _ensure_ollama() -> bool:
@@ -113,8 +125,8 @@ def _ensure_ollama() -> bool:
 
     Set JARVIS_SKIP_OLLAMA=1 to bypass entirely (used in test environments).
     """
-    global _HAS_OLLAMA, OllamaClient, ResponseError  # noqa: PLW0603
-    if _HAS_OLLAMA:
+    _mod = _sys.modules[__name__]
+    if getattr(_mod, "_HAS_OLLAMA", False):
         return True
     if os.environ.get("JARVIS_SKIP_OLLAMA"):
         return False
@@ -141,9 +153,13 @@ def _ensure_ollama() -> bool:
         return False
 
     if "client" in result:
-        OllamaClient = result["client"]
-        ResponseError = result["error"]  # type: ignore[misc]
-        _HAS_OLLAMA = True
+        _ollama_state["client_cls"] = result["client"]
+        _ollama_state["response_error_cls"] = result["error"]
+        _ollama_state["has_ollama"] = True
+        # Update module-level attributes for backward compatibility with test patches
+        _mod.OllamaClient = result["client"]
+        _mod.ResponseError = result["error"]  # type: ignore[misc]
+        _mod._HAS_OLLAMA = True
         return True
 
     logger.debug("Ollama import failed: %s", result.get("exc", "unknown"))

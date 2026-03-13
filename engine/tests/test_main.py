@@ -49,9 +49,9 @@ def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
         lambda *a, **kw: fake_embed,
     )
     # Clear cached bus so it rebuilds with mock
-    monkeypatch.setattr(bus_mod, "_cached_bus", None)
-    monkeypatch.setattr(bus_mod, "_cached_bus_root", None)
-    monkeypatch.setattr(_auto_ingest_mod, "_auto_ingest_store", None)
+    bus_mod._bus_cache["bus"] = None
+    bus_mod._bus_cache["root"] = None
+    _auto_ingest_mod._auto_ingest_state["store"] = None
 
     rid = _auto_ingest_mod.auto_ingest_memory_sync(
         source="user",

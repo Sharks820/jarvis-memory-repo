@@ -39,7 +39,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
         monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
-        monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
+        daemon_loop_mod._daemon_mission["backoff_until_cycle"] = 0
 
         call_count = 0
 
@@ -81,7 +81,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
         monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
-        monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
+        daemon_loop_mod._daemon_mission["backoff_until_cycle"] = 0
 
         def always_failing_autopilot(*args, **kwargs) -> int:
             raise RuntimeError("Always fails")
@@ -121,7 +121,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
         monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
-        monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
+        daemon_loop_mod._daemon_mission["backoff_until_cycle"] = 0
 
         autopilot_calls = 0
 
@@ -447,8 +447,8 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
         lambda *a, **kw: None,
     )
     # Reset module-level state so tests are isolated
-    monkeypatch.setattr(daemon_loop_mod, "_daemon_kg_prev_metrics", None)
-    monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
+    daemon_loop_mod._daemon_kg["prev_metrics"] = None
+    daemon_loop_mod._daemon_mission["backoff_until_cycle"] = 0
 
 
 # Save the real _run_periodic_subsystems for tests that need it.

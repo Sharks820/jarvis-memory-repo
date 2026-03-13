@@ -112,19 +112,20 @@ class DaemonConfig:
 
 
 # Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
-_daemon_bus: CommandBus | None = None
+_daemon_state: dict[str, Any] = {"bus": None}
 _daemon_bus_lock = threading.Lock()
 
 # Mission failure backoff: skip missions for N cycles after a failure
 _MISSION_BACKOFF_CYCLES = 5
-_mission_backoff_until_cycle: int = 0
+_daemon_mission: dict[str, int] = {"backoff_until_cycle": 0}
 
 # Maximum allowed duration for a single daemon cycle (seconds).
 # If a cycle exceeds this, a WARNING is logged.
 _CYCLE_TIMEOUT_S = 600
 
 # Tracks the start time of the current cycle (set before each cycle).
-_cycle_start: float = 0.0
+# Mutable container avoids 'global' keyword; read by watchdog from another thread.
+_cycle_start: list[float] = [0.0]
 
 
 def _emit_cycle_failure(event: str, exc: Exception, *, message: str) -> None:
@@ -141,9 +142,9 @@ def _watchdog_check() -> dict:
     - ``elapsed_s`` (float): seconds since cycle started (0 if not started)
     - ``timeout_s`` (int): the configured timeout
     """
-    if _cycle_start <= 0:
+    if _cycle_start[0] <= 0:
         return {"healthy": True, "elapsed_s": 0.0, "timeout_s": _CYCLE_TIMEOUT_S}
-    elapsed = time.monotonic() - _cycle_start
+    elapsed = time.monotonic() - _cycle_start[0]
     return {
         "healthy": elapsed < _CYCLE_TIMEOUT_S,
         "elapsed_s": round(elapsed, 2),
@@ -158,15 +159,14 @@ def _get_daemon_bus() -> CommandBus:
     on the GIL for correctness and breaks under free-threaded Python 3.13t+.
     The lock overhead is negligible since daemon cycles run every 30+ seconds.
     """
-    global _daemon_bus  # lazy singleton: avoid recreating MemoryEngine per cycle
     with _daemon_bus_lock:
-        if _daemon_bus is None:
-            _daemon_bus = get_bus()
-        return _daemon_bus
+        if _daemon_state["bus"] is None:
+            _daemon_state["bus"] = get_bus()
+        return _daemon_state["bus"]
 
 
 # Daemon cycle state for KG regression tracking
-_daemon_kg_prev_metrics: dict | None = None
+_daemon_kg: dict[str, Any] = {"prev_metrics": None}
 _daemon_kg_prev_metrics_lock = threading.Lock()
 
 
@@ -388,18 +388,17 @@ def _log_resource_pressure(
 
 def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
     """Run pending missions and auto-generate new ones (never raises)."""
-    global _mission_backoff_until_cycle  # mutable counter: tracks backoff across cycles
     # Skip if in failure backoff cooldown
-    if cycles < _mission_backoff_until_cycle:
-        _emit(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
+    if cycles < _daemon_mission["backoff_until_cycle"]:
+        _emit(f"mission_cycle_skipped=backoff_until_cycle_{_daemon_mission['backoff_until_cycle']}")
         return
     try:
         mission_rc = _run_next_pending_mission()
     except SUBSYSTEM_ERRORS_DB as exc:
         mission_rc = 2
         _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
-        _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
-        _emit(f"mission_backoff_set=until_cycle_{_mission_backoff_until_cycle}")
+        _daemon_mission["backoff_until_cycle"] = cycles + _MISSION_BACKOFF_CYCLES
+        _emit(f"mission_backoff_set=until_cycle_{_daemon_mission['backoff_until_cycle']}")
     else:
         _emit(f"mission_cycle_rc={mission_rc}")
     # Auto-generate new missions when queue is empty (every 50 cycles)
@@ -559,12 +558,11 @@ def _run_kg_regression_cycle(root: Path) -> None:
         if kg is not None:
             rc_checker = RegressionChecker(kg)
             current_metrics = rc_checker.capture_metrics()
-            global _daemon_kg_prev_metrics  # mutable state: previous metrics for delta comparison
             with _daemon_kg_prev_metrics_lock:
-                prev_metrics = _daemon_kg_prev_metrics
+                prev_metrics = _daemon_kg["prev_metrics"]
             comparison = rc_checker.compare(prev_metrics, current_metrics)
             with _daemon_kg_prev_metrics_lock:
-                _daemon_kg_prev_metrics = current_metrics
+                _daemon_kg["prev_metrics"] = current_metrics
             _emit(f"kg_regression_status={comparison.get('status', 'unknown')}")
             if comparison.get("status") in ("fail", "warn"):
                 discrepancies = comparison.get("discrepancies", [])
@@ -1024,10 +1022,9 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     _emit(f"idle_interval_s={idle_interval}")
     _emit(f"idle_after_s={idle_after}")
     try:
-        global _cycle_start  # noqa: PLW0603  -- mutable timestamp read by watchdog from another thread
         while True:
             cycles += 1
-            _cycle_start = time.monotonic()
+            _cycle_start[0] = time.monotonic()
             state = _gather_cycle_state(root, active_interval, idle_interval, idle_after)
             _emit_cycle_status(cycles, state, last_pressure_level)
             last_pressure_level = state["pressure_level"]
@@ -1055,7 +1052,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)
 
             # Watchdog: warn if cycle exceeded timeout
-            cycle_elapsed = time.monotonic() - _cycle_start
+            cycle_elapsed = time.monotonic() - _cycle_start[0]
             if cycle_elapsed > _CYCLE_TIMEOUT_S:
                 logger.warning(
                     "Daemon cycle %d exceeded timeout: %.1fs > %ds",
