@@ -261,6 +261,21 @@ _GREETING_WAKE_WORDS = frozenset(
     ]
 )
 
+_SYNC_MUTATION_TARGETS = frozenset(
+    [
+        "calendar",
+        "email",
+        "inbox",
+        "mobile",
+        "desktop",
+        "devices",
+        "tasks",
+        "subscriptions",
+        "bills",
+        "ops",
+    ]
+)
+
 
 def _expand_read_only_aliases(lowered: str) -> str:
     """Expand sentence-shaped status requests into canonical read-only markers."""
@@ -311,12 +326,24 @@ def _expand_read_only_aliases(lowered: str) -> str:
     return " ".join(aliases)
 
 
+def _looks_like_sync_or_connect_mutation(expanded: str) -> bool:
+    """Detect common spoken sync/connect requests that mutate external state."""
+    if not expanded:
+        return False
+    has_sync_like_verb = any(term in expanded for term in ("sync", "connect", "grant connector"))
+    if not has_sync_like_verb:
+        return False
+    return any(target in expanded for target in _SYNC_MUTATION_TARGETS)
+
+
 def _is_read_only_voice_request(
     lowered: str, *, execute: bool, approve_privileged: bool
 ) -> bool:
     if approve_privileged:
         return False
     expanded = _expand_read_only_aliases(lowered)
+    if _looks_like_sync_or_connect_mutation(expanded):
+        return False
     if any(marker in expanded for marker in _MUTATION_MARKERS):
         return False
     if any(marker in expanded for marker in _READ_ONLY_MARKERS):

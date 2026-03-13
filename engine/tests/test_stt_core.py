@@ -244,6 +244,7 @@ def test_voice_listen_result_defaults() -> None:
     assert r.confidence == 0.0
     assert r.duration_seconds == 0.0
     assert r.segments is None
+    assert r.utterance is None
     assert r.message == ""
 
 

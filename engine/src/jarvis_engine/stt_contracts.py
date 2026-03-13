@@ -12,3 +12,14 @@ class TranscriptionSegment(TypedDict):
     end: float
     text: str
     kind: NotRequired[str]
+
+
+class VoiceUtterance(TypedDict):
+    """Structured STT metadata carried alongside command text."""
+
+    raw_text: str
+    command_text: str
+    language: str
+    confidence: float
+    backend: str
+    segments: NotRequired[list[TranscriptionSegment]]

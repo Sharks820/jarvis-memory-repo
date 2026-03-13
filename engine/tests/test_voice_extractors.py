@@ -281,3 +281,10 @@ class TestIsReadOnlyVoiceRequest:
             execute=True,
             approve_privileged=False,
         ) is True
+
+    def test_sync_calendar_and_inbox_stays_mutating(self) -> None:
+        assert _is_read_only_voice_request(
+            "Jarvis, sync my calendar and inbox",
+            execute=True,
+            approve_privileged=False,
+        ) is False

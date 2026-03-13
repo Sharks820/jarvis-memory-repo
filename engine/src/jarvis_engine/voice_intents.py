@@ -31,6 +31,7 @@ from jarvis_engine.voice_extractors import (
     _extract_first_url,
     _is_read_only_voice_request,
 )
+from jarvis_engine.stt_contracts import VoiceUtterance
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class VoiceRunParams:
     """Bundle of common voice-run parameters shared across helpers."""
 
     text: str = ""
+    utterance: VoiceUtterance | None = None
     execute: bool = False
     approve_privileged: bool = False
     speak: bool = True
@@ -958,6 +960,7 @@ def _post_dispatch_learn(
     intent: str,
     rc: int,
     text: str,
+    utterance: VoiceUtterance | None,
     last_response: str,
     execute: bool,
     approve_privileged: bool,
@@ -971,7 +974,10 @@ def _post_dispatch_learn(
             task_id=_make_task_id(f"voice-{intent}"),
             content=(
                 f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
-                f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
+                f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}; "
+                f"stt_backend={utterance.get('backend', '') if utterance else ''}; "
+                f"stt_confidence={utterance.get('confidence', 0.0) if utterance else 0.0}; "
+                f"raw_text={(utterance.get('raw_text', '') if utterance else '')[:500]}"
             ),
         )
     except (OSError, RuntimeError, ValueError) as exc:
@@ -1157,6 +1163,8 @@ def _check_voice_auth(
 
 def cmd_voice_run_impl(
     text: str,
+    utterance: VoiceUtterance | None = None,
+    *,
     execute: bool,
     approve_privileged: bool,
     speak: bool,
@@ -1175,7 +1183,7 @@ def cmd_voice_run_impl(
     lowered = text.lower()
 
     params = VoiceRunParams(
-        text=text, execute=execute, approve_privileged=approve_privileged,
+        text=text, utterance=utterance, execute=execute, approve_privileged=approve_privileged,
         speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
         voice_user=voice_user, voice_auth_wav=voice_auth_wav,
         voice_threshold=voice_threshold, master_password=master_password,
@@ -1222,7 +1230,7 @@ def cmd_voice_run_impl(
 
     if rc == 0:
         _post_dispatch_learn(
-            intent, rc, text, _last_response,
+            intent, rc, text, utterance, _last_response,
             execute, approve_privileged, voice_user,
         )
     if speak and intent != "llm_conversation":

@@ -244,8 +244,18 @@ class TestWakeWordStartHandler:
         fake_audio = MagicMock()
         mock_result = SimpleNamespace(
             text="Jarvis check brain status",
+            language="en",
+            confidence=0.94,
             backend="deepgram-nova3",
             duration_seconds=1.8,
+            segments=[
+                {
+                    "start": 0.0,
+                    "end": 1.8,
+                    "text": "Jarvis check brain status",
+                    "kind": "utterance",
+                }
+            ],
         )
 
         with patch("jarvis_engine.wakeword.WakeWordDetector", MockDetector):
@@ -270,6 +280,23 @@ class TestWakeWordStartHandler:
             mode="conversation",
         )
         mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["text"] == "check brain status"
+        assert call_kwargs["utterance"] == {
+            "raw_text": "Jarvis check brain status",
+            "command_text": "check brain status",
+            "language": "en",
+            "confidence": 0.94,
+            "backend": "deepgram-nova3",
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 1.8,
+                    "text": "Jarvis check brain status",
+                    "kind": "utterance",
+                }
+            ],
+        }
 
 
 # ---------------------------------------------------------------------------

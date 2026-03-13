@@ -17,7 +17,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import httpx
 
@@ -45,10 +45,13 @@ except ImportError:
         pass
 
 
+_log_activity: Callable[[str, str, dict[Any, Any] | None], str] | None
 try:
-    from jarvis_engine.activity_feed import log_activity as _log_activity
+    from jarvis_engine.activity_feed import log_activity as _activity_log
 except ImportError:
     _log_activity = None
+else:
+    _log_activity = _activity_log
 
 # Defer ollama import to avoid blocking when Ollama server isn't running.
 # Some ollama versions attempt a connection check during import/init.

@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Callable
 
@@ -605,12 +605,12 @@ def _perform_web_search(
     *,
     force: bool,
     route: str,
-) -> tuple[bool, bool, dict[str, object]]:
+) -> tuple[bool, bool, Mapping[str, object]]:
     """Run web search if needed and append results to system_parts.
 
     Returns (web_searched, web_attempted, web_result_dict).
     """
-    web_result: dict[str, object] = {}
+    web_result: Mapping[str, object] = {}
     should_search = force or route == "web_research" or _needs_web_search(text)
     if not should_search:
         return False, False, web_result
@@ -690,16 +690,16 @@ def _append_final_instructions(
 
 
 def _dispatch_and_handle_response(
-    bus: object,
+    bus: CommandBus,
     text: str,
     system_prompt: str,
     max_tokens: int,
     llm_model: str | None,
-    history: tuple,
+    history: tuple[tuple[str, str], ...],
     *,
     speak: bool,
     web_searched: bool,
-    web_result: dict[str, object],
+    web_result: Mapping[str, object],
     route: str,
     response_callback: "Callable[[str], None] | None",
 ) -> int:
@@ -745,10 +745,9 @@ def _dispatch_and_handle_response(
 
         if result.return_code != 0:
             if web_searched:
+                fallback_lines_obj = web_result.get("summary_lines", [])
                 fallback_lines = (
-                    web_result.get("summary_lines", [])
-                    if isinstance(web_result, dict)
-                    else []
+                    fallback_lines_obj if isinstance(fallback_lines_obj, list) else []
                 )
                 if isinstance(fallback_lines, list) and fallback_lines:
                     fallback_text = "Based on live web results: " + " ".join(

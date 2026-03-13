@@ -8,7 +8,7 @@ from typing import Any
 
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
 from jarvis_engine.commands.base import ResultBase
-from jarvis_engine.stt_contracts import TranscriptionSegment
+from jarvis_engine.stt_contracts import TranscriptionSegment, VoiceUtterance
 
 
 @dataclass(frozen=True)
@@ -83,12 +83,14 @@ class VoiceListenResult:
     confidence: float = 0.0
     duration_seconds: float = 0.0
     segments: list[TranscriptionSegment] | None = None
+    utterance: VoiceUtterance | None = None
     message: str = ""
 
 
 @dataclass(frozen=True)
 class VoiceRunCommand:
     text: str
+    utterance: VoiceUtterance | None = None
     execute: bool = False
     approve_privileged: bool = False
     speak: bool = False
@@ -106,6 +108,7 @@ class VoiceRunCommand:
 class VoiceRunResult(ResultBase):
     intent: str = "unknown"
     extra: dict[str, Any] = field(default_factory=dict)
+    utterance: VoiceUtterance | None = None
 
 
 @dataclass(frozen=True)
