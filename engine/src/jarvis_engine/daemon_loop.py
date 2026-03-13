@@ -261,16 +261,6 @@ def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
         logger.debug("Activity feed log failed: %s", exc)
 
 
-def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
-    """Log to activity feed, suppressing all errors (lazy import)."""
-    try:
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
-        cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
-        log_activity(cat, message, metadata)
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
-        logger.debug("Activity feed log failed: %s", exc)
-
-
 def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
     """Log daemon cycle start to activity feed (never raises)."""
     _safe_log_activity(
@@ -564,8 +554,8 @@ def _run_kg_regression_cycle(root: Path) -> None:
                         if backups:
                             restored = rc_checker.restore_graph(backups[-1])
                             print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
-                            log_activity(
-                                ActivityCategory.REGRESSION_CHECK,
+                            _safe_log_activity(
+                                "REGRESSION_CHECK",
                                 f"KG auto-restore {'succeeded' if restored else 'failed'}",
                                 {"backup": str(backups[-1]), "restored": restored},
                             )
