@@ -179,7 +179,7 @@ def test_daemon_run_failure(mock_impl: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.resilience.run_mobile_desktop_sync", return_value={"sync_ok": True, "items": 5})
+@patch("jarvis_engine.ops.resilience.run_mobile_desktop_sync", return_value={"sync_ok": True, "items": 5})
 def test_mobile_desktop_sync_ok(mock_sync: MagicMock) -> None:
     handler = MobileDesktopSyncHandler(ROOT)
     result = handler.handle(MobileDesktopSyncCommand())
@@ -187,7 +187,7 @@ def test_mobile_desktop_sync_ok(mock_sync: MagicMock) -> None:
     assert result.report["sync_ok"] is True
 
 
-@patch("jarvis_engine.resilience.run_mobile_desktop_sync", return_value={"sync_ok": False})
+@patch("jarvis_engine.ops.resilience.run_mobile_desktop_sync", return_value={"sync_ok": False})
 def test_mobile_desktop_sync_fail(mock_sync: MagicMock) -> None:
     handler = MobileDesktopSyncHandler(ROOT)
     result = handler.handle(MobileDesktopSyncCommand())
@@ -199,7 +199,7 @@ def test_mobile_desktop_sync_fail(mock_sync: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "ok", "fixed": 3})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "ok", "fixed": 3})
 def test_self_heal_ok(mock_heal: MagicMock) -> None:
     handler = SelfHealHandler(ROOT)
     result = handler.handle(SelfHealCommand())
@@ -207,21 +207,21 @@ def test_self_heal_ok(mock_heal: MagicMock) -> None:
     assert result.report["status"] == "ok"
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "attention", "issues": 1})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "attention", "issues": 1})
 def test_self_heal_attention(mock_heal: MagicMock) -> None:
     handler = SelfHealHandler(ROOT)
     result = handler.handle(SelfHealCommand())
     assert result.return_code == 0
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "critical"})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "critical"})
 def test_self_heal_critical(mock_heal: MagicMock) -> None:
     handler = SelfHealHandler(ROOT)
     result = handler.handle(SelfHealCommand())
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "ok"})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "ok"})
 def test_self_heal_keep_recent_clamped(mock_heal: MagicMock) -> None:
     """keep_recent is clamped between 200 and 50000."""
     handler = SelfHealHandler(ROOT)
@@ -234,7 +234,7 @@ def test_self_heal_keep_recent_clamped(mock_heal: MagicMock) -> None:
     assert call_kwargs["keep_recent"] == 50000
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "ok"})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "ok"})
 def test_self_heal_snapshot_note_truncated(mock_heal: MagicMock) -> None:
     """snapshot_note is truncated to 160 chars."""
     handler = SelfHealHandler(ROOT)
@@ -244,7 +244,7 @@ def test_self_heal_snapshot_note_truncated(mock_heal: MagicMock) -> None:
     assert len(call_kwargs["snapshot_note"]) == 160
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "ok"})
+@patch("jarvis_engine.ops.resilience.run_self_heal", return_value={"status": "ok"})
 def test_self_heal_empty_note_defaults(mock_heal: MagicMock) -> None:
     """Empty snapshot_note defaults to 'self-heal'."""
     handler = SelfHealHandler(ROOT)

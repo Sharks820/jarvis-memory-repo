@@ -138,7 +138,7 @@ class OpsSyncHandler:
         self._root = root
 
     def handle(self, cmd: OpsSyncCommand) -> OpsSyncResult:
-        from jarvis_engine.ops_sync import build_live_snapshot
+        from jarvis_engine.ops.sync import build_live_snapshot
 
         try:
             _check_path_within_root(cmd.output_path, self._root, "output_path")
@@ -156,7 +156,7 @@ class OpsAutopilotHandler:
         self._root = root
 
     def handle(self, cmd: OpsAutopilotCommand) -> OpsAutopilotResult:
-        from jarvis_engine.ops_autopilot import run_ops_autopilot
+        from jarvis_engine.ops.autopilot import run_ops_autopilot
 
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")

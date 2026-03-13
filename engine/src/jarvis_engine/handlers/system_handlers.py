@@ -144,7 +144,7 @@ class MobileDesktopSyncHandler:
         self._root = root
 
     def handle(self, cmd: MobileDesktopSyncCommand) -> MobileDesktopSyncResult:
-        from jarvis_engine.resilience import run_mobile_desktop_sync
+        from jarvis_engine.ops.resilience import run_mobile_desktop_sync
 
         report = run_mobile_desktop_sync(self._root)
         return MobileDesktopSyncResult(
@@ -158,7 +158,7 @@ class SelfHealHandler:
         self._root = root
 
     def handle(self, cmd: SelfHealCommand) -> SelfHealResult:
-        from jarvis_engine.resilience import run_self_heal
+        from jarvis_engine.ops.resilience import run_self_heal
 
         report = run_self_heal(
             self._root,

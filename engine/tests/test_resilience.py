@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from jarvis_engine.resilience import (
+from jarvis_engine.ops.resilience import (
     _ensure_mobile_security_config,
     _scan_recent_logs,
     _tail_lines,

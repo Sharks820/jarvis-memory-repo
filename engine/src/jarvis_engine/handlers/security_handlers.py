@@ -45,7 +45,7 @@ class _SecurityHandlerBase:
 
 class RuntimeControlHandler(_SecurityHandlerBase):
     def handle(self, cmd: RuntimeControlCommand) -> RuntimeControlResult:
-        from jarvis_engine.runtime_control import (
+        from jarvis_engine.ops.runtime_control import (
             read_control_state,
             reset_control_state,
             write_control_state,

@@ -29,7 +29,7 @@ from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.ops_commands import MissionRunCommand
 from jarvis_engine.config import repo_root
 from jarvis_engine.learning_missions import load_missions
-from jarvis_engine.runtime_control import (
+from jarvis_engine.ops.runtime_control import (
     capture_runtime_resource_snapshot,
     read_control_state,
     recommend_daemon_sleep,
@@ -254,7 +254,7 @@ def _restart_mobile_api(service_name: str) -> None:
 
 def _register_daemon_pid(root: Path) -> bool:
     """Register daemon PID file.  Returns True if registration succeeded."""
-    from jarvis_engine.process_manager import is_service_running, write_pid_file
+    from jarvis_engine.ops.process_manager import is_service_running, write_pid_file
 
     if is_service_running("daemon", root):
         print("error: daemon is already running")
@@ -428,7 +428,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
 def _run_watchdog_cycle(root: Path) -> None:
     """Check if mobile_api crashed and restart it (never raises)."""
     try:
-        from jarvis_engine.process_manager import check_and_restart_services
+        from jarvis_engine.ops.process_manager import check_and_restart_services
 
         dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
         if dead:
@@ -965,7 +965,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
 
     _set_process_title("jarvis-daemon")
     root = repo_root()
-    from jarvis_engine.process_manager import remove_pid_file
+    from jarvis_engine.ops.process_manager import remove_pid_file
 
     if not _register_daemon_pid(root):
         return 4

@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine import ops_sync
+from jarvis_engine.ops import sync as ops_sync
 from jarvis_engine.connectors import ConnectorStatus
-from jarvis_engine.ops_sync import (
+from jarvis_engine.ops.sync import (
     SyncSummary,
     _decode_email_header,
     _is_safe_calendar_url,
@@ -286,7 +286,7 @@ class TestParseIcs:
             saved_ical = sys.modules.pop("icalendar", None)
             saved_rie = sys.modules.pop("recurring_ical_events", None)
             try:
-                with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
+                with patch("jarvis_engine.ops.sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
                     result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
                     # Either calls fallback or parses via icalendar; both are valid
                     # We just verify no crash and we get a list
@@ -303,7 +303,7 @@ class TestParseIcs:
         mock_cal_module.Calendar.from_ical.side_effect = ValueError("bad ics")
         mock_rie = MagicMock()
         with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
-            with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
+            with patch("jarvis_engine.ops.sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
                 result = _parse_ics("INVALID ICS", date(2026, 3, 1))
                 fb.assert_called_once()
                 assert result == [{"title": "fb"}]
@@ -314,7 +314,7 @@ class TestParseIcs:
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.side_effect = RuntimeError("expand fail")
         with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
-            with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[]) as fb:
+            with patch("jarvis_engine.ops.sync._parse_ics_fallback", return_value=[]) as fb:
                 result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
                 fb.assert_called_once()
 
@@ -700,13 +700,13 @@ class TestDecodeEmailHeader:
 
     def test_malformed_header_returns_raw(self) -> None:
         """Malformed headers that cause decode_header to error should return raw."""
-        with patch("jarvis_engine.ops_sync.decode_header", side_effect=ValueError("bad")):
+        with patch("jarvis_engine.ops.sync.decode_header", side_effect=ValueError("bad")):
             result = _decode_email_header("=?bad?encoding?=")
             assert "bad" in result
 
     def test_unknown_charset_falls_back_to_utf8(self) -> None:
         """Unknown charset should fallback to utf-8 decode."""
-        with patch("jarvis_engine.ops_sync.decode_header", return_value=[(b"test", "nonexistent-charset")]):
+        with patch("jarvis_engine.ops.sync.decode_header", return_value=[(b"test", "nonexistent-charset")]):
             result = _decode_email_header("anything")
             assert result == "test"
 

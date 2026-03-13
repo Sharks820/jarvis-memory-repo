@@ -71,7 +71,7 @@ class HealthRoutesMixin:
         reliability_cache: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
-        from jarvis_engine.runtime_control import read_resource_pressure_state
+        from jarvis_engine.ops.runtime_control import read_resource_pressure_state
 
         panel: dict[str, Any] = dict(reliability_cache) if reliability_cache is not None else dict(_compute_command_reliability())
         panel.setdefault("resource_snapshot", {})
@@ -153,7 +153,7 @@ class HealthRoutesMixin:
             return
         from jarvis_engine._shared import load_json_file
         from jarvis_engine._shared import runtime_dir as _runtime_dir
-        from jarvis_engine.process_manager import list_services
+        from jarvis_engine.ops.process_manager import list_services
 
         services = list_services(self._root)
         ctrl_path = _runtime_dir(self._root) / "control.json"
@@ -165,7 +165,7 @@ class HealthRoutesMixin:
         if payload is None:
             return
         service_name = str(payload.get("service", "")).strip()
-        from jarvis_engine.process_manager import SERVICES, kill_service
+        from jarvis_engine.ops.process_manager import SERVICES, kill_service
 
         if service_name not in SERVICES:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})

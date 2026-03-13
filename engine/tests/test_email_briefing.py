@@ -16,7 +16,7 @@ from jarvis_engine.life_ops import (
     build_daily_brief,
     build_narrative_brief,
 )
-from jarvis_engine.ops_sync import _triage_email
+from jarvis_engine.ops.sync import _triage_email
 
 
 # ---------------------------------------------------------------------------

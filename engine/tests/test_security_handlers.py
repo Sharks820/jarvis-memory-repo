@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.runtime_control.read_control_state", return_value={"daemon_paused": False})
+@patch("jarvis_engine.ops.runtime_control.read_control_state", return_value={"daemon_paused": False})
 def test_runtime_control_read_only(mock_read: MagicMock) -> None:
     """No flags set => read current state."""
     handler = RuntimeControlHandler(ROOT)
@@ -46,7 +46,7 @@ def test_runtime_control_read_only(mock_read: MagicMock) -> None:
     mock_read.assert_called_once_with(ROOT)
 
 
-@patch("jarvis_engine.runtime_control.reset_control_state", return_value={"reset": True})
+@patch("jarvis_engine.ops.runtime_control.reset_control_state", return_value={"reset": True})
 def test_runtime_control_reset(mock_reset: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(reset=True))
@@ -54,7 +54,7 @@ def test_runtime_control_reset(mock_reset: MagicMock) -> None:
     mock_reset.assert_called_once_with(ROOT)
 
 
-@patch("jarvis_engine.runtime_control.write_control_state", return_value={"daemon_paused": True})
+@patch("jarvis_engine.ops.runtime_control.write_control_state", return_value={"daemon_paused": True})
 def test_runtime_control_pause(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(pause=True, reason="maintenance"))
@@ -62,21 +62,21 @@ def test_runtime_control_pause(mock_write: MagicMock) -> None:
     mock_write.assert_called_once_with(ROOT, daemon_paused=True, safe_mode=None, reason="maintenance")
 
 
-@patch("jarvis_engine.runtime_control.write_control_state", return_value={"daemon_paused": False})
+@patch("jarvis_engine.ops.runtime_control.write_control_state", return_value={"daemon_paused": False})
 def test_runtime_control_resume(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(resume=True))
     mock_write.assert_called_once_with(ROOT, daemon_paused=False, safe_mode=None, reason="")
 
 
-@patch("jarvis_engine.runtime_control.write_control_state", return_value={"safe_mode": True})
+@patch("jarvis_engine.ops.runtime_control.write_control_state", return_value={"safe_mode": True})
 def test_runtime_control_safe_on(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(safe_on=True))
     mock_write.assert_called_once_with(ROOT, daemon_paused=None, safe_mode=True, reason="")
 
 
-@patch("jarvis_engine.runtime_control.write_control_state", return_value={"safe_mode": False})
+@patch("jarvis_engine.ops.runtime_control.write_control_state", return_value={"safe_mode": False})
 def test_runtime_control_safe_off(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(safe_off=True))

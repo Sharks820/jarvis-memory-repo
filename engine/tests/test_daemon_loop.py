@@ -504,7 +504,7 @@ class TestDaemonCycleErrors:
 
     def test_run_watchdog_cycle_handles_import_error(self, root, capsys) -> None:
         """Watchdog cycle should handle missing process_manager gracefully."""
-        with patch("jarvis_engine.process_manager.check_and_restart_services",
+        with patch("jarvis_engine.ops.process_manager.check_and_restart_services",
                     side_effect=ImportError("no module")):
             _run_watchdog_cycle(root)
         output = capsys.readouterr().out

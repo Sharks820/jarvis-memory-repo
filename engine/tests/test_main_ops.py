@@ -21,7 +21,7 @@ from jarvis_engine.command_bus import AppContext, CommandBus
 from jarvis_engine.growth_tracker import EvalRun, TaskEval
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
-from jarvis_engine.ops_sync import SyncSummary
+from jarvis_engine.ops.sync import SyncSummary
 from jarvis_engine.proactive.self_test import AdversarialSelfTest
 
 

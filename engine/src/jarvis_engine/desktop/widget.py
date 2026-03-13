@@ -203,7 +203,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _kill_child_services(self) -> None:
         """Kill mobile API and daemon processes spawned alongside the widget."""
         try:
-            from jarvis_engine.process_manager import read_pid_file, kill_service
+            from jarvis_engine.ops.process_manager import read_pid_file, kill_service
             root = self.root_path if hasattr(self, "root_path") else _repo_root()
             for service in ("mobile_api", "daemon"):
                 try:
@@ -2581,7 +2581,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             # Window may be destroyed; bail out without rescheduling
             return
         try:
-            from jarvis_engine.process_manager import list_services
+            from jarvis_engine.ops.process_manager import list_services
             root = _repo_root()
             services = list_services(root)
             for svc in services:

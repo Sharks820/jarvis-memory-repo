@@ -259,7 +259,7 @@ class DiagnosticEngine:
         """Check resource pressure state from runtime_control."""
         issues: list[DiagnosticIssue] = []
         try:
-            from jarvis_engine.runtime_control import read_resource_pressure_state
+            from jarvis_engine.ops.runtime_control import read_resource_pressure_state
             pressure = read_resource_pressure_state(self._root)
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Resource pressure read failed: %s", exc)

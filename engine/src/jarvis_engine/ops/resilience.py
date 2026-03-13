@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from jarvis_engine.brain_memory import brain_regression_report, brain_status
 from jarvis_engine.memory_snapshots import run_memory_maintenance
 from jarvis_engine.owner_guard import read_owner_guard
-from jarvis_engine.runtime_control import read_control_state
+from jarvis_engine.ops.runtime_control import read_control_state
 
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json

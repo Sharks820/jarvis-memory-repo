@@ -11,7 +11,7 @@ from jarvis_engine.commands.base import ResultBase
 if TYPE_CHECKING:
     from jarvis_engine.automation import ActionOutcome
     from jarvis_engine.growth_tracker import EvalRun
-    from jarvis_engine.ops_sync import SyncSummary
+    from jarvis_engine.ops.sync import SyncSummary
 
 
 @dataclass(frozen=True)

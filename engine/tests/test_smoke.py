@@ -54,16 +54,16 @@ _PUBLIC_MODULES = [
     "jarvis_engine.memory_snapshots",
     "jarvis_engine.memory_store",
     "jarvis_engine.mobile_api",
-    "jarvis_engine.ops_autopilot",
-    "jarvis_engine.ops_sync",
+    "jarvis_engine.ops.autopilot",
+    "jarvis_engine.ops.sync",
     "jarvis_engine.owner_guard",
     "jarvis_engine.persona",
     "jarvis_engine.phone_guard",
     "jarvis_engine.policy",
-    "jarvis_engine.process_manager",
-    "jarvis_engine.resilience",
+    "jarvis_engine.ops.process_manager",
+    "jarvis_engine.ops.resilience",
     "jarvis_engine.router",
-    "jarvis_engine.runtime_control",
+    "jarvis_engine.ops.runtime_control",
     "jarvis_engine.scam_hunter",
     "jarvis_engine.stt",
     "jarvis_engine.stt_postprocess",
@@ -270,7 +270,7 @@ class TestNewModulesSmoke:
     def test_ops_autopilot_module_importable_and_has_run_function(self) -> None:
         """ops_autopilot must export run_ops_autopilot."""
         try:
-            from jarvis_engine.ops_autopilot import run_ops_autopilot
+            from jarvis_engine.ops.autopilot import run_ops_autopilot
 
             assert callable(run_ops_autopilot)
         except ImportError:

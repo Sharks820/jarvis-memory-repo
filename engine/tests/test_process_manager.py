@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.process_manager import (
+from jarvis_engine.ops.process_manager import (
     SERVICES,
     _MAX_CREATION_DRIFT_S,
     _check_pid_alive,
@@ -57,7 +57,7 @@ class TestWriteReadRemove:
     def test_write_includes_process_create_ts(self, tmp_root: Path) -> None:
         """write_pid_file should store process_create_ts when available."""
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=1700000000.0,
         ):
             write_pid_file("daemon", tmp_root)
@@ -71,7 +71,7 @@ class TestWriteReadRemove:
     ) -> None:
         """If _get_process_create_time returns None, key should be absent."""
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=None,
         ):
             write_pid_file("daemon", tmp_root)
@@ -156,7 +156,7 @@ class TestPidReuseDetection:
     def test_verify_identity_passes_when_create_time_unavailable(self) -> None:
         """When OS cannot report creation time, assume valid (conservative)."""
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=None,
         ):
             assert _verify_pid_identity(os.getpid(), 1700000000.0) is True
@@ -165,7 +165,7 @@ class TestPidReuseDetection:
         """When creation times are within drift tolerance, identity confirmed."""
         stored_ts = 1700000000.0
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=stored_ts + 1.0,  # within _MAX_CREATION_DRIFT_S
         ):
             assert _verify_pid_identity(os.getpid(), stored_ts) is True
@@ -174,7 +174,7 @@ class TestPidReuseDetection:
         """When creation times differ beyond tolerance, PID was reused."""
         stored_ts = 1700000000.0
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=stored_ts + 100.0,  # well beyond _MAX_CREATION_DRIFT_S
         ):
             assert _verify_pid_identity(os.getpid(), stored_ts) is False
@@ -184,7 +184,7 @@ class TestPidReuseDetection:
         stored_ts = 1700000000.0
         within = stored_ts + _MAX_CREATION_DRIFT_S - 0.001
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=within,
         ):
             assert _verify_pid_identity(os.getpid(), stored_ts) is True
@@ -194,7 +194,7 @@ class TestPidReuseDetection:
         stored_ts = 1700000000.0
         beyond = stored_ts + _MAX_CREATION_DRIFT_S + 0.001
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=beyond,
         ):
             assert _verify_pid_identity(os.getpid(), stored_ts) is False
@@ -215,9 +215,9 @@ class TestPidReuseDetection:
         )
         # Mock: PID is alive but creation time is way off
         with patch(
-            "jarvis_engine.process_manager._check_pid_alive", return_value=True
+            "jarvis_engine.ops.process_manager._check_pid_alive", return_value=True
         ), patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=1700000000.0,
         ):
             result = read_pid_file("daemon", tmp_root)
@@ -291,7 +291,7 @@ class TestDuplicatePrevention:
         )
         # Mock the other PID as alive so read_pid_file returns data
         with patch(
-            "jarvis_engine.process_manager._check_pid_alive", return_value=True
+            "jarvis_engine.ops.process_manager._check_pid_alive", return_value=True
         ), pytest.raises(RuntimeError, match="already running"):
             write_pid_file("daemon", tmp_root)
 
@@ -316,7 +316,7 @@ class TestKillService:
     def test_kill_returns_false_when_not_running(self, tmp_root: Path) -> None:
         assert kill_service("daemon", tmp_root) is False
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=True)
     def test_kill_removes_pid_file(
         self, mock_alive: MagicMock, tmp_root: Path
     ) -> None:
@@ -333,9 +333,9 @@ class TestKillService:
             )
         )
         if sys.platform == "win32":
-            ctx = patch("jarvis_engine.process_manager.ctypes")
+            ctx = patch("jarvis_engine.ops.process_manager.ctypes")
         else:
-            ctx = patch("jarvis_engine.process_manager.os.kill")
+            ctx = patch("jarvis_engine.ops.process_manager.os.kill")
         with ctx:
             result = kill_service("daemon", tmp_root)
         # PID file should be removed regardless
@@ -358,7 +358,7 @@ class TestKillService:
         # read_pid_file will already detect the mismatch and return None,
         # so kill_service returns False
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=1700000000.0,
         ):
             result = kill_service("daemon", tmp_root)
@@ -456,7 +456,7 @@ class TestCheckPidAliveWin32:
             lambda handle, code_ref: setattr(code_ref, "value", 259) or True
         )
         mock_kernel32.CloseHandle.return_value = True
-        with patch("jarvis_engine.process_manager.ctypes") as mock_ctypes:
+        with patch("jarvis_engine.ops.process_manager.ctypes") as mock_ctypes:
             mock_ctypes.windll.kernel32 = mock_kernel32
             mock_ctypes.c_ulong = type("c_ulong", (), {"__init__": lambda s: None, "value": 0})
             mock_ctypes.byref = lambda x: x
@@ -468,7 +468,7 @@ class TestCheckPidAliveWin32:
         """OpenProcess returns 0 (process not found)."""
         mock_kernel32 = MagicMock()
         mock_kernel32.OpenProcess.return_value = 0
-        with patch("jarvis_engine.process_manager.ctypes") as mock_ctypes:
+        with patch("jarvis_engine.ops.process_manager.ctypes") as mock_ctypes:
             mock_ctypes.windll.kernel32 = mock_kernel32
             result = _check_pid_alive_win32(99999)
         assert result is False
@@ -481,7 +481,7 @@ class TestCheckPidAliveWin32:
             lambda handle, code_ref: setattr(code_ref, "value", 0) or True
         )
         mock_kernel32.CloseHandle.return_value = True
-        with patch("jarvis_engine.process_manager.ctypes") as mock_ctypes:
+        with patch("jarvis_engine.ops.process_manager.ctypes") as mock_ctypes:
             mock_ctypes.windll.kernel32 = mock_kernel32
             mock_ctypes.c_ulong = type("c_ulong", (), {"__init__": lambda s: None, "value": 0})
             mock_ctypes.byref = lambda x: x
@@ -495,7 +495,7 @@ class TestCheckPidAliveWin32:
         mock_kernel32.OpenProcess.return_value = 42
         mock_kernel32.GetExitCodeProcess.return_value = False
         mock_kernel32.CloseHandle.return_value = True
-        with patch("jarvis_engine.process_manager.ctypes") as mock_ctypes:
+        with patch("jarvis_engine.ops.process_manager.ctypes") as mock_ctypes:
             mock_ctypes.windll.kernel32 = mock_kernel32
             mock_ctypes.c_ulong = type("c_ulong", (), {"__init__": lambda s: None, "value": 0})
             mock_ctypes.byref = lambda x: x
@@ -556,9 +556,9 @@ class TestConfigFileArg:
 
         # Mock run_mobile_server so it doesn't actually start a server
         with patch.object(main_mod, "run_mobile_server") as mock_server, \
-             patch("jarvis_engine.process_manager.is_service_running", return_value=False), \
-             patch("jarvis_engine.process_manager.write_pid_file"), \
-             patch("jarvis_engine.process_manager.remove_pid_file"):
+             patch("jarvis_engine.ops.process_manager.is_service_running", return_value=False), \
+             patch("jarvis_engine.ops.process_manager.write_pid_file"), \
+             patch("jarvis_engine.ops.process_manager.remove_pid_file"):
             rc = main_mod.cmd_serve_mobile(
                 host="127.0.0.1",
                 port=0,
@@ -592,9 +592,9 @@ class TestConfigFileArg:
         from jarvis_engine import main as main_mod
 
         with patch.object(main_mod, "run_mobile_server") as mock_server, \
-             patch("jarvis_engine.process_manager.is_service_running", return_value=False), \
-             patch("jarvis_engine.process_manager.write_pid_file"), \
-             patch("jarvis_engine.process_manager.remove_pid_file"):
+             patch("jarvis_engine.ops.process_manager.is_service_running", return_value=False), \
+             patch("jarvis_engine.ops.process_manager.write_pid_file"), \
+             patch("jarvis_engine.ops.process_manager.remove_pid_file"):
             rc = main_mod.cmd_serve_mobile(
                 host="127.0.0.1",
                 port=0,
@@ -616,8 +616,8 @@ class TestConfigFileArg:
 class TestGracefulShutdown:
     """Tests for the two-phase graceful -> hard kill behaviour."""
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=False)
-    @patch("jarvis_engine.process_manager.os.kill")
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=False)
+    @patch("jarvis_engine.ops.process_manager.os.kill")
     def test_graceful_shutdown_succeeds_when_process_exits_quickly(
         self, mock_kill: MagicMock, mock_alive: MagicMock,
     ) -> None:
@@ -633,9 +633,9 @@ class TestGracefulShutdown:
             assert result is True
             mock_kill.assert_called_once()
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
-    @patch("jarvis_engine.process_manager.os.kill")
-    @patch("jarvis_engine.process_manager._GRACEFUL_TIMEOUT_S", 0.1)
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.ops.process_manager.os.kill")
+    @patch("jarvis_engine.ops.process_manager._GRACEFUL_TIMEOUT_S", 0.1)
     def test_graceful_shutdown_returns_false_when_process_survives(
         self, mock_kill: MagicMock, mock_alive: MagicMock,
     ) -> None:
@@ -643,7 +643,7 @@ class TestGracefulShutdown:
         result = _graceful_shutdown(12345)
         assert result is False
 
-    @patch("jarvis_engine.process_manager.os.kill", side_effect=OSError("gone"))
+    @patch("jarvis_engine.ops.process_manager.os.kill", side_effect=OSError("gone"))
     def test_graceful_shutdown_returns_true_when_kill_raises(
         self, mock_kill: MagicMock,
     ) -> None:
@@ -657,9 +657,9 @@ class TestGracefulShutdown:
         else:
             assert result is True
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
-    @patch("jarvis_engine.process_manager._graceful_shutdown", return_value=False)
-    @patch("jarvis_engine.process_manager._hard_kill")
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.ops.process_manager._graceful_shutdown", return_value=False)
+    @patch("jarvis_engine.ops.process_manager._hard_kill")
     def test_kill_service_escalates_to_hard_kill(
         self,
         mock_hard_kill: MagicMock,
@@ -677,9 +677,9 @@ class TestGracefulShutdown:
         mock_graceful.assert_called_once_with(12345)
         mock_hard_kill.assert_called_once_with(12345)
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
-    @patch("jarvis_engine.process_manager._graceful_shutdown", return_value=True)
-    @patch("jarvis_engine.process_manager._hard_kill")
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.ops.process_manager._graceful_shutdown", return_value=True)
+    @patch("jarvis_engine.ops.process_manager._hard_kill")
     def test_kill_service_skips_hard_kill_when_graceful_succeeds(
         self,
         mock_hard_kill: MagicMock,
@@ -697,9 +697,9 @@ class TestGracefulShutdown:
         mock_graceful.assert_called_once_with(12345)
         mock_hard_kill.assert_not_called()
 
-    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
-    @patch("jarvis_engine.process_manager._hard_kill")
-    @patch("jarvis_engine.process_manager._graceful_shutdown")
+    @patch("jarvis_engine.ops.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.ops.process_manager._hard_kill")
+    @patch("jarvis_engine.ops.process_manager._graceful_shutdown")
     def test_kill_service_force_skips_graceful(
         self,
         mock_graceful: MagicMock,
@@ -816,7 +816,7 @@ class TestWatchdog:
             })
         )
         with patch(
-            "jarvis_engine.process_manager._get_process_create_time",
+            "jarvis_engine.ops.process_manager._get_process_create_time",
             return_value=1700000000.0,
         ):
             dead = check_and_restart_services(tmp_root)

@@ -36,7 +36,7 @@ from jarvis_engine.handlers.ops_handlers import (
 class TestOpsAutopilotHandler:
     """Tests for OpsAutopilotHandler."""
 
-    @patch("jarvis_engine.ops_autopilot.run_ops_autopilot", return_value=0)
+    @patch("jarvis_engine.ops.autopilot.run_ops_autopilot", return_value=0)
     def test_handle_successful(
         self, mock_impl: MagicMock, tmp_path: Path
     ) -> None:
@@ -66,7 +66,7 @@ class TestOpsAutopilotHandler:
             auto_open_connectors=False,
         )
 
-    @patch("jarvis_engine.ops_autopilot.run_ops_autopilot", return_value=3)
+    @patch("jarvis_engine.ops.autopilot.run_ops_autopilot", return_value=3)
     def test_handle_nonzero_rc_propagated(
         self, mock_impl: MagicMock, tmp_path: Path
     ) -> None:

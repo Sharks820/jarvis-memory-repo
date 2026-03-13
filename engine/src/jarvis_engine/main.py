@@ -242,7 +242,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
-    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
+    from jarvis_engine.ops.process_manager import is_service_running, write_pid_file, remove_pid_file
     if is_service_running("mobile_api", root):
         print("error: mobile API is already running")
         return 4
@@ -352,7 +352,7 @@ def cmd_persona_config(
 def cmd_desktop_widget() -> int:
     _set_process_title("jarvis-widget")
     root = repo_root()
-    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
+    from jarvis_engine.ops.process_manager import is_service_running, write_pid_file, remove_pid_file
     if is_service_running("widget", root):
         print("error: widget is already running")
         return 4

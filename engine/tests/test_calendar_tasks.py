@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from jarvis_engine.ops_sync import (
+from jarvis_engine.ops.sync import (
     _parse_ics,
     _parse_ics_fallback,
     load_calendar_events,

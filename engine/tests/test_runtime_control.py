@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import jarvis_engine.runtime_control as rc_mod
-from jarvis_engine.runtime_control import (
+import jarvis_engine.ops.runtime_control as rc_mod
+from jarvis_engine.ops.runtime_control import (
     DEFAULT_CONTROL_STATE,
     DEFAULT_RESOURCE_BUDGETS,
     capture_runtime_resource_snapshot,

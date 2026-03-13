@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jarvis_engine import ops_sync
+from jarvis_engine.ops import sync as ops_sync
 
 
 def test_calendar_remote_url_disabled_by_default(monkeypatch) -> None:
