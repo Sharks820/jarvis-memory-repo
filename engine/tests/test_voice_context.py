@@ -19,10 +19,8 @@ from jarvis_engine.voice.context import (
 )
 
 # Patch targets:
-#   _build_smart_context lazily does `import jarvis_engine.voice.pipeline as _vp`
-#   then reads _vp.repo_root and _vp.build_context_packet.
-#   We patch the voice_pipeline module attributes directly.
-_VP = "jarvis_engine.voice.pipeline"
+#   _retrieve_memories_legacy imports build_context_packet from brain_memory
+#   and repo_root from config.  _build_system_parts imports repo_root from config.
 
 
 # ===========================================================================
@@ -66,8 +64,8 @@ class TestBuildSmartContext:
     def test_returns_four_lists(self, tmp_path: Path) -> None:
         """Return value is a 4-tuple of lists."""
         bus = _make_bus()
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch(f"{_VP}.build_context_packet", return_value={"selected": []}):
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
             result = _build_smart_context(bus, "hello")
         assert isinstance(result, tuple)
         assert len(result) == 4
@@ -87,7 +85,7 @@ class TestBuildSmartContext:
             {"summary": "Memory about AI"},
         ]
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", return_value=mock_results):
             memory_lines, _, _, _ = _build_smart_context(bus, "tell me about Python")
 
@@ -98,8 +96,8 @@ class TestBuildSmartContext:
         """When hybrid search returns nothing, legacy build_context_packet is used."""
         bus = _make_bus()
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch(f"{_VP}.build_context_packet", return_value={
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={
                  "selected": [
                      {"summary": "Legacy memory 1"},
                      {"summary": "Legacy memory 2"},
@@ -114,8 +112,8 @@ class TestBuildSmartContext:
         """Legacy path with empty selected list produces no memory lines."""
         bus = _make_bus()
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch(f"{_VP}.build_context_packet", return_value={"selected": []}):
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
             memory_lines, _, _, _ = _build_smart_context(bus, "hello")
 
         assert memory_lines == []
@@ -135,7 +133,7 @@ class TestBuildSmartContext:
 
         bus = _make_bus(engine=engine, kg=kg, embed_service=embed_service)
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", return_value=[]):
             _, fact_lines, _, _ = _build_smart_context(bus, "tell me about coding")
 
@@ -151,8 +149,8 @@ class TestBuildSmartContext:
         }
         bus = _make_bus(pref_tracker=pref_tracker)
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch(f"{_VP}.build_context_packet", return_value={"selected": []}):
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
             _, _, _, pref_lines = _build_smart_context(bus, "hello")
 
         assert len(pref_lines) == 1
@@ -162,8 +160,8 @@ class TestBuildSmartContext:
     def test_preferences_empty_when_no_tracker(self, tmp_path: Path) -> None:
         bus = _make_bus(pref_tracker=None)
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
-             patch(f"{_VP}.build_context_packet", return_value={"selected": []}):
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={"selected": []}):
             _, _, _, pref_lines = _build_smart_context(bus, "hello")
 
         assert pref_lines == []
@@ -191,7 +189,7 @@ class TestBuildSmartContext:
             ]
         }
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
              patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=mock_cb_result):
             _, _, cb_lines, _ = _build_smart_context(bus, "skills")
@@ -209,9 +207,9 @@ class TestBuildSmartContext:
 
         bus = _make_bus(engine=engine, embed_service=embed_service)
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", side_effect=RuntimeError("fail")), \
-             patch(f"{_VP}.build_context_packet", return_value={
+             patch("jarvis_engine.brain_memory.build_context_packet", return_value={
                  "selected": [{"summary": "Fallback memory"}]
              }):
             memory_lines, _, _, _ = _build_smart_context(bus, "test")
@@ -226,7 +224,7 @@ class TestBuildSmartContext:
 
         bus = _make_bus(engine=engine, embed_service=embed_service)
 
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.memory.search.hybrid_search", return_value=[
                  {"summary": ""},
                  {"summary": "  "},
@@ -244,7 +242,7 @@ class TestBuildSmartContext:
 
 class TestBuildSystemParts:
     def test_returns_list_of_strings(self, tmp_path: Path) -> None:
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Be helpful."):
             result = _build_system_parts([], [], [], [])
@@ -254,7 +252,7 @@ class TestBuildSystemParts:
 
     def test_includes_datetime_and_persona(self, tmp_path: Path) -> None:
         """System parts always include datetime and persona prompt."""
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="I am Jarvis."):
             result = _build_system_parts([], [], [], [])
@@ -263,7 +261,7 @@ class TestBuildSystemParts:
         assert len(result) >= 2
 
     def test_includes_facts_section(self, tmp_path: Path) -> None:
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], ["User likes coffee"], [], [])
@@ -273,7 +271,7 @@ class TestBuildSystemParts:
         assert "User likes coffee" in facts_part[0]
 
     def test_includes_memories_section(self, tmp_path: Path) -> None:
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts(["Recent coding session"], [], [], [])
@@ -283,7 +281,7 @@ class TestBuildSystemParts:
         assert "Recent coding session" in mem_part[0]
 
     def test_includes_cross_domain_section(self, tmp_path: Path) -> None:
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], ["work -> hobby connection"], [])
@@ -292,7 +290,7 @@ class TestBuildSystemParts:
         assert len(cb_part) == 1
 
     def test_includes_preferences_section(self, tmp_path: Path) -> None:
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], [], ["tone: casual"])
@@ -303,7 +301,7 @@ class TestBuildSystemParts:
 
     def test_empty_sections_excluded(self, tmp_path: Path) -> None:
         """Empty lists produce no extra sections beyond datetime+persona."""
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], [], [], [])
@@ -314,7 +312,7 @@ class TestBuildSystemParts:
     def test_fact_lines_limited_to_six(self, tmp_path: Path) -> None:
         """At most 6 fact lines are included."""
         facts = [f"Fact {i}" for i in range(10)]
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], facts, [], [])
@@ -326,7 +324,7 @@ class TestBuildSystemParts:
     def test_memory_lines_limited_to_eight(self, tmp_path: Path) -> None:
         """At most 8 memory lines are included."""
         memories = [f"Memory {i}" for i in range(12)]
-        with patch(f"{_VP}.repo_root", return_value=tmp_path), \
+        with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts(memories, [], [], [])

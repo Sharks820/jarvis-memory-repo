@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import main as main_mod
+from jarvis_engine import brain_memory as brain_memory_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine.voice import context as voice_context_mod
 from jarvis_engine.voice import extractors as voice_extractors_mod
@@ -498,7 +499,7 @@ class TestBuildSmartContext:
         }
 
         monkeypatch.setattr(
-            voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
+            brain_memory_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
         memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"anything")
@@ -516,7 +517,7 @@ class TestBuildSmartContext:
             "selected": [{"summary": "Fallback memory"}]
         }
         monkeypatch.setattr(
-            voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
+            brain_memory_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
         memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"test query")
@@ -529,7 +530,7 @@ class TestBuildSmartContext:
 
         # Legacy path returns empty for memory
         monkeypatch.setattr(
-            voice_pipeline_mod, "build_context_packet",
+            brain_memory_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -551,7 +552,7 @@ class TestBuildSmartContext:
         bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=None)
 
         monkeypatch.setattr(
-            voice_pipeline_mod, "build_context_packet",
+            brain_memory_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -573,7 +574,7 @@ class TestBuildSmartContext:
         bus.ctx = AppContext()  # all None defaults
 
         monkeypatch.setattr(
-            voice_pipeline_mod, "build_context_packet",
+            brain_memory_mod, "build_context_packet",
             MagicMock(side_effect=RuntimeError("DB broken")),
         )
 

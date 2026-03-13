@@ -6,15 +6,13 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.error import HTTPError, URLError
 
 from jarvis_engine.gateway.ollama_client import OllamaResponse, call_ollama_generate
-from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
+from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, TaskType, VideoAdapter
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore
-
-TaskType = Literal["image", "code", "video", "model3d"]
 DEFAULT_FALLBACK_MODELS = ["qwen3:14b", "qwen3:latest", "deepseek-r1:8b"]
 
 

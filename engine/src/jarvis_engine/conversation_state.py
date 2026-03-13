@@ -747,53 +747,21 @@ def extract_entities(text: str) -> set[str]:
 
     entities: set[str] = set()
 
-    # URLs
-    for m in _RE_URL.finditer(text):
-        entities.add(m.group(0))
+    _SIMPLE_PATTERNS = (
+        _RE_URL, _RE_UNIX_PATH, _RE_WIN_PATH,
+        _RE_DATE_ISO, _RE_DATE_SLASH, _RE_DATE_WRITTEN,
+        _RE_TIME, _RE_AMOUNT, _RE_NAME_PREFIX,
+    )
+    for pat in _SIMPLE_PATTERNS:
+        for m in pat.finditer(text):
+            val = m.group(0).strip()
+            if val:
+                entities.add(val)
 
-    # File paths — Unix-style
-    for m in _RE_UNIX_PATH.finditer(text):
-        entities.add(m.group(0))
-
-    # File paths — Windows-style
-    for m in _RE_WIN_PATH.finditer(text):
-        entities.add(m.group(0))
-
-    # ISO dates and datetimes
-    for m in _RE_DATE_ISO.finditer(text):
-        entities.add(m.group(0))
-
-    # Slash-format dates
-    for m in _RE_DATE_SLASH.finditer(text):
-        entities.add(m.group(0))
-
-    # Written-out dates (e.g., "March 15, 2026")
-    for m in _RE_DATE_WRITTEN.finditer(text):
-        entities.add(m.group(0))
-
-    # Times
-    for m in _RE_TIME.finditer(text):
-        val = m.group(0).strip()
-        if val:
-            entities.add(val)
-
-    # Amounts with units
-    for m in _RE_AMOUNT.finditer(text):
-        entities.add(m.group(0))
-
-    # People names with title prefixes
-    for m in _RE_NAME_PREFIX.finditer(text):
-        entities.add(m.group(0))
-
-    # Capitalized word sequences (potential proper nouns / names)
     for m in _RE_CAPITALIZED_SEQ.finditer(text):
         name = m.group(0)
         words = name.split()
-        # Skip if every word is a common English word
-        if all(w in _COMMON_WORDS for w in words):
-            continue
-        # Skip very long sequences (likely sentence starts, not names)
-        if len(words) > 4:
+        if all(w in _COMMON_WORDS for w in words) or len(words) > 4:
             continue
         entities.add(name)
 

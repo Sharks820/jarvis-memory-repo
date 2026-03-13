@@ -16,7 +16,7 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-TaskType = Literal["image", "video", "model3d"]
+TaskType = Literal["image", "code", "video", "model3d"]
 
 
 @dataclass
