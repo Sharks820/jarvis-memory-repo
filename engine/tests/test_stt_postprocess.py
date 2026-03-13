@@ -187,6 +187,14 @@ def test_remove_fillers_normalizes_whitespace() -> None:
     assert "  " not in result
 
 
+def test_normalize_sentence_text_restores_sentence_case() -> None:
+    """Sentence cleanup restores leading capitalization and standalone I."""
+    from jarvis_engine.stt_postprocess import normalize_sentence_text
+
+    result = normalize_sentence_text("i need jarvis to remind me tomorrow")
+    assert result == "I need jarvis to remind me tomorrow"
+
+
 # ---------------------------------------------------------------------------
 # 4. correct_with_llm
 # ---------------------------------------------------------------------------
@@ -257,6 +265,31 @@ def test_correct_entities_phonetic_match() -> None:
     assert "Conner" in result
 
 
+def test_postprocess_short_command_still_corrects_entities() -> None:
+    """Short-command skip path should still preserve Jarvis-specific entity fixes."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription
+
+    result = postprocess_transcription(
+        "hey jarvis open ollama",
+        0.99,
+        entity_list=["Jarvis", "Ollama"],
+    )
+    assert result == "Hey Jarvis open Ollama"
+
+
+def test_postprocess_longer_text_normalizes_after_filler_removal() -> None:
+    """Sentence cleanup should survive filler stripping and keep readable phrasing."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription
+
+    result = postprocess_transcription(
+        "um i think jarvis should check the knowledge graph",
+        0.8,
+        gateway=None,
+        entity_list=["Jarvis"],
+    )
+    assert result == "I think Jarvis should check the knowledge graph"
+
+
 @pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_no_match() -> None:
     """Text without entity matches passes through unchanged."""
@@ -318,7 +351,7 @@ def test_postprocess_skip_path_short_command() -> None:
         entity_list=["Conner"],
     )
     mock_gateway.complete.assert_not_called()
-    assert result == "brain status"
+    assert result == "Brain status"
 
 
 def test_postprocess_hallucination_returns_empty() -> None:

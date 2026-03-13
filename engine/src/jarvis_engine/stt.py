@@ -70,6 +70,71 @@ JARVIS_DEFAULT_PROMPT = (
     "brain status, daily brief, self heal, daemon, safe mode."
 )
 
+_DEFAULT_STT_ENTITY_TERMS: tuple[str, ...] = (
+    "Jarvis",
+    "Conner",
+    "ops brief",
+    "brain status",
+    "daily brief",
+    "self heal",
+    "safe mode",
+    "knowledge graph",
+    "proactive engine",
+    "Ollama",
+    "Groq",
+    "Anthropic",
+    "SQLite",
+    "Kotlin",
+    "Jetpack Compose",
+    "daemon",
+)
+
+
+def _build_default_entity_list(
+    entity_list: list[str] | None,
+) -> list[str]:
+    """Return a deduplicated entity list biased toward Jarvis-specific terms."""
+    if entity_list:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for value in entity_list:
+            cleaned = str(value).strip()
+            if not cleaned:
+                continue
+            lowered = cleaned.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            merged.append(cleaned)
+        return merged
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for value in [*(_load_keyterms() or []), *_DEFAULT_STT_ENTITY_TERMS]:
+        cleaned = str(value).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        merged.append(cleaned)
+    return merged
+
+
+def _build_stt_prompt(prompt: str, entity_list: list[str]) -> str:
+    """Return the backend prompt enriched with Jarvis-specific vocabulary hints."""
+    base_prompt = prompt.strip() or JARVIS_DEFAULT_PROMPT
+    if not entity_list:
+        return base_prompt
+    hint_terms = ", ".join(entity_list[:40])
+    if not hint_terms:
+        return base_prompt
+    return (
+        f"{base_prompt} "
+        f"Recognize names and phrases exactly when spoken: {hint_terms}."
+    )[:1200]
+
 
 def _log_stt_metric(
     root_dir: Path | None,
@@ -876,6 +941,8 @@ def transcribe_smart(
     to the final transcription text.
     """
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
+    resolved_entities = _build_default_entity_list(entity_list)
+    resolved_prompt = _build_stt_prompt(prompt, resolved_entities)
 
     audio, early_result = _preprocess_audio_if_needed(audio, language=language)
     if early_result is not None:
@@ -888,19 +955,19 @@ def transcribe_smart(
             audio,
             backend=backend,
             language=language,
-            prompt=prompt,
+            prompt=resolved_prompt,
             root_dir=root_dir,
         )
     else:
         final = _transcribe_auto(
             audio,
             language=language,
-            prompt=prompt,
+            prompt=resolved_prompt,
             root_dir=root_dir,
-            entity_list=entity_list,
+            entity_list=resolved_entities,
         )
 
-    return _apply_postprocessing(final, gateway=gateway, entity_list=entity_list)
+    return _apply_postprocessing(final, gateway=gateway, entity_list=resolved_entities)
 
 
 def warmup_stt_backends() -> None:

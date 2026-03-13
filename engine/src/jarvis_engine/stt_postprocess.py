@@ -338,6 +338,8 @@ _SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECAS
 _MULTI_WORD_FILLERS = re.compile(
     r"\b(?:you know|I mean|sort of|kind of)\b", re.IGNORECASE
 )
+_SENTENCE_START_RE = re.compile(r"(^|[.!?]\s+)([a-z])")
+_FIRST_PERSON_RE = re.compile(r"\bi\b")
 
 
 def remove_fillers(text: str) -> str:
@@ -359,6 +361,22 @@ def remove_fillers(text: str) -> str:
     # Normalize whitespace
     result = re.sub(r"\s{2,}", " ", result).strip()
     return result
+
+
+def normalize_sentence_text(text: str) -> str:
+    """Clean spacing and restore lightweight sentence casing without changing meaning."""
+    if not text.strip():
+        return ""
+    result = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    result = re.sub(r"([,.;:!?])([^\s])", r"\1 \2", result)
+    result = re.sub(r"\s{2,}", " ", result).strip()
+    result = _FIRST_PERSON_RE.sub("I", result)
+
+    def _capitalize(match: re.Match[str]) -> str:
+        prefix, letter = match.groups()
+        return f"{prefix}{letter.upper()}"
+
+    return _SENTENCE_START_RE.sub(_capitalize, result)
 
 
 # ---------------------------------------------------------------------------
@@ -454,22 +472,23 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
     if not entity_list or not text:
         return text
 
+    jellyfish: _JellyfishModule | None = None
     try:
         jellyfish = _load_jellyfish()
     except ImportError:
-        logger.warning("jellyfish not installed, skipping entity correction")
-        return text
+        logger.debug("jellyfish not installed, using exact-match entity correction only")
 
     # Build lookup maps
     exact_map: dict[str, str] = {}
     phonetic_map: dict[str, str] = {}
     for entity in entity_list:
         exact_map[entity.lower()] = entity
-        try:
-            code = jellyfish.metaphone(entity)
-            phonetic_map[code] = entity
-        except (ValueError, TypeError) as exc:
-            logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
+        if jellyfish is not None:
+            try:
+                code = jellyfish.metaphone(entity)
+                phonetic_map[code] = entity
+            except (ValueError, TypeError) as exc:
+                logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
 
     _PUNCT = ".,!?;:'\""
     words = text.split()
@@ -490,18 +509,19 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
             continue
 
         # Phonetic match
-        try:
-            word_code = jellyfish.metaphone(stripped)
-            if word_code in phonetic_map:
-                canonical = phonetic_map[word_code]
-                similarity = jellyfish.jaro_winkler_similarity(
-                    stripped.lower(), canonical.lower()
-                )
-                if similarity > 0.75:
-                    corrected_words.append(prefix + canonical + suffix)
-                    continue
-        except (ValueError, TypeError) as exc:
-            logger.debug("Jaro-winkler similarity failed: %s", exc)
+        if jellyfish is not None:
+            try:
+                word_code = jellyfish.metaphone(stripped)
+                if word_code in phonetic_map:
+                    canonical = phonetic_map[word_code]
+                    similarity = jellyfish.jaro_winkler_similarity(
+                        stripped.lower(), canonical.lower()
+                    )
+                    if similarity > 0.75:
+                        corrected_words.append(prefix + canonical + suffix)
+                        continue
+            except (ValueError, TypeError) as exc:
+                logger.debug("Jaro-winkler similarity failed: %s", exc)
 
         corrected_words.append(word)
 
@@ -560,6 +580,7 @@ def postprocess_transcription(
 
     # Stage 2: Filler removal
     text = remove_fillers(text)
+    text = normalize_sentence_text(text)
 
     if not text.strip():
         return ""
@@ -575,7 +596,9 @@ def postprocess_transcription(
             word_count,
             confidence,
         )
-        return text
+        if entity_list:
+            text = correct_entities(text, entity_list)
+        return normalize_sentence_text(text)
 
     # Stage 3: LLM post-correction
     if gateway is not None:
@@ -589,4 +612,4 @@ def postprocess_transcription(
     if entity_list:
         text = correct_entities(text, entity_list)
 
-    return text
+    return normalize_sentence_text(text)

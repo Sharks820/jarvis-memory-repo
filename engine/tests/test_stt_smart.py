@@ -314,6 +314,30 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
         assert record["confidence"] == 0.92
 
 
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_transcribe_smart_builds_default_entities_and_prompt() -> None:
+    """Jarvis-specific entity hints should be supplied even when caller omits them."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    result_obj = TranscriptionResult(
+        text="hey jarvis",
+        language="en",
+        confidence=0.96,
+        duration_seconds=0.3,
+        backend="parakeet-tdt",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=result_obj) as mock_pk, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_post:
+        transcribe_smart(fake_audio)
+
+    assert "Jarvis" in mock_pk.call_args.kwargs["prompt"]
+    assert "Ollama" in mock_pk.call_args.kwargs["prompt"]
+    assert "Jarvis" in mock_post.call_args.kwargs["entity_list"]
+
+
 # ---------------------------------------------------------------------------
 # 32. transcribe_smart forced groq backend
 # ---------------------------------------------------------------------------
