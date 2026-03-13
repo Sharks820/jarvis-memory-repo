@@ -10,6 +10,7 @@ from jarvis_engine.mobile_routes.intelligence import IntelligenceRoutesMixin
 from jarvis_engine.mobile_routes.scam import ScamRoutesMixin
 from jarvis_engine.mobile_routes.security import SecurityRoutesMixin
 from jarvis_engine.mobile_routes.sync import SyncRoutesMixin
+from jarvis_engine.mobile_routes.voice import VoiceCommandMixin
 
 __all__ = [
     "AuthRoutesMixin",
@@ -20,4 +21,5 @@ __all__ = [
     "ScamRoutesMixin",
     "SecurityRoutesMixin",
     "SyncRoutesMixin",
+    "VoiceCommandMixin",
 ]

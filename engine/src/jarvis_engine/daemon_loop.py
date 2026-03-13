@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine._compat import UTC
@@ -53,7 +54,53 @@ logger = logging.getLogger(__name__)
 _SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
 
 
+def _emit(line: str) -> None:
+    """Emit a structured key=value status line.
+
+    All daemon structured output goes through this single function so the
+    transport can be swapped (e.g. to a socket or log file) without hunting
+    for scattered ``print()`` calls.
+    """
+    print(line)  # noqa: T201 — intentional structured output
+
+
 # Parameter bundle dataclasses
+
+@dataclass
+class CycleState:
+    """Typed state bundle returned by ``_gather_cycle_state``.
+
+    Supports ``state["key"]`` dict-style access for backward compatibility
+    with tests that substitute plain dicts via monkeypatch.
+    """
+
+    idle_seconds: float | None
+    is_active: bool
+    sleep_seconds: int
+    resource_snapshot: dict
+    pressure_level: str
+    skip_heavy_tasks: bool
+    gaming_state: dict
+    control_state: dict
+    auto_detect: bool
+    detected_process: str
+    gaming_mode_enabled: bool
+    daemon_paused: bool
+    safe_mode: bool
+
+    # dict-style access for backward compat with tests returning plain dicts
+    def __getitem__(self, key: str) -> Any:  # noqa: ANN401
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key) from None
+
+    def get(self, key: str, default: Any = None) -> Any:  # noqa: ANN401
+        return getattr(self, key, default)
+
+    def keys(self):
+        return [f.name for f in self.__dataclass_fields__.values()]
+
 
 @dataclass
 class DaemonConfig:
@@ -94,7 +141,7 @@ _cycle_start: float = 0.0
 def _emit_cycle_failure(event: str, exc: Exception, *, message: str) -> None:
     """Log and surface a subsystem failure using the daemon's standard contract."""
     logger.warning("%s: %s", message, exc)
-    print(f"{event}_error={exc}")
+    _emit(f"{event}_error={exc}")
 
 
 def _watchdog_check() -> dict:
@@ -149,20 +196,20 @@ def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_inge
         return result.return_code
 
     report = result.report
-    print("learning_mission_completed=true")
-    print(f"mission_id={report.get('mission_id', '')}")
-    print(f"candidate_count={report.get('candidate_count', 0)}")
-    print(f"verified_count={report.get('verified_count', 0)}")
+    _emit("learning_mission_completed=true")
+    _emit(f"mission_id={report.get('mission_id', '')}")
+    _emit(f"candidate_count={report.get('candidate_count', 0)}")
+    _emit(f"verified_count={report.get('verified_count', 0)}")
     verified = report.get("verified_findings", [])
     if isinstance(verified, list):
         for idx, finding in enumerate(verified[:10], start=1):
             statement = str(finding.get("statement", "")) if isinstance(finding, dict) else ""
             sources = ",".join(finding.get("source_domains", [])) if isinstance(finding, dict) else ""
-            print(f"verified_{idx}={statement}")
-            print(f"verified_{idx}_sources={sources}")
+            _emit(f"verified_{idx}={statement}")
+            _emit(f"verified_{idx}_sources={sources}")
 
     if result.ingested_record_id:
-        print(f"mission_ingested_record_id={result.ingested_record_id}")
+        _emit(f"mission_ingested_record_id={result.ingested_record_id}")
     return 0
 
 
@@ -174,7 +221,7 @@ def _run_next_pending_mission(*, max_results: int = 6, max_pages: int = 10) -> i
         mission_id = str(mission.get("mission_id", "")).strip()
         if not mission_id:
             continue
-        print(f"mission_autorun_id={mission_id}")
+        _emit(f"mission_autorun_id={mission_id}")
         return cmd_mission_run(
             mission_id=mission_id,
             max_results=max_results,
@@ -234,10 +281,10 @@ def _restart_mobile_api(service_name: str) -> None:
                 stderr=subprocess.DEVNULL,
             )
         logger.info("Watchdog: restarted mobile_api via subprocess.")
-        print("watchdog_restart_mobile_api=ok")
+        _emit("watchdog_restart_mobile_api=ok")
     except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("Watchdog: failed to restart mobile_api: %s", exc)
-        print(f"watchdog_restart_mobile_api_error={exc}")
+        _emit(f"watchdog_restart_mobile_api_error={exc}")
 
 
 # Extracted subsystem helpers — each encapsulates one daemon responsibility
@@ -286,38 +333,38 @@ def _log_cycle_end(cycles: int, rc: int) -> None:
 def _print_cycle_status(
     cycles: int,
     cycle_start_ts: str,
-    state: dict,
+    state: CycleState | dict,
 ) -> None:
     """Print all per-cycle status lines to stdout."""
-    print(f"cycle={cycles} ts={cycle_start_ts}")
-    print(f"daemon_paused={state['daemon_paused']}")
-    print(f"safe_mode={state['safe_mode']}")
-    print(f"gaming_mode={state['gaming_mode_enabled']}")
-    print(f"gaming_mode_auto_detect={state['auto_detect']}")
+    _emit(f"cycle={cycles} ts={cycle_start_ts}")
+    _emit(f"daemon_paused={state['daemon_paused']}")
+    _emit(f"safe_mode={state['safe_mode']}")
+    _emit(f"gaming_mode={state['gaming_mode_enabled']}")
+    _emit(f"gaming_mode_auto_detect={state['auto_detect']}")
     if state["detected_process"]:
-        print(f"gaming_mode_detected_process={state['detected_process']}")
+        _emit(f"gaming_mode_detected_process={state['detected_process']}")
     if state["gaming_state"].get("reason", ""):
-        print(f"gaming_mode_reason={state['gaming_state'].get('reason', '')}")
+        _emit(f"gaming_mode_reason={state['gaming_state'].get('reason', '')}")
     if state["control_state"].get("reason", ""):
-        print(f"runtime_control_reason={state['control_state'].get('reason', '')}")
-    print(f"device_active={state['is_active']}")
-    print(f"resource_pressure_level={state['pressure_level']}")
+        _emit(f"runtime_control_reason={state['control_state'].get('reason', '')}")
+    _emit(f"device_active={state['is_active']}")
+    _emit(f"resource_pressure_level={state['pressure_level']}")
     try:
         _m = state["resource_snapshot"].get("metrics", {})
         _rss = _m.get("process_memory_mb", {}).get("current", 0.0)
         _cpu = _m.get("process_cpu_pct", {}).get("current", 0.0)
         _emb = _m.get("embedding_cache_mb", {}).get("current", 0.0)
-        print(f"resource_process_memory_mb={_rss}")
-        print(f"resource_process_cpu_pct={_cpu}")
-        print(f"resource_embedding_cache_mb={_emb}")
+        _emit(f"resource_process_memory_mb={_rss}")
+        _emit(f"resource_process_cpu_pct={_cpu}")
+        _emit(f"resource_embedding_cache_mb={_emb}")
     except (AttributeError, KeyError, TypeError) as exc:
         logger.debug("Resource metric print failed: %s", exc)
     if state["pressure_level"] in {"mild", "severe"}:
-        print(f"resource_throttle_sleep_s={state['sleep_seconds']}")
+        _emit(f"resource_throttle_sleep_s={state['sleep_seconds']}")
         if state["skip_heavy_tasks"]:
-            print("resource_skip_heavy_tasks=true")
+            _emit("resource_skip_heavy_tasks=true")
     if state["idle_seconds"] is not None:
-        print(f"idle_seconds={round(state['idle_seconds'], 1)}")
+        _emit(f"idle_seconds={round(state['idle_seconds'], 1)}")
 
 
 def _log_resource_pressure(
@@ -361,7 +408,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
     global _mission_backoff_until_cycle
     # Skip if in failure backoff cooldown
     if cycles < _mission_backoff_until_cycle:
-        print(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
+        _emit(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
         return
     try:
         mission_rc = _run_next_pending_mission()
@@ -369,13 +416,13 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
         mission_rc = 2
         _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
         _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
-        print(f"mission_backoff_set=until_cycle_{_mission_backoff_until_cycle}")
+        _emit(f"mission_backoff_set=until_cycle_{_mission_backoff_until_cycle}")
     else:
-        print(f"mission_cycle_rc={mission_rc}")
+        _emit(f"mission_cycle_rc={mission_rc}")
     # Auto-generate new missions when queue is empty (every 50 cycles)
     if cycles % 50 == 0:
         if skip_heavy_tasks:
-            print("mission_autogen_skipped=resource_pressure")
+            _emit("mission_autogen_skipped=resource_pressure")
         else:
             try:
                 from jarvis_engine.learning_missions import (
@@ -386,12 +433,12 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
                 # First, retry any failed missions
                 retried = retry_failed_missions(root)
                 if retried:
-                    print(f"mission_retried={retried}")
+                    _emit(f"mission_retried={retried}")
                 # Then auto-generate if still no pending
                 generated = auto_generate_missions(root, max_new=3)
                 if generated:
                     topics = ", ".join(m.get("topic", "") for m in generated)
-                    print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
+                    _emit(f"mission_auto_generated={len(generated)} topics=[{topics}]")
             except _SUBSYSTEM_ERRORS_DB as exc:
                 _emit_cycle_failure("mission_autogen", exc, message="Daemon mission auto-generation failed")
 
@@ -404,7 +451,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
         sync_rc = 2
         _emit_cycle_failure("sync_cycle", exc, message="Daemon sync cycle failed")
     else:
-        print(f"sync_cycle_rc={sync_rc}")
+        _emit(f"sync_cycle_rc={sync_rc}")
 
 
 def _run_watchdog_cycle(root: Path) -> None:
@@ -414,7 +461,7 @@ def _run_watchdog_cycle(root: Path) -> None:
 
         dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
         if dead:
-            print(f"watchdog_dead_services={','.join(dead)}")
+            _emit(f"watchdog_dead_services={','.join(dead)}")
     except (ImportError, OSError, subprocess.SubprocessError, RuntimeError) as exc:
         _emit_cycle_failure("watchdog", exc, message="Daemon watchdog check failed")
 
@@ -432,7 +479,7 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
         heal_rc = 2
         _emit_cycle_failure("self_heal_cycle", exc, message="Daemon self-heal cycle failed")
     else:
-        print(f"self_heal_cycle_rc={heal_rc}")
+        _emit(f"self_heal_cycle_rc={heal_rc}")
     # Collect KG growth metrics alongside self-heal
     _collect_kg_metrics(root)
 
@@ -452,7 +499,7 @@ def _collect_kg_metrics(root: Path) -> None:
         try:
             bus = _get_daemon_bus()
             kg = getattr(bus.ctx, "kg", None)
-        except Exception as exc:  # noqa: BLE001
+        except (RuntimeError, AttributeError, ValueError, OSError) as exc:
             logger.debug("KG metrics: bus not available yet: %s", exc)
             kg = None
 
@@ -477,7 +524,7 @@ def _collect_kg_metrics(root: Path) -> None:
                 metrics = {"node_count": 0, "edge_count": 0}
         history_path = runtime_dir(root) / KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
-        print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
+        _emit(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_metrics", exc, message="Daemon KG metrics collection failed")
 
@@ -496,12 +543,12 @@ def _run_self_test_cycle(root: Path) -> None:
             quiz_history = runtime_dir(root) / SELF_TEST_HISTORY
             tester.save_quiz_result(quiz_result, quiz_history)
             regression = tester.check_regression(quiz_history)
-            print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
-            print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
+            _emit(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
+            _emit(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
             if regression.get("regression_detected"):
-                print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
+                _emit(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
         else:
-            print("self_test_skipped=engine_not_initialized")
+            _emit("self_test_skipped=engine_not_initialized")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("self_test", exc, message="Daemon self-test failed")
 
@@ -514,13 +561,13 @@ def _run_db_optimize_cycle(cycles: int) -> None:
         if engine is not None:
             do_vacuum = (cycles % 500 == 0)
             opt_result = engine.optimize(vacuum=do_vacuum)
-            print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
+            _emit(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
             if do_vacuum:
-                print(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
+                _emit(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
             if opt_result.get("errors"):
-                print(f"db_optimize_errors={len(opt_result['errors'])}")
+                _emit(f"db_optimize_errors={len(opt_result['errors'])}")
         else:
-            print("db_optimize_skipped=engine_not_initialized")
+            _emit("db_optimize_skipped=engine_not_initialized")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("db_optimize", exc, message="Daemon DB optimize failed")
 
@@ -541,10 +588,10 @@ def _run_kg_regression_cycle(root: Path) -> None:
             comparison = rc_checker.compare(prev_metrics, current_metrics)
             with _daemon_kg_prev_metrics_lock:
                 _daemon_kg_prev_metrics = current_metrics
-            print(f"kg_regression_status={comparison.get('status', 'unknown')}")
+            _emit(f"kg_regression_status={comparison.get('status', 'unknown')}")
             if comparison.get("status") in ("fail", "warn"):
                 discrepancies = comparison.get("discrepancies", [])
-                print(f"kg_regression_discrepancies={len(discrepancies)}")
+                _emit(f"kg_regression_discrepancies={len(discrepancies)}")
                 _safe_log_activity(
                     "REGRESSION_CHECK",
                     f"KG regression detected: {comparison['status']}",
@@ -557,14 +604,14 @@ def _run_kg_regression_cycle(root: Path) -> None:
                         backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                         if backups:
                             restored = rc_checker.restore_graph(backups[-1])
-                            print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
+                            _emit(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
                             _safe_log_activity(
                                 "REGRESSION_CHECK",
                                 f"KG auto-restore {'succeeded' if restored else 'failed'}",
                                 {"backup": str(backups[-1]), "restored": restored},
                             )
         else:
-            print("kg_regression_skipped=kg_not_initialized")
+            _emit("kg_regression_skipped=kg_not_initialized")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_regression", exc, message="Daemon KG regression check failed")
 
@@ -580,11 +627,11 @@ def _run_usage_prediction_cycle() -> None:
             _now = _dt.now(UTC)
             prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
             if prediction["interaction_count"] > 0:
-                print(f"usage_predicted_route={prediction['likely_route']}")
+                _emit(f"usage_predicted_route={prediction['likely_route']}")
                 if prediction["common_topics"]:
-                    print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
-                print(f"usage_interaction_count={prediction['interaction_count']}")
-    except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+                    _emit(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
+                _emit(f"usage_interaction_count={prediction['interaction_count']}")
+    except SUBSYSTEM_ERRORS as exc:
         _emit_cycle_failure("usage_prediction", exc, message="Daemon usage prediction failed")
 
 
@@ -595,10 +642,10 @@ def _run_memory_consolidation_cycle() -> None:
 
         bus = _get_daemon_bus()
         result = bus.dispatch(ConsolidateMemoryCommand())
-        print(f"consolidation_groups={result.groups_found}")
-        print(f"consolidation_new_facts={result.new_facts_created}")
+        _emit(f"consolidation_groups={result.groups_found}")
+        _emit(f"consolidation_new_facts={result.new_facts_created}")
         if result.errors:
-            print(f"consolidation_errors={len(result.errors)}")
+            _emit(f"consolidation_errors={len(result.errors)}")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("consolidation", exc, message="Daemon memory consolidation failed")
 
@@ -616,7 +663,7 @@ def _run_entity_resolution_cycle() -> None:
             try:
                 rc_checker = RegressionChecker(kg)
                 rc_checker.backup_graph(tag="pre-entity-resolve")
-                print("entity_resolve_kg_backup=ok")
+                _emit("entity_resolve_kg_backup=ok")
             except (OSError, sqlite3.Error, RuntimeError) as exc:
                 _emit_cycle_failure(
                     "entity_resolve_kg_backup",
@@ -625,10 +672,10 @@ def _run_entity_resolution_cycle() -> None:
                 )
             resolver = EntityResolver(kg, embed_service=embed_svc)
             resolve_result = resolver.auto_resolve()
-            print(f"entity_resolve_candidates={resolve_result.candidates_found}")
-            print(f"entity_resolve_merges={resolve_result.merges_applied}")
+            _emit(f"entity_resolve_candidates={resolve_result.candidates_found}")
+            _emit(f"entity_resolve_merges={resolve_result.merges_applied}")
             if resolve_result.errors:
-                print(f"entity_resolve_errors={len(resolve_result.errors)}")
+                _emit(f"entity_resolve_errors={len(resolve_result.errors)}")
             _safe_log_activity(
                 "CONSOLIDATION",
                 f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
@@ -639,7 +686,7 @@ def _run_entity_resolution_cycle() -> None:
                 },
             )
         else:
-            print("entity_resolve_skipped=kg_not_initialized")
+            _emit("entity_resolve_skipped=kg_not_initialized")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("entity_resolve", exc, message="Daemon entity resolution failed")
 
@@ -697,21 +744,21 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                         for entry in h_result.get("results", []):
                             topic_records += entry.get("records_created", 0)
                         total_records += topic_records
-                        print(f"auto_harvest_topic={topic} records={topic_records}")
+                        _emit(f"auto_harvest_topic={topic} records={topic_records}")
                     _safe_log_activity(
                         "HARVEST",
                         f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
                         {"topics": harvest_topics, "total_records": total_records},
                     )
                 elif not h_available:
-                    print("auto_harvest_skipped=no_providers_available")
+                    _emit("auto_harvest_skipped=no_providers_available")
                 else:
-                    print("auto_harvest_skipped=no_ingest_pipeline")
+                    _emit("auto_harvest_skipped=no_ingest_pipeline")
             finally:
                 if h_budget is not None:
                     h_budget.close()
         else:
-            print("auto_harvest_skipped=no_topics_discovered")
+            _emit("auto_harvest_skipped=no_topics_discovered")
     except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
@@ -724,11 +771,11 @@ def _gather_cycle_state(
     active_interval: int,
     idle_interval: int,
     idle_after: int,
-) -> dict:
+) -> CycleState:
     """Gather all per-cycle state: resource pressure, gaming mode, control state.
 
-    Returns a dict with keys used by the main loop to decide whether to skip
-    the cycle and how long to sleep.
+    Returns a :class:`CycleState` used by the main loop to decide whether to
+    skip the cycle and how long to sleep.
     """
     idle_seconds = _windows_idle_seconds()
     is_active = True if idle_seconds is None else idle_seconds < idle_after
@@ -749,21 +796,31 @@ def _gather_cycle_state(
     if auto_detect:
         auto_detect_hit, detected_process = _detect_active_game_process()
 
-    return {
-        "idle_seconds": idle_seconds,
-        "is_active": is_active,
-        "sleep_seconds": sleep_seconds,
-        "resource_snapshot": resource_snapshot,
-        "pressure_level": pressure_level,
-        "skip_heavy_tasks": skip_heavy_tasks,
-        "gaming_state": gaming_state,
-        "control_state": control_state,
-        "auto_detect": auto_detect,
-        "detected_process": detected_process,
-        "gaming_mode_enabled": bool(gaming_state.get("enabled", False)) or auto_detect_hit,
-        "daemon_paused": bool(control_state.get("daemon_paused", False)),
-        "safe_mode": bool(control_state.get("safe_mode", False)),
-    }
+    return CycleState(
+        idle_seconds=idle_seconds,
+        is_active=is_active,
+        sleep_seconds=sleep_seconds,
+        resource_snapshot=resource_snapshot,
+        pressure_level=pressure_level,
+        skip_heavy_tasks=skip_heavy_tasks,
+        gaming_state=gaming_state,
+        control_state=control_state,
+        auto_detect=auto_detect,
+        detected_process=detected_process,
+        gaming_mode_enabled=bool(gaming_state.get("enabled", False)) or auto_detect_hit,
+        daemon_paused=bool(control_state.get("daemon_paused", False)),
+        safe_mode=bool(control_state.get("safe_mode", False)),
+    )
+
+
+@dataclass(frozen=True)
+class _SubsystemEntry:
+    """Descriptor for a periodic daemon subsystem."""
+
+    name: str
+    run: Any  # Callable[[], None] — bound at schedule-build time
+    is_due: Any  # Callable[[int], bool] — True when cycle should fire
+    heavy: bool = False  # If True, skipped under resource pressure
 
 
 def _run_periodic_subsystems(
@@ -776,50 +833,75 @@ def _run_periodic_subsystems(
 ) -> None:
     """Run all non-core periodic subsystems for the current cycle.
 
-    Failures here are logged but never affect the circuit breaker.
+    Subsystems are declared as ``_SubsystemEntry`` descriptors so adding or
+    reordering them is a one-line change.  Failures are logged but never
+    affect the circuit breaker.
     """
-    if cfg.run_missions:
-        _run_missions_cycle(root, cycles, skip_heavy_tasks)
-    if cfg.sync_every_cycles > 0 and (cycles == 1 or cycles % cfg.sync_every_cycles == 0):
-        _run_sync_cycle(cmd_mobile_desktop_sync)
-    if cfg.watchdog_every_cycles > 0 and cycles % cfg.watchdog_every_cycles == 0:
-        _run_watchdog_cycle(root)
-    if cfg.self_heal_every_cycles > 0 and (cycles == 2 or cycles % cfg.self_heal_every_cycles == 0):
-        if skip_heavy_tasks:
-            print("self_heal_cycle_skipped=resource_pressure")
-        else:
-            _run_self_heal_cycle(root, cmd_self_heal)
-    if cfg.self_test_every_cycles > 0 and cycles % cfg.self_test_every_cycles == 0:
-        if skip_heavy_tasks:
-            print("self_test_skipped=resource_pressure")
-        else:
-            _run_self_test_cycle(root)
-    if cycles % 100 == 0:
-        if skip_heavy_tasks:
-            print("db_optimize_skipped=resource_pressure")
-        else:
-            _run_db_optimize_cycle(cycles)
-    if cycles % 10 == 0:
-        _run_kg_regression_cycle(root)
-    if cycles % 10 == 0:
-        _run_usage_prediction_cycle()
-    if cycles % 50 == 0:
-        if skip_heavy_tasks:
-            print("consolidation_skipped=resource_pressure")
-        else:
-            _run_memory_consolidation_cycle()
-    if cycles % 100 == 0:
-        if skip_heavy_tasks:
-            print("entity_resolve_skipped=resource_pressure")
-        else:
-            _run_entity_resolution_cycle()
-    if cycles % 200 == 0:
-        if skip_heavy_tasks:
-            print("auto_harvest_skipped=resource_pressure")
-        else:
-            _run_auto_harvest_cycle(root)
-    if cycles % 50 == 0:
-        _run_diagnostic_scan_cycle(root)
+    schedule: list[_SubsystemEntry] = [
+        _SubsystemEntry(
+            "missions", lambda: _run_missions_cycle(root, cycles, skip_heavy_tasks),
+            lambda c: cfg.run_missions,
+        ),
+        _SubsystemEntry(
+            "sync", lambda: _run_sync_cycle(cmd_mobile_desktop_sync),
+            lambda c: cfg.sync_every_cycles > 0 and (c == 1 or c % cfg.sync_every_cycles == 0),
+        ),
+        _SubsystemEntry(
+            "watchdog", lambda: _run_watchdog_cycle(root),
+            lambda c: cfg.watchdog_every_cycles > 0 and c % cfg.watchdog_every_cycles == 0,
+        ),
+        _SubsystemEntry(
+            "self_heal_cycle", lambda: _run_self_heal_cycle(root, cmd_self_heal),
+            lambda c: cfg.self_heal_every_cycles > 0 and (c == 2 or c % cfg.self_heal_every_cycles == 0),
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "self_test", lambda: _run_self_test_cycle(root),
+            lambda c: cfg.self_test_every_cycles > 0 and c % cfg.self_test_every_cycles == 0,
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "db_optimize", lambda: _run_db_optimize_cycle(cycles),
+            lambda c: c % 100 == 0,
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "kg_regression", lambda: _run_kg_regression_cycle(root),
+            lambda c: c % 10 == 0,
+        ),
+        _SubsystemEntry(
+            "usage_prediction", lambda: _run_usage_prediction_cycle(),
+            lambda c: c % 10 == 0,
+        ),
+        _SubsystemEntry(
+            "consolidation", lambda: _run_memory_consolidation_cycle(),
+            lambda c: c % 50 == 0,
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "entity_resolve", lambda: _run_entity_resolution_cycle(),
+            lambda c: c % 100 == 0,
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "auto_harvest", lambda: _run_auto_harvest_cycle(root),
+            lambda c: c % 200 == 0,
+            heavy=True,
+        ),
+        _SubsystemEntry(
+            "diagnostic_scan", lambda: _run_diagnostic_scan_cycle(root),
+            lambda c: c % 50 == 0,
+        ),
+    ]
+
+    for entry in schedule:
+        if not entry.is_due(cycles):
+            continue
+        if entry.heavy and skip_heavy_tasks:
+            logger.debug("Skipping heavy subsystem %s due to resource pressure", entry.name)
+            _emit(f"{entry.name}_skipped=resource_pressure")
+            continue
+        entry.run()
 
 
 def _run_diagnostic_scan_cycle(root: Path) -> None:
@@ -830,7 +912,7 @@ def _run_diagnostic_scan_cycle(root: Path) -> None:
         diag = DiagnosticEngine(root)
         issues = diag.run_quick_scan()
         score = diag.health_score(issues)
-        print(f"diagnostic_scan_score={score} issues={len(issues)}")
+        _emit(f"diagnostic_scan_score={score} issues={len(issues)}")
 
         # Persist to diagnostics_history.jsonl
         history_path = runtime_dir(root) / "diagnostics_history.jsonl"
@@ -846,7 +928,7 @@ def _run_diagnostic_scan_cycle(root: Path) -> None:
                 f.write(json.dumps(entry, default=str) + "\n")
         except OSError as exc:
             logger.debug("Failed to write diagnostics history: %s", exc)
-    except (ImportError, RuntimeError, OSError, ValueError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.debug("Diagnostic scan cycle failed: %s", exc)
 
 
@@ -863,7 +945,7 @@ def _run_core_autopilot(
     exec_cycle = execute and not safe_mode
     approve_cycle = approve_privileged and not safe_mode
     if safe_mode and (execute or approve_privileged):
-        print("safe_mode_override=execute_and_privileged_flags_forced_false")
+        _emit("safe_mode_override=execute_and_privileged_flags_forced_false")
     try:
         return cmd_ops_autopilot(
             snapshot_path=snapshot_path,
@@ -872,7 +954,7 @@ def _run_core_autopilot(
             approve_privileged=approve_cycle,
             auto_open_connectors=auto_open_connectors,
         )
-    except (OSError, sqlite3.Error, RuntimeError, ValueError, KeyError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("cycle", exc, message="Daemon autopilot cycle failed")
         return 2
 
@@ -892,9 +974,9 @@ def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
     if rc == 0:
         return 0
     consecutive_failures += 1
-    print(f"consecutive_failures={consecutive_failures}")
+    _emit(f"consecutive_failures={consecutive_failures}")
     if consecutive_failures >= max_consecutive_failures:
-        print("daemon_circuit_breaker_open=true cooldown=300s")
+        _emit("daemon_circuit_breaker_open=true cooldown=300s")
         _interruptible_sleep(300)  # 5-minute cooldown instead of exit
         return 0  # Reset counter after cooldown
     return consecutive_failures
@@ -902,7 +984,7 @@ def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
 
 def _emit_cycle_status(
     cycles: int,
-    state: dict,
+    state: CycleState | dict,
     last_pressure_level: str,
 ) -> None:
     """Log and print all per-cycle status and resource pressure info."""
@@ -916,7 +998,7 @@ def _emit_cycle_status(
     )
 
 
-def _should_skip_cycle(state: dict, idle_interval: int) -> str | None:
+def _should_skip_cycle(state: CycleState | dict, idle_interval: int) -> str | None:
     """Check if the cycle should be skipped.
 
     Returns a skip-reason string to print, or ``None`` when the cycle
@@ -955,7 +1037,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
 
         get_conversation_state()
         logger.debug("Conversation state initialized on daemon startup")
-    except (ImportError, OSError, ValueError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.debug("Conversation state init on daemon startup failed: %s", exc)
 
     # Warm-start STT backends in a background thread to eliminate cold-start
@@ -968,10 +1050,10 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     except (ImportError, OSError) as exc:
         logger.debug("STT backend warmup launch failed: %s", exc)
 
-    print("jarvis_daemon_started=true")
-    print(f"active_interval_s={active_interval}")
-    print(f"idle_interval_s={idle_interval}")
-    print(f"idle_after_s={idle_after}")
+    _emit("jarvis_daemon_started=true")
+    _emit(f"active_interval_s={active_interval}")
+    _emit(f"idle_interval_s={idle_interval}")
+    _emit(f"idle_after_s={idle_after}")
     try:
         global _cycle_start  # noqa: PLW0603
         while True:
@@ -983,7 +1065,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
 
             skip_reason = _should_skip_cycle(state, idle_interval)
             if skip_reason:
-                print(skip_reason)
+                _emit(skip_reason)
                 if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                     break
                 _interruptible_sleep(max(idle_interval, 600))
@@ -999,7 +1081,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                 cfg.approve_privileged, cfg.auto_open_connectors,
                 state["safe_mode"], cmd_ops_autopilot,
             )
-            print(f"cycle_rc={rc}")
+            _emit(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
             consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)
 
@@ -1010,14 +1092,14 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                     "Daemon cycle %d exceeded timeout: %.1fs > %ds",
                     cycles, cycle_elapsed, _CYCLE_TIMEOUT_S,
                 )
-                print(f"cycle_timeout_warning={cycle_elapsed:.1f}s")
+                _emit(f"cycle_timeout_warning={cycle_elapsed:.1f}s")
 
             if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                 break
-            print(f"sleep_s={state['sleep_seconds']}")
+            _emit(f"sleep_s={state['sleep_seconds']}")
             _interruptible_sleep(state["sleep_seconds"])
     except KeyboardInterrupt:
-        print("jarvis_daemon_stopped=true")
+        _emit("jarvis_daemon_stopped=true")
     finally:
         # Persist conversation state before shutdown
         try:
@@ -1026,7 +1108,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             _csm_shutdown = get_conversation_state()
             _csm_shutdown.save()
             logger.debug("Conversation state saved on daemon shutdown")
-        except (ImportError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Conversation state save on shutdown failed: %s", exc)
         remove_pid_file("daemon", root)
     return 0

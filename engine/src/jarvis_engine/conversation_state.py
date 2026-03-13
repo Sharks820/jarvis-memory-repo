@@ -53,6 +53,12 @@ _TIMELINE_VACUUM_THRESHOLD = 1000
 _MAX_ENTITY_LENGTH = 200
 _MAX_ENTITIES_PER_TURN = 50
 _MAX_ROLLING_SUMMARY_CHARS = 2000
+# ---------------------------------------------------------------------------
+# Compiled regex patterns — grouped by purpose for navigability.
+# All compiled once at module level for performance.
+# ---------------------------------------------------------------------------
+
+# Content sanitization patterns (used by _is_suspicious_entity)
 _RE_CODE_BLOCK = re.compile(r"```")
 _RE_URL_ENCODED = re.compile(r"(?:%[0-9A-Fa-f]{2}){3,}")
 _RE_BASE64_BLOCK = re.compile(r"^(?=[A-Za-z0-9+/]*[+/=])[A-Za-z0-9+/]{16,}={0,2}$")
@@ -67,7 +73,7 @@ _RE_PROMPT_INJECTION = re.compile(
     re.IGNORECASE,
 )
 
-# Entity extraction patterns (compiled once)
+# Entity extraction patterns — findall/finditer on turn text
 _RE_URL = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
 _RE_UNIX_PATH = re.compile(r"(?<!\w)(?:/[\w._-]+){2,}", re.ASCII)
 _RE_WIN_PATH = re.compile(r"[A-Z]:\\(?:[\w._-]+\\)*[\w._-]+", re.ASCII)
@@ -89,15 +95,14 @@ _RE_NAME_PREFIX = re.compile(
 )
 _RE_CAPITALIZED_SEQ = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
 
-# PII patterns — matches are masked before storage in anchor_entities
-# These are used with fullmatch() on extracted entity strings, so anchors
-# like \b are not needed (and would interfere with parenthesized phones).
+# PII patterns — fullmatch() on extracted entity strings for masking.
+# No \b anchors needed (fullmatch provides implicit anchoring).
 _RE_PII_PHONE = re.compile(r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 _RE_PII_SSN = re.compile(r"\d{3}-\d{2}-\d{4}")
 _RE_PII_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _RE_PII_CC = re.compile(r"\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}")
 
-# Decision detection patterns
+# Semantic extraction patterns — decisions and unresolved goals
 _RE_DECISIONS = re.compile(
     r"(?:^|\.\s+|\n)"
     r"("
@@ -108,8 +113,6 @@ _RE_DECISIONS = re.compile(
     r")",
     re.IGNORECASE | re.MULTILINE,
 )
-
-# Unresolved goal detection patterns
 _RE_UNRESOLVED = re.compile(
     r"(?:^|\.\s+|\n)"
     r"("
@@ -1362,9 +1365,10 @@ class ConversationStateManager:
                     if self._fernet_key is not None:
                         try:
                             data = _decrypt_json(raw_bytes, self._fernet_key)
-                        except Exception:  # noqa: BLE001 — last-resort decryption attempt
+                        except (ValueError, TypeError, KeyError) as _fernet_exc:
                             logger.debug(
-                                "Fernet decryption failed for conversation state file"
+                                "Fernet decryption failed for conversation state file: %s",
+                                _fernet_exc,
                             )
                     if data is None:
                         logger.warning("Could not parse conversation state file")
@@ -1386,7 +1390,7 @@ class ConversationStateManager:
                     self.save()
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.warning("Could not load conversation state: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — cryptography.fernet.InvalidToken and similar
+        except (KeyError, AttributeError, RuntimeError) as exc:
             logger.warning("Could not decrypt conversation state: %s", exc)
 
     # Reset

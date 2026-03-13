@@ -294,7 +294,7 @@ class TestDiscoverHarvestTopics:
 
     def test_returns_list_up_to_3(self, root) -> None:
         """Should return at most 3 topics."""
-        with patch("jarvis_engine.harvest_discovery._memory_db_path") as mock_db_path, \
+        with patch("jarvis_engine.harvest_discovery.memory_db_path") as mock_db_path, \
              patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             mock_db_path.return_value = root / "nonexistent.db"
             topics = _discover_harvest_topics(root)
@@ -303,7 +303,7 @@ class TestDiscoverHarvestTopics:
 
     def test_never_raises(self, root) -> None:
         """Should return empty list when DB does not exist and no other sources produce topics."""
-        with patch("jarvis_engine.harvest_discovery._memory_db_path") as mock_db_path, \
+        with patch("jarvis_engine.harvest_discovery.memory_db_path") as mock_db_path, \
              patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             # Point to a nonexistent DB so the path.exists() check returns False
             mock_db_path.return_value = root / "nonexistent.db"

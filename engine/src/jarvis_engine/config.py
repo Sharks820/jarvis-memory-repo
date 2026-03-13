@@ -97,3 +97,10 @@ def load_config() -> EngineConfig:
     if env_profile:
         cfg.profile = env_profile
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Path helpers — re-exported from _shared.py so that modules importing
+# config.py can also access them without an extra import.
+# ---------------------------------------------------------------------------
+from jarvis_engine._shared import memory_db_path, runtime_dir  # noqa: F401

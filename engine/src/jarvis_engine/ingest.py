@@ -1,3 +1,14 @@
+"""Basic ingestion pipeline: deduplication + MemoryStore append.
+
+This is the lightweight pipeline used by the mobile API and auto-ingest.
+For the enriched pipeline with chunking, embedding, branch classification,
+and fact extraction, see :mod:`jarvis_engine.memory.ingest`
+(:class:`EnrichedIngestPipeline`).
+
+Both pipelines are actively used -- do not consolidate without auditing
+all import sites.
+"""
+
 from __future__ import annotations
 
 import json

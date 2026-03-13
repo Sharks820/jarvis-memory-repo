@@ -32,7 +32,7 @@ def cli_dispatch(
     """
     try:
         result = _get_bus().dispatch(command)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — top-level CLI error boundary
         print(f"error: {exc}")
         raise SystemExit(1) from exc
 

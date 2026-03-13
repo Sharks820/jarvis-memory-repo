@@ -6,12 +6,13 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Protocol
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 logger = logging.getLogger(__name__)
 
-# Common exception tuple for health-route subsystem probes.
-_HEALTH_PROBE_ERRORS = (ImportError, RuntimeError, OSError, ValueError)
+# Alias — health probes use the shared subsystem error tuple.
+_HEALTH_PROBE_ERRORS = SUBSYSTEM_ERRORS
 
 
 class _HealthRouteServerProtocol(MobileRouteServerProtocol, Protocol):
@@ -187,7 +188,7 @@ class HealthRoutesMixin:
         combined: dict[str, Any] = {"ok": True}
         try:
             combined["growth"] = self._gather_intelligence_growth(reliability_cache=reliability_cache)
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
         try:
@@ -211,14 +212,14 @@ class HealthRoutesMixin:
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
             ][:10]
-        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Recent activity events gather failed: %s", exc)
             combined["recent_events"] = []
         try:
             from jarvis_engine.learning_missions import get_now_working_on
 
             combined["now_working_on"] = get_now_working_on(self._root)
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("now_working_on gather failed: %s", exc)
             combined["now_working_on"] = None
         self._write_json(HTTPStatus.OK, combined)
@@ -237,7 +238,7 @@ class HealthRoutesMixin:
             return
         try:
             provider_health = health_tracker.all_health()
-        except (AttributeError, RuntimeError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Gateway health query failed: %s", exc)
             provider_health = {}
         self._write_json(HTTPStatus.OK, {"ok": True, "providers": provider_health})
@@ -258,7 +259,7 @@ class HealthRoutesMixin:
             from dataclasses import asdict
 
             budget_dict = asdict(budget.status())
-        except (AttributeError, RuntimeError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Gateway budget query failed: %s", exc)
             budget_dict = {}
         self._write_json(HTTPStatus.OK, {"ok": True, "budget": budget_dict})

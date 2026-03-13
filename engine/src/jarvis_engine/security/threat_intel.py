@@ -119,11 +119,11 @@ class ThreatIntelFeed:
         """Best-effort cleanup of the thread pool on garbage collection."""
         try:
             self._pool.shutdown(wait=False)
-        except Exception:  # noqa: BLE001
+        except (RuntimeError, TypeError) as exc:
             logger.debug(
-                "Thread pool shutdown failed during ThreatIntelFeed garbage collection"
+                "Thread pool shutdown failed during ThreatIntelFeed garbage collection: %s",
+                exc,
             )
-            pass
 
     def __enter__(self) -> "ThreatIntelFeed":
         return self

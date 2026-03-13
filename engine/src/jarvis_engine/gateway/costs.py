@@ -338,7 +338,7 @@ class CostTracker:
         """Best-effort close on garbage collection."""
         try:
             self.close()
-        except Exception as exc:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+        except (OSError, RuntimeError, TypeError) as exc:
             logger.debug("__del__ cleanup failed: %s", exc)
 
     def __enter__(self) -> "CostTracker":

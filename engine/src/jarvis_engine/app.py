@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Callable, cast
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -113,6 +114,8 @@ from jarvis_engine.commands.sync_commands import (
 
 logger = logging.getLogger(__name__)
 
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
+
 
 def _register_with_fallback(
     bus: CommandBus,
@@ -127,7 +130,7 @@ def _register_with_fallback(
     """
     try:
         handler = handler_factory()
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Handler factory for %s failed, using fallback: %s",
             command_type.__name__,
@@ -159,7 +162,7 @@ def _init_memory_subsystem(
             from jarvis_engine.learning.temporal import migrate_temporal_metadata
 
             migrate_temporal_metadata(engine.db, engine.write_lock)
-        except (ImportError, sqlite3.Error, OSError) as exc_tm:
+        except _SUBSYSTEM_ERRORS_DB as exc_tm:
             logger.warning("Temporal metadata migration skipped: %s", exc_tm)
         pipeline = EnrichedIngestPipeline(
             engine,
@@ -168,7 +171,7 @@ def _init_memory_subsystem(
             knowledge_graph=kg,
         )
         return engine, embed_service, pipeline, kg
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc
         )
@@ -200,7 +203,7 @@ def _init_gateway(
             audit_path=runtime_dir(root) / GATEWAY_AUDIT_LOG,
         )
         return gateway, None, cost_tracker
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Intelligence Gateway, continuing without: %s", exc
         )
@@ -450,7 +453,7 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
                 write_lock=_sec_lock,
                 log_dir=_sec_log_dir,
             )
-        except (ImportError, OSError, sqlite3.Error) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.warning(
                 "Shared SecurityOrchestrator init failed (handlers will retry): %s", exc
             )
@@ -510,7 +513,7 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
                 bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
             except TypeError as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
-    except (ImportError, OSError, sqlite3.Error) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning("Failed to import defense commands: %s", exc)
 
 
@@ -587,7 +590,7 @@ def _init_learning_subsystem(
 
         if intent_classifier is not None:
             intent_classifier.set_feedback_tracker(feedback_tracker)
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Learning subsystem, continuing without: %s", exc
         )
@@ -751,7 +754,7 @@ def _init_harvesting_subsystem(
             cost_tracker=cost_tracker,
             budget_manager=budget_manager,
         )
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except _SUBSYSTEM_ERRORS_DB as exc:
         logger.warning(
             "Failed to initialize Harvesting subsystem, continuing without: %s", exc
         )
@@ -803,7 +806,7 @@ def _init_proactive_subsystem(
         proactive_engine = ProactiveEngine(
             rules=DEFAULT_TRIGGER_RULES, notifier=notifier, root=root
         )
-    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.warning(
             "Failed to initialize Proactive subsystem, continuing without: %s", exc
         )
@@ -861,7 +864,7 @@ def create_app(root: Path) -> CommandBus:
             from jarvis_engine.gateway.classifier import IntentClassifier
 
             intent_classifier = IntentClassifier(embed_service)
-        except (ImportError, RuntimeError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("IntentClassifier init failed: %s", exc)
 
     if pipeline is not None and gateway is not None:
@@ -906,7 +909,7 @@ def create_app(root: Path) -> CommandBus:
             try:
                 embed_service.embed("warmup", prefix="search_document")
                 logger.info("Embedding model warmed up")
-            except Exception as exc:  # noqa: BLE001 — background warmup must not crash
+            except (OSError, RuntimeError, ValueError) as exc:
                 logger.debug(
                     "Embedding warm-up failed (will load on first use): %s", exc
                 )

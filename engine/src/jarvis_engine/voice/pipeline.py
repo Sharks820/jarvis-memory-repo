@@ -257,7 +257,7 @@ def _flush_history_atexit() -> None:
     """Flush any unsaved conversation history on process exit."""
     try:
         _state.save_conversation_history(force=True)
-    except Exception as exc:  # noqa: BLE001 — best-effort at shutdown
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
         logger.debug("atexit conversation history flush failed: %s", exc)
 
     # Also save cross-LLM conversation state
@@ -266,7 +266,7 @@ def _flush_history_atexit() -> None:
 
         csm = get_conversation_state()
         csm.save()
-    except Exception as exc:  # noqa: BLE001 — best-effort at shutdown
+    except (OSError, ValueError, RuntimeError, TypeError, ImportError) as exc:
         logger.debug("atexit conversation state flush failed: %s", exc)
 
 

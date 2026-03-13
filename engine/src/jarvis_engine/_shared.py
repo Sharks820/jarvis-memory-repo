@@ -1,18 +1,20 @@
 """Shared utility functions used across multiple jarvis_engine modules.
 
 Consolidates duplicated helpers to a single source of truth:
-- load_json_file: safe JSON file reads with default-on-failure
-- atomic_write_json: safe JSON file writes with atomic replace
-- env_int: bounded integer env-var reader
-- safe_float / safe_int: type coercion with defaults
+- load_json_file / atomic_write_json: safe JSON file I/O
+- env_int / safe_float / safe_int: type coercion with defaults
 - check_path_within_root: path traversal guard
 - win_hidden_subprocess_kwargs: Windows subprocess window suppression
-- load_personal_vocab_lines: personal_vocab.txt reader (used by stt + stt_postprocess)
-- sanitize_fts_query / FTS5_SPECIAL_RE / FTS5_KEYWORDS: FTS5 query sanitization
-  (used by memory/engine.py and knowledge/graph.py)
-- now_iso: UTC ISO-8601 timestamp (used by security modules)
-- make_thread_aware_repo_root: thread-local repo_root factory (used by mobile_api)
+- load_personal_vocab_lines: personal_vocab.txt reader (stt + stt_postprocess)
+- now_iso / parse_iso_timestamp: UTC timestamp helpers
+- make_thread_aware_repo_root: thread-local repo_root factory (mobile_api)
+- memory_db_path / runtime_dir: canonical project path helpers
+- extract_keywords / is_privacy_sensitive: text analysis
+- get_local_model / get_fast_local_model: LLM model name resolution
+- make_task_id / recency_weight: task and scoring utilities
 
+FTS5/DB helpers (sanitize_fts_query, FTS5_SPECIAL_RE, FTS5_KEYWORDS,
+placeholder_csv) are re-exported from :mod:`jarvis_engine._db_pragmas`.
 """
 
 from __future__ import annotations
@@ -334,12 +336,14 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         return _personal_vocab_cache["raw"]
 
 
-# FTS5 query sanitization (shared by memory/engine.py and knowledge/graph.py)
-
-# FTS5 special characters that must be escaped in user queries.
-# Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
-FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
-FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
+# FTS5 query sanitization — canonical home is _db_pragmas.py;
+# re-exported here for backward compatibility.
+from jarvis_engine._db_pragmas import (  # noqa: F401
+    FTS5_KEYWORDS,
+    FTS5_SPECIAL_RE,
+    sanitize_fts_query,
+    placeholder_csv,
+)
 
 
 def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
@@ -423,18 +427,6 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
         return entries[-limit:]
     return _parse_lines(full_text)[-limit:]
 
-
-def sanitize_fts_query(query: str) -> str:
-    """Sanitize a user query for FTS5 MATCH to prevent injection.
-
-    Strips FTS5 special characters that could alter query semantics
-    and removes FTS5 boolean operators.
-    """
-    sanitized = FTS5_SPECIAL_RE.sub(" ", query)
-    # Remove FTS5 boolean operators to prevent query injection
-    tokens = sanitized.split()
-    tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
-    return " ".join(tokens).strip()
 
 # Utilities moved from _constants.py (these are functions, not constants)
 
@@ -545,9 +537,5 @@ def recency_weight(
     return math.exp(-delta_hours / decay_hours)
 
 
-def placeholder_csv(count: int) -> str:
-    """Return a bounded SQLite placeholder list for IN clauses."""
-    if count <= 0 or count > 900:
-        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
-    return ",".join("?" for _ in range(count))
+# placeholder_csv re-exported from _db_pragmas above
 

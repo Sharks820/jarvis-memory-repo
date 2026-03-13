@@ -14,6 +14,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict, cast
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
+
 if TYPE_CHECKING:
     from jarvis_engine.activity_feed import ActivityEvent
 
@@ -237,6 +239,6 @@ def _compute_command_reliability() -> CommandReliability:
             latest_details = getattr(pressure_events[0], "details", {})
             if isinstance(latest_details, dict):
                 result["last_pressure_level"] = str(latest_details.get("level", "none"))
-    except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.debug("Command reliability metrics unavailable: %s", exc)
     return cast(CommandReliability, result)

@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from jarvis_engine.sync.engine import SyncEngine
     from jarvis_engine.sync.transport import SyncTransport
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
+
 from jarvis_engine.commands.sync_commands import (
     SyncPullCommand,
     SyncPullResult,
@@ -31,6 +33,8 @@ except ImportError:  # cryptography not installed
 
 
 logger = logging.getLogger(__name__)
+
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
 
 
 class SyncPullHandler:
@@ -56,7 +60,7 @@ class SyncPullHandler:
 
         try:
             outgoing = self._sync_engine.compute_outgoing(cmd.device_id)
-        except (sqlite3.Error, OSError, ValueError, KeyError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncPull compute_outgoing failed: %s", exc)
             return SyncPullResult(message="error: sync pull failed")
 
@@ -72,7 +76,7 @@ class SyncPullHandler:
             }
             encrypted = self._transport.encrypt(payload)
             encoded = base64.b64encode(encrypted).decode("ascii")
-        except (ValueError, TypeError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
         except _InvalidToken as exc:
@@ -115,7 +119,7 @@ class SyncPushHandler:
         try:
             raw_token = base64.b64decode(cmd.encrypted_payload)
             payload = self._transport.decrypt(raw_token)
-        except (ValueError, TypeError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
         except _InvalidToken as exc:
@@ -126,7 +130,7 @@ class SyncPushHandler:
 
         try:
             result = self._sync_engine.apply_incoming(payload, cmd.device_id)
-        except (sqlite3.Error, OSError, ValueError, KeyError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncPush apply_incoming failed: %s", exc)
             return SyncPushResult(message="error: apply failed")
 
@@ -153,7 +157,7 @@ class SyncStatusHandler:
 
         try:
             status = self._sync_engine.sync_status()
-        except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.error("SyncStatus failed: %s", exc)
             return SyncStatusResult(message="error: sync status failed")
 

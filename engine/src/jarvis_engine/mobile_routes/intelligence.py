@@ -8,13 +8,14 @@ from http import HTTPStatus
 from typing import Any, Protocol
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import KG_METRICS_LOG
-from jarvis_engine._constants import SELF_TEST_HISTORY
+from jarvis_engine._constants import KG_METRICS_LOG, SELF_TEST_HISTORY, SUBSYSTEM_ERRORS
 from jarvis_engine._shared import memory_db_path
 from jarvis_engine._shared import runtime_dir
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 logger = logging.getLogger(__name__)
+
+_SUBSYSTEM_ERRORS_DB = SUBSYSTEM_ERRORS + (sqlite3.Error,)
 
 
 class _IntelligenceRouteServerProtocol(MobileRouteServerProtocol, Protocol):
@@ -73,7 +74,7 @@ def _gather_kg_metrics(root: Any, metrics: dict[str, Any]) -> None:
                             metrics["growth_trend"] = "stable"
             except (ValueError, TypeError, KeyError) as exc:
                 logger.debug("intelligence growth metric failed: %s", exc)
-    except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
 
 
@@ -91,9 +92,9 @@ def _gather_activity_corrections(metrics: dict[str, Any]) -> None:
         try:
             recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
             metrics["corrections_last_7d"] = len(recent_events)
-        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("intelligence growth metric failed: %s", exc)
-    except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+    except SUBSYSTEM_ERRORS as exc:
         logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 
 
@@ -207,7 +208,7 @@ class IntelligenceRoutesMixin:
             mem_engine = server.ensure_memory_engine()
             if mem_engine is not None:
                 metrics["memory_records"] = mem_engine.count_records()
-        except (ImportError, RuntimeError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         _gather_self_test_score(root, metrics)
@@ -254,7 +255,7 @@ class IntelligenceRoutesMixin:
                     return
 
             self._write_json(HTTPStatus.OK, csm.get_state_snapshot(full=full))
-        except (ImportError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("conversation state endpoint failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
 
@@ -282,14 +283,14 @@ class IntelligenceRoutesMixin:
 
                 pt = PreferenceTracker(lrn_db)
                 summary["preferences"] = pt.get_preferences()
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except _SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: preferences unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
                 ft = ResponseFeedbackTracker(lrn_db)
                 summary["route_quality"] = ft.get_all_route_quality()
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except _SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: route quality unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.usage_patterns import UsagePatternTracker
@@ -299,9 +300,9 @@ class IntelligenceRoutesMixin:
                 summary["hourly_distribution"] = ut.get_hourly_distribution()
                 now = datetime.now(UTC)
                 summary["current_context"] = ut.predict_context(now.hour, now.weekday())
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except _SUBSYSTEM_ERRORS_DB as exc:
                 logger.debug("Learning summary: usage patterns unavailable: %s", exc)
-        except (ImportError, sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.debug("Learning summary: DB unavailable: %s", exc)
         finally:
             if lrn_db is not None:
@@ -337,7 +338,7 @@ class IntelligenceRoutesMixin:
                         content=f"[phone-intelligence:{category}] {content}",
                     )
                     merged += 1
-                except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+                except _SUBSYSTEM_ERRORS_DB as exc:
                     logger.debug("Phone intelligence merge failed: %s", exc)
 
             self._write_json(HTTPStatus.OK, {
@@ -346,7 +347,7 @@ class IntelligenceRoutesMixin:
                 "total_received": len(items),
             })
             logger.info("Intelligence merge: %d items from phone", merged)
-        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("intelligence/merge failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence merge failed.",
@@ -381,7 +382,7 @@ class IntelligenceRoutesMixin:
                                 "category": "knowledge",
                                 "confidence": row["confidence"],
                             })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                    except _SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("KG nodes export failure: %s", exc)
 
                     # Memory records
@@ -398,7 +399,7 @@ class IntelligenceRoutesMixin:
                                 "category": row["kind"] or "memory",
                                 "confidence": row["confidence"],
                             })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                    except _SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("Memory records export failure: %s", exc)
 
                     # User preferences
@@ -414,7 +415,7 @@ class IntelligenceRoutesMixin:
                                 "category": "preference",
                                 "confidence": min(row["score"] / 10.0, 1.0),
                             })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                    except _SUBSYSTEM_ERRORS_DB as exc:
                         logger.warning("Preferences export failure: %s", exc)
                 finally:
                     db.close()
@@ -425,7 +426,7 @@ class IntelligenceRoutesMixin:
                 "total": len(items),
             })
             logger.info("Intelligence export: %d items for phone", len(items))
-        except (ValueError, KeyError, TypeError, OSError, sqlite3.Error, ImportError) as exc:
+        except _SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("intelligence/export failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",
@@ -440,7 +441,7 @@ class IntelligenceRoutesMixin:
 
             telemetry = get_voice_telemetry()
             self._write_json(HTTPStatus.OK, dict(telemetry.get_endpoint_response()))
-        except (ImportError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("voice/latency endpoint failed: %s", exc)
             self._write_json(HTTPStatus.OK, {
                 "p50_ms": 0.0,

@@ -356,7 +356,7 @@ class ModelGateway:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception as exc:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+        except (OSError, RuntimeError, TypeError) as exc:
             logger.debug("__del__ cleanup failed: %s", exc)
 
     def __enter__(self) -> "ModelGateway":
@@ -879,6 +879,9 @@ class ModelGateway:
 
         # Budget enforcement: check before making the call
         if self._budget is not None:
+            # Import here to avoid circular import at module level
+            from jarvis_engine.gateway.budget import BudgetExceededError
+
             try:
                 # Estimate cost: use prompt size for input, max_tokens for output
                 input_estimate = self._estimate_tokens(messages)
@@ -886,29 +889,24 @@ class ModelGateway:
                     model, input_estimate, max_tokens
                 )
                 self._budget.check_budget(estimated)
-            except Exception as exc:  # noqa: BLE001 — budget check boundary
-                # Import here to avoid circular import at module level
-                from jarvis_engine.gateway.budget import BudgetExceededError
-
-                if isinstance(exc, BudgetExceededError):
-                    logger.warning("Budget exceeded, routing to local Ollama: %s", exc)
-                    fallback_model = get_local_model()
-                    response = self._call_ollama(
-                        messages, fallback_model, max_tokens, temperature
-                    )
-                    response.fallback_used = True
-                    response.fallback_reason = f"budget_exceeded:{exc.period}"
-                    t0 = time.perf_counter()
-                    latency_ms = 0.0
-                    self._log_completion(
-                        response,
-                        f"budget_exceeded:{exc.period}",
-                        route_reason,
-                        latency_ms,
-                        privacy_routed,
-                    )
-                    return response
-                raise  # re-raise non-budget exceptions
+            except BudgetExceededError as exc:
+                logger.warning("Budget exceeded, routing to local Ollama: %s", exc)
+                fallback_model = get_local_model()
+                response = self._call_ollama(
+                    messages, fallback_model, max_tokens, temperature
+                )
+                response.fallback_used = True
+                response.fallback_reason = f"budget_exceeded:{exc.period}"
+                t0 = time.perf_counter()
+                latency_ms = 0.0
+                self._log_completion(
+                    response,
+                    f"budget_exceeded:{exc.period}",
+                    route_reason,
+                    latency_ms,
+                    privacy_routed,
+                )
+                return response
 
         response, audit_reason, t0 = self._route_to_provider(
             messages,
