@@ -12,7 +12,7 @@ from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine.daemon_loop import CycleState
 from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import harvest_discovery as harvest_discovery_mod
-from jarvis_engine import cli_ops as cli_ops_mod
+from jarvis_engine.cli import ops as cli_ops_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
@@ -335,7 +335,7 @@ class TestLearningMissionPerformance:
 
     def test_mission_uses_parallel_fetching(self, tmp_path: Path, monkeypatch) -> None:
         """H2: Mission should fetch pages in parallel."""
-        from jarvis_engine import learning_missions
+        from jarvis_engine.learning import missions as learning_missions
 
         # Track concurrent execution
         active_fetches = 0
@@ -381,7 +381,7 @@ class TestLearningMissionPerformance:
 
     def test_mission_cache_avoids_refetch(self, tmp_path: Path, monkeypatch) -> None:
         """M3: Mission should cache fetched pages."""
-        from jarvis_engine import learning_missions
+        from jarvis_engine.learning import missions as learning_missions
 
         fetch_count = 0
 
@@ -866,7 +866,7 @@ class TestDaemonAutoHarvest:
             {"mission_id": "m-3", "topic": "pending topic review", "status": "pending"},
         ]), encoding="utf-8")
 
-        with patch("jarvis_engine.learning_missions.load_missions", side_effect=lambda r: json.loads(
+        with patch("jarvis_engine.learning.missions.load_missions", side_effect=lambda r: json.loads(
             (r / ".planning" / "missions.json").read_text(encoding="utf-8")
         )):
             topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
@@ -1393,7 +1393,7 @@ class TestImprovedTopicDiscovery:
     ) -> None:
         """When only mission data exists, should fall through to source 5."""
 
-        with patch("jarvis_engine.learning_missions.load_missions", return_value=[
+        with patch("jarvis_engine.learning.missions.load_missions", return_value=[
             {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
         ]):
             topics = daemon_loop_mod.discover_harvest_topics(tmp_path)
@@ -1453,7 +1453,7 @@ class TestImprovedTopicDiscovery:
         self, tmp_path: Path
     ) -> None:
         """Source 5 should skip single-word mission topics (poor quality)."""
-        with patch("jarvis_engine.learning_missions.load_missions", return_value=[
+        with patch("jarvis_engine.learning.missions.load_missions", return_value=[
             {"mission_id": "m-1", "topic": "Python", "status": "completed"},
             {"mission_id": "m-2", "topic": "AI", "status": "done"},
         ]):

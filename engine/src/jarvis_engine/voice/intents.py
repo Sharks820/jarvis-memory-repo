@@ -552,7 +552,7 @@ def _handle_mission_cancel(ctx: _DispatchCtx) -> tuple[str, int]:
             mission_id = ctx.text[ctx.lowered.index(prefix) + len(prefix):].strip()
             break
     if not mission_id:
-        from jarvis_engine.learning_missions import load_missions as _load_missions
+        from jarvis_engine.learning.missions import load_missions as _load_missions
         missions = _load_missions(ctx.repo_root_fn())
         for m in reversed(missions):
             if str(m.get("status", "")).lower() == "pending":
@@ -1024,11 +1024,11 @@ def _import_voice_commands():
         cmd_phone_spam_guard, cmd_phone_action,
         cmd_run_task, cmd_ingest, cmd_status,
     )
-    from jarvis_engine.cli_ops import (
+    from jarvis_engine.cli.ops import (
         cmd_ops_autopilot, cmd_ops_sync, cmd_ops_brief,
         cmd_automation_run, cmd_mission_cancel, cmd_mission_status,
     )
-    from jarvis_engine.cli_knowledge import cmd_brain_context, cmd_brain_status
+    from jarvis_engine.cli.knowledge import cmd_brain_context, cmd_brain_status
     import jarvis_engine.voice.pipeline as _vp
 
     cmd_fns: dict[str, _CommandFn] = {

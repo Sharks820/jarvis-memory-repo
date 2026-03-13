@@ -347,7 +347,7 @@ class CommandRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.learning_missions import get_active_missions
+            from jarvis_engine.learning.missions import get_active_missions
 
             missions = get_active_missions(self._root)
             self._write_json(HTTPStatus.OK, {
@@ -381,7 +381,7 @@ class CommandRoutesMixin:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Query parameter 'id' is required."})
             return
         try:
-            from jarvis_engine.learning_missions import get_mission_steps
+            from jarvis_engine.learning.missions import get_mission_steps
 
             steps = get_mission_steps(self._root, mission_id)
             self._write_json(HTTPStatus.OK, {
@@ -403,7 +403,7 @@ class CommandRoutesMixin:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
-            from jarvis_engine.learning_missions import pause_mission
+            from jarvis_engine.learning.missions import pause_mission
 
             mission = pause_mission(self._root, mission_id=mission_id)
             self._write_json(HTTPStatus.OK, {
@@ -427,7 +427,7 @@ class CommandRoutesMixin:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
-            from jarvis_engine.learning_missions import resume_mission
+            from jarvis_engine.learning.missions import resume_mission
 
             mission = resume_mission(self._root, mission_id=mission_id)
             self._write_json(HTTPStatus.OK, {
@@ -451,7 +451,7 @@ class CommandRoutesMixin:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
-            from jarvis_engine.learning_missions import restart_mission
+            from jarvis_engine.learning.missions import restart_mission
 
             mission = restart_mission(self._root, mission_id=mission_id)
             self._write_json(HTTPStatus.OK, {

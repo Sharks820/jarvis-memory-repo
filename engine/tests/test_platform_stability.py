@@ -115,7 +115,7 @@ class TestSilentExceptLogging:
 
     def test_mission_topic_source1_logs_on_error(self, tmp_path):
         """Source 1 (recent queries) logs debug on DB error."""
-        from jarvis_engine.learning_missions import auto_generate_missions
+        from jarvis_engine.learning.missions import auto_generate_missions
 
         missions_path = tmp_path / ".planning" / "missions.json"
         missions_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +128,7 @@ class TestSilentExceptLogging:
         conn = sqlite3.connect(str(db_path))
         conn.close()
 
-        with patch("jarvis_engine.learning_missions.logger") as mock_logger:
+        with patch("jarvis_engine.learning.missions.logger") as mock_logger:
             auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
             # Should have called logger.debug at least once for a failed query
             debug_calls = [
@@ -139,7 +139,7 @@ class TestSilentExceptLogging:
 
     def test_mission_topic_source2_logs_on_error(self, tmp_path):
         """Source 2 (KG gaps) logs debug on DB error."""
-        from jarvis_engine.learning_missions import auto_generate_missions
+        from jarvis_engine.learning.missions import auto_generate_missions
 
         missions_path = tmp_path / ".planning" / "missions.json"
         missions_path.parent.mkdir(parents=True, exist_ok=True)
@@ -153,7 +153,7 @@ class TestSilentExceptLogging:
         conn.execute("CREATE TABLE records (ts TEXT, summary TEXT, source TEXT)")
         conn.close()
 
-        with patch("jarvis_engine.learning_missions.logger") as mock_logger:
+        with patch("jarvis_engine.learning.missions.logger") as mock_logger:
             auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
             debug_calls = [
                 c for c in mock_logger.debug.call_args_list
@@ -387,7 +387,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 5 facts from 5 groups."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
@@ -408,7 +408,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 0 facts with 1 error(s)."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
@@ -427,7 +427,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 0 facts from 3 groups."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=True)
 
@@ -583,7 +583,7 @@ class TestProactiveDiagnostics:
         mock_bus.dispatch.return_value = mock_result
 
         with patch("jarvis_engine._cli_helpers._get_bus", return_value=mock_bus):
-            from jarvis_engine.cli_proactive import cmd_proactive_check
+            from jarvis_engine.cli.proactive import cmd_proactive_check
             rc = cmd_proactive_check(snapshot_path="")
 
         assert rc == 0
@@ -638,7 +638,7 @@ class TestDaemonConsolidationUsesBus:
         """The consolidation CLI uses ConsolidateMemoryCommand via CQRS."""
         # After SoC split, cmd_consolidate lives in cli_knowledge
         import inspect
-        from jarvis_engine import cli_knowledge as cli_knowledge_mod
+        from jarvis_engine.cli import knowledge as cli_knowledge_mod
         source = inspect.getsource(cli_knowledge_mod)
         # Verify it uses ConsolidateMemoryCommand, not MemoryConsolidator directly
         assert "ConsolidateMemoryCommand" in source

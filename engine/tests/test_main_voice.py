@@ -13,8 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import main as main_mod
-from jarvis_engine import cli_voice as cli_voice_mod
-from jarvis_engine import cli_voice as cli_voice_mod
+from jarvis_engine.cli import voice as cli_voice_mod
 from jarvis_engine.memory import brain as brain_memory_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine.voice import context as voice_context_mod

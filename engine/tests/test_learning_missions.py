@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from jarvis_engine import learning_missions
-from jarvis_engine.learning_missions import (
+from jarvis_engine.learning import missions as learning_missions
+from jarvis_engine.learning.missions import (
     _extract_candidates,
     _keywords,
     _mission_queries,

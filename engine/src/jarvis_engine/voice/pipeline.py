@@ -804,7 +804,7 @@ def _resolve_max_tokens(route: str, web_searched: bool, force_web: bool) -> int:
 def _append_runtime_mission_context(system_parts: list[str]) -> None:
     """Inject the currently running learning mission into prompt assembly."""
     try:
-        from jarvis_engine.learning_missions import get_now_working_on
+        from jarvis_engine.learning.missions import get_now_working_on
 
         now_working = get_now_working_on(repo_root())
     except (ImportError, OSError, RuntimeError, ValueError) as exc:

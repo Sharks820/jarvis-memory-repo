@@ -151,8 +151,8 @@ class TestCmdStatusResponse:
         mock_result.events = []
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.cli_system._get_bus", return_value=mock_bus):
-            from jarvis_engine.cli_system import cmd_status
+        with patch("jarvis_engine.cli.system._get_bus", return_value=mock_bus):
+            from jarvis_engine.cli.system import cmd_status
             rc = cmd_status()
 
         assert rc == 0

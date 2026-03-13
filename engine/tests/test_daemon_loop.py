@@ -291,7 +291,7 @@ class TestCollectFromLearningMissions:
             {"mission_id": "m2", "topic": "single", "status": "completed"},  # 1 word
             {"mission_id": "m3", "topic": "rust programming", "status": "pending"},
         ]
-        with patch("jarvis_engine.learning_missions.load_missions", return_value=missions):
+        with patch("jarvis_engine.learning.missions.load_missions", return_value=missions):
             candidates: list[str] = []
             seen: set[str] = set()
             _collect_from_learning_missions(root, candidates, seen, set(), 5)
@@ -300,7 +300,7 @@ class TestCollectFromLearningMissions:
 
     def test_handles_load_error(self, root) -> None:
         """Should handle load_missions errors gracefully."""
-        with patch("jarvis_engine.learning_missions.load_missions", side_effect=OSError("disk")):
+        with patch("jarvis_engine.learning.missions.load_missions", side_effect=OSError("disk")):
             candidates: list[str] = []
             _collect_from_learning_missions(root, candidates, set(), set(), 5)
         assert candidates == []

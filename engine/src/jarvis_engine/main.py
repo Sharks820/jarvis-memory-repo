@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jarvis_engine.config import repo_root
 
-from jarvis_engine.cli_ops import (  # noqa: E402
+from jarvis_engine.cli.ops import (  # noqa: E402
     cmd_ops_brief,
     cmd_ops_export_actions,
     cmd_ops_sync,
@@ -22,7 +22,7 @@ from jarvis_engine.cli_ops import (  # noqa: E402
     cmd_growth_audit,
     cmd_intelligence_dashboard,
 )
-from jarvis_engine.cli_knowledge import (  # noqa: E402
+from jarvis_engine.cli.knowledge import (  # noqa: E402
     cmd_brain_status,
     cmd_brain_context,
     cmd_brain_compact,
@@ -40,7 +40,7 @@ from jarvis_engine.cli_knowledge import (  # noqa: E402
     cmd_cross_branch_query,
     cmd_flag_expired,
 )
-from jarvis_engine.cli_voice import (  # noqa: E402
+from jarvis_engine.cli.voice import (  # noqa: E402
     cmd_voice_list,
     cmd_voice_say,
     cmd_voice_enroll,
@@ -49,7 +49,7 @@ from jarvis_engine.cli_voice import (  # noqa: E402
     cmd_voice_run,
     cmd_wake_word,
 )
-from jarvis_engine.cli_system import (  # noqa: E402
+from jarvis_engine.cli.system import (  # noqa: E402
     cmd_gaming_mode,
     cmd_open_web,
     cmd_status,
@@ -68,7 +68,7 @@ from jarvis_engine.cli_system import (  # noqa: E402
     cmd_daemon_run,
     cmd_weather,
 )
-from jarvis_engine.cli_security import (  # noqa: E402
+from jarvis_engine.cli.security import (  # noqa: E402
     cmd_owner_guard,
     cmd_connect_status,
     cmd_connect_grant,
@@ -76,12 +76,12 @@ from jarvis_engine.cli_security import (  # noqa: E402
     cmd_phone_action,
     cmd_phone_spam_guard,
 )
-from jarvis_engine.cli_tasks import (  # noqa: E402
+from jarvis_engine.cli.tasks import (  # noqa: E402
     cmd_route,
     cmd_run_task,
     cmd_web_research,
 )
-from jarvis_engine.cli_proactive import (  # noqa: E402
+from jarvis_engine.cli.proactive import (  # noqa: E402
     cmd_proactive_check,
     cmd_cost_reduction,
     cmd_self_test,

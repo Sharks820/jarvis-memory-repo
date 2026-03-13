@@ -9,7 +9,7 @@ import pytest
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import gaming_mode as gaming_mode_mod
-from jarvis_engine import cli_ops as cli_ops_mod
+from jarvis_engine.cli import ops as cli_ops_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
 from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
@@ -216,7 +216,7 @@ class TestMissionSecurity:
 
     def test_mission_content_limits(self, tmp_path: Path) -> None:
         """Mission should enforce content size limits."""
-        from jarvis_engine import learning_missions
+        from jarvis_engine.learning import missions as learning_missions
         
         # Topic too long should be truncated
         long_topic = "A" * 300

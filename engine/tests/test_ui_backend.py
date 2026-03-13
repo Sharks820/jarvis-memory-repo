@@ -38,7 +38,7 @@ class TestMissionCancel:
 
     def test_cancel_mission_sets_status(self):
         """cancel_mission sets status to 'cancelled' and returns updated mission."""
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         root = self._make_tmp_root()
         self._create_missions_file(root, [
@@ -52,13 +52,13 @@ class TestMissionCancel:
         assert result["status"] == "cancelled"
         assert result["mission_id"] == "m-001"
         # Verify persisted to disk
-        from jarvis_engine.learning_missions import load_missions
+        from jarvis_engine.learning.missions import load_missions
         missions = load_missions(root)
         assert missions[0]["status"] == "cancelled"
 
     def test_cancel_mission_not_found(self):
         """cancel_mission raises ValueError for unknown mission_id."""
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         root = self._make_tmp_root()
         self._create_missions_file(root, [])
@@ -68,7 +68,7 @@ class TestMissionCancel:
 
     def test_cancel_completed_mission_raises(self):
         """cancel_mission raises ValueError for already-completed missions."""
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         root = self._make_tmp_root()
         self._create_missions_file(root, [
@@ -81,7 +81,7 @@ class TestMissionCancel:
 
     def test_cancel_already_cancelled_mission_raises(self):
         """cancel_mission raises ValueError for already-cancelled missions."""
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         root = self._make_tmp_root()
         self._create_missions_file(root, [
@@ -94,7 +94,7 @@ class TestMissionCancel:
 
     def test_cancel_mission_logs_activity(self):
         """cancel_mission logs a MISSION_STATE_CHANGE activity event."""
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         root = self._make_tmp_root()
         self._create_missions_file(root, [
@@ -120,7 +120,7 @@ class TestMissionCancelHandler:
         root = Path(tempfile.mkdtemp())
         handler = MissionCancelHandler(root)
 
-        with patch("jarvis_engine.learning_missions.cancel_mission") as mock_cancel:
+        with patch("jarvis_engine.learning.missions.cancel_mission") as mock_cancel:
             mock_cancel.return_value = {"mission_id": "m-001", "status": "cancelled", "topic": "test"}
             result = handler.handle(MissionCancelCommand(mission_id="m-001"))
 
@@ -134,7 +134,7 @@ class TestMissionCancelHandler:
         root = Path(tempfile.mkdtemp())
         handler = MissionCancelHandler(root)
 
-        with patch("jarvis_engine.learning_missions.cancel_mission") as mock_cancel:
+        with patch("jarvis_engine.learning.missions.cancel_mission") as mock_cancel:
             mock_cancel.side_effect = ValueError("mission not found: m-bad")
             result = handler.handle(MissionCancelCommand(mission_id="m-bad"))
 
@@ -311,7 +311,7 @@ class TestResponseOutputLines:
         ]
         mock_result.total_count = 1
 
-        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_status
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_status(last=5)
@@ -329,7 +329,7 @@ class TestResponseOutputLines:
         mock_result.mission = {"mission_id": "m-001", "topic": "Test", "status": "cancelled"}
         mock_result.message = ""
 
-        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_cancel
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_cancel(mission_id="m-001")
@@ -346,7 +346,7 @@ class TestResponseOutputLines:
         mock_result.missions = []
         mock_result.total_count = 0
 
-        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli.ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_status
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_status(last=5)

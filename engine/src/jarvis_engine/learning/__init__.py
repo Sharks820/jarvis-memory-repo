@@ -1,1 +1,22 @@
 """Continuous learning module for automatic knowledge extraction."""
+
+from jarvis_engine.learning.missions import (  # noqa: F401
+    create_learning_mission,
+    run_learning_mission,
+    load_missions,
+    cancel_mission,
+    auto_generate_missions,
+    get_mission_steps,
+    get_active_missions,
+    get_now_working_on,
+    pause_mission,
+    resume_mission,
+    restart_mission,
+    mission_dashboard_metrics,
+    retry_failed_missions,
+    MissionStep,
+    MissionRecord,
+    VerifiedFinding,
+    MissionReport,
+    MISSION_DEFAULT_SOURCES,
+)

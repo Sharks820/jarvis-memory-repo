@@ -214,7 +214,7 @@ class MissionCreateHandler:
         self._root = root
 
     def handle(self, cmd: MissionCreateCommand) -> MissionCreateResult:
-        from jarvis_engine.learning_missions import create_learning_mission
+        from jarvis_engine.learning.missions import create_learning_mission
 
         try:
             mission = create_learning_mission(
@@ -235,7 +235,7 @@ class MissionStatusHandler:
         self._root = root
 
     def handle(self, cmd: MissionStatusCommand) -> MissionStatusResult:
-        from jarvis_engine.learning_missions import load_missions
+        from jarvis_engine.learning.missions import load_missions
 
         missions = load_missions(self._root)
         return MissionStatusResult(
@@ -249,7 +249,7 @@ class MissionCancelHandler:
         self._root = root
 
     def handle(self, cmd: MissionCancelCommand) -> MissionCancelResult:
-        from jarvis_engine.learning_missions import cancel_mission
+        from jarvis_engine.learning.missions import cancel_mission
 
         try:
             mission = cancel_mission(self._root, mission_id=cmd.mission_id)
@@ -281,7 +281,7 @@ class MissionRunHandler:
         return self._pipeline
 
     def handle(self, cmd: MissionRunCommand) -> MissionRunResult:
-        from jarvis_engine.learning_missions import run_learning_mission
+        from jarvis_engine.learning.missions import run_learning_mission
 
         try:
             report = run_learning_mission(
@@ -411,7 +411,7 @@ class MissionPauseHandler:
         self._root = root
 
     def handle(self, cmd: MissionPauseCommand) -> MissionPauseResult:
-        from jarvis_engine.learning_missions import pause_mission
+        from jarvis_engine.learning.missions import pause_mission
 
         try:
             mission = pause_mission(self._root, mission_id=cmd.mission_id)
@@ -426,7 +426,7 @@ class MissionResumeHandler:
         self._root = root
 
     def handle(self, cmd: MissionResumeCommand) -> MissionResumeResult:
-        from jarvis_engine.learning_missions import resume_mission
+        from jarvis_engine.learning.missions import resume_mission
 
         try:
             mission = resume_mission(self._root, mission_id=cmd.mission_id)
@@ -441,7 +441,7 @@ class MissionRestartHandler:
         self._root = root
 
     def handle(self, cmd: MissionRestartCommand) -> MissionRestartResult:
-        from jarvis_engine.learning_missions import restart_mission
+        from jarvis_engine.learning.missions import restart_mission
 
         try:
             mission = restart_mission(self._root, mission_id=cmd.mission_id)
@@ -456,7 +456,7 @@ class MissionStepsHandler:
         self._root = root
 
     def handle(self, cmd: MissionStepsCommand) -> MissionStepsResult:
-        from jarvis_engine.learning_missions import get_mission_steps
+        from jarvis_engine.learning.missions import get_mission_steps
 
         steps = get_mission_steps(self._root, cmd.mission_id)
         return MissionStepsResult(steps=steps, mission_id=cmd.mission_id)
@@ -467,7 +467,7 @@ class MissionActiveHandler:
         self._root = root
 
     def handle(self, cmd: MissionActiveCommand) -> MissionActiveResult:
-        from jarvis_engine.learning_missions import get_active_missions
+        from jarvis_engine.learning.missions import get_active_missions
 
         missions = get_active_missions(self._root)
         return MissionActiveResult(missions=missions, count=len(missions))

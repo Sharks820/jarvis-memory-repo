@@ -97,8 +97,8 @@ def _call_impl(
     }
 
     # Map command names to their source modules after re-export removal
-    _CLI_OPS = "jarvis_engine.cli_ops"
-    _CLI_KNOWLEDGE = "jarvis_engine.cli_knowledge"
+    _CLI_OPS = "jarvis_engine.cli.ops"
+    _CLI_KNOWLEDGE = "jarvis_engine.cli.knowledge"
     _CMD_MODULE = {
         "cmd_ops_autopilot": _CLI_OPS, "cmd_ops_sync": _CLI_OPS,
         "cmd_ops_brief": _CLI_OPS, "cmd_automation_run": _CLI_OPS,

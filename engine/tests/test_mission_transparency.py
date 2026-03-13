@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from jarvis_engine._shared import now_iso
-from jarvis_engine.learning_missions import (
+from jarvis_engine.learning.missions import (
     _compute_step_progress,
     _init_mission_steps,
     _update_step,
@@ -110,7 +110,7 @@ class TestUpdateStep:
             if mi["mission_id"] == m["mission_id"]:
                 mi["steps"] = _init_mission_steps()
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         _update_step(mission_root, m["mission_id"], "init", status="running")
@@ -126,7 +126,7 @@ class TestUpdateStep:
             if mi["mission_id"] == m["mission_id"]:
                 mi["steps"] = _init_mission_steps()
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         _update_step(mission_root, m["mission_id"], "search_web",
@@ -144,7 +144,7 @@ class TestUpdateStep:
             if mi["mission_id"] == m["mission_id"]:
                 mi["steps"] = _init_mission_steps()
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         _update_step(mission_root, m["mission_id"], "init", status="completed")
@@ -176,7 +176,7 @@ class TestGetMissionSteps:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["steps"] = _init_mission_steps()
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         steps = get_mission_steps(mission_root, m["mission_id"])
@@ -231,7 +231,7 @@ class TestGetNowWorkingOn:
                 mi["steps"] = _init_mission_steps()
                 mi["steps"][0]["status"] = "completed"
                 mi["steps"][1]["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = get_now_working_on(mission_root)
@@ -250,7 +250,7 @@ class TestGetNowWorkingOn:
                 mi["steps"][0]["artifacts_produced"] = 3
                 mi["steps"][1]["status"] = "running"
                 mi["steps"][1]["artifacts_produced"] = 5
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = get_now_working_on(mission_root)
@@ -269,7 +269,7 @@ class TestMissionPause:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = pause_mission(mission_root, mission_id=m["mission_id"])
@@ -292,7 +292,7 @@ class TestMissionResume:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "paused"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = resume_mission(mission_root, mission_id=m["mission_id"])
@@ -313,7 +313,7 @@ class TestMissionRestart:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "failed"
                 mi["progress_pct"] = 45
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = restart_mission(mission_root, mission_id=m["mission_id"])
@@ -334,7 +334,7 @@ class TestMissionRestart:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "exhausted"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         result = restart_mission(mission_root, mission_id=m["mission_id"])
@@ -346,7 +346,7 @@ class TestMissionRestart:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         with pytest.raises(ValueError, match="can only restart"):
@@ -381,7 +381,7 @@ class TestMissionDashboardMetrics:
             elif mid == m3["mission_id"]:
                 mi["status"] = "running"
                 mi["updated_utc"] = now_iso()
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         metrics = mission_dashboard_metrics(mission_root)
@@ -399,7 +399,7 @@ class TestMissionDashboardMetrics:
                 if mi["mission_id"] == m["mission_id"]:
                     mi["status"] = "completed"
                     mi["updated_utc"] = now_iso()
-            from jarvis_engine.learning_missions import _save_missions
+            from jarvis_engine.learning.missions import _save_missions
             _save_missions(mission_root, missions)
 
         metrics = mission_dashboard_metrics(mission_root)
@@ -420,7 +420,7 @@ class TestMissionHandlers:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "running"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         handler = MissionPauseHandler(mission_root)
@@ -445,7 +445,7 @@ class TestMissionHandlers:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "paused"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         handler = MissionResumeHandler(mission_root)
@@ -461,7 +461,7 @@ class TestMissionHandlers:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["status"] = "failed"
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         handler = MissionRestartHandler(mission_root)
@@ -477,7 +477,7 @@ class TestMissionHandlers:
         for mi in missions:
             if mi["mission_id"] == m["mission_id"]:
                 mi["steps"] = _init_mission_steps()
-        from jarvis_engine.learning_missions import _save_missions
+        from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
         handler = MissionStepsHandler(mission_root)

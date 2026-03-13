@@ -191,13 +191,13 @@ def mock_bus(monkeypatch):
 
     Shared across test_main*.py modules.
     """
-    from jarvis_engine import cli_ops as cli_ops_mod
-    from jarvis_engine import cli_knowledge as cli_knowledge_mod
+    from jarvis_engine.cli import ops as cli_ops_mod
+    from jarvis_engine.cli import knowledge as cli_knowledge_mod
     from jarvis_engine import _cli_helpers as cli_helpers_mod
-    from jarvis_engine import cli_system as cli_system_mod
-    from jarvis_engine import cli_security as cli_security_mod
-    from jarvis_engine import cli_tasks as cli_tasks_mod
-    from jarvis_engine import cli_voice as cli_voice_mod
+    from jarvis_engine.cli import system as cli_system_mod
+    from jarvis_engine.cli import security as cli_security_mod
+    from jarvis_engine.cli import tasks as cli_tasks_mod
+    from jarvis_engine.cli import voice as cli_voice_mod
     def _factory(result_obj):
         bus = _make_bus_mock(result_obj)
         def _get_bus_fn():

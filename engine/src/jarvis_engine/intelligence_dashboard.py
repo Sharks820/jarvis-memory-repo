@@ -434,7 +434,7 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
 def _safe_mission_metrics(root: Path) -> dict[str, Any]:
     """Collect mission dashboard metrics safely."""
     try:
-        from jarvis_engine.learning_missions import mission_dashboard_metrics
+        from jarvis_engine.learning.missions import mission_dashboard_metrics
 
         return mission_dashboard_metrics(root)
     except (ImportError, OSError, ValueError, TypeError) as exc:

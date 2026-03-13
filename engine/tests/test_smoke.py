@@ -48,6 +48,7 @@ _PUBLIC_MODULES = [
     "jarvis_engine.growth_tracker",
     "jarvis_engine.ingest",
     "jarvis_engine.intelligence_dashboard",
+    "jarvis_engine.learning.missions",
     "jarvis_engine.learning_missions",
     "jarvis_engine.life_ops",
     "jarvis_engine.main",

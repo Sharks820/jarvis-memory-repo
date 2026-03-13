@@ -32,7 +32,7 @@ from jarvis_engine.gaming_mode import (
     read_gaming_mode_state,
 )
 from jarvis_engine.harvest_discovery import discover_harvest_topics
-from jarvis_engine.learning_missions import load_missions
+from jarvis_engine.learning.missions import load_missions
 from jarvis_engine.ops.runtime_control import (
     capture_runtime_resource_snapshot,
     read_control_state,
@@ -377,7 +377,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
             _emit("mission_autogen_skipped=resource_pressure")
         else:
             try:
-                from jarvis_engine.learning_missions import (
+                from jarvis_engine.learning.missions import (
                     auto_generate_missions,
                     retry_failed_missions,
                 )
@@ -946,8 +946,8 @@ def _should_skip_cycle(state: CycleState, idle_interval: int) -> str | None:
 
 
 def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
-    from jarvis_engine.cli_system import cmd_mobile_desktop_sync, cmd_self_heal
-    from jarvis_engine.cli_ops import cmd_ops_autopilot
+    from jarvis_engine.cli.system import cmd_mobile_desktop_sync, cmd_self_heal
+    from jarvis_engine.cli.ops import cmd_ops_autopilot
 
     set_process_title("jarvis-daemon")
     root = repo_root()

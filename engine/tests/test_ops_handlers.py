@@ -364,7 +364,7 @@ class TestIntelligenceDashboardHandler:
 class TestMissionCreateHandler:
     """Tests for MissionCreateHandler."""
 
-    @patch("jarvis_engine.learning_missions.create_learning_mission")
+    @patch("jarvis_engine.learning.missions.create_learning_mission")
     def test_handle_creates_mission(
         self, mock_create: MagicMock, tmp_path: Path
     ) -> None:
@@ -395,7 +395,7 @@ class TestMissionCreateHandler:
             origin="desktop-manual",
         )
 
-    @patch("jarvis_engine.learning_missions.create_learning_mission")
+    @patch("jarvis_engine.learning.missions.create_learning_mission")
     def test_handle_empty_topic_returns_code_2(
         self, mock_create: MagicMock, tmp_path: Path
     ) -> None:
@@ -409,7 +409,7 @@ class TestMissionCreateHandler:
         assert result.return_code == 2
         assert result.mission == {}
 
-    @patch("jarvis_engine.learning_missions.create_learning_mission")
+    @patch("jarvis_engine.learning.missions.create_learning_mission")
     def test_handle_no_sources_uses_defaults(
         self, mock_create: MagicMock, tmp_path: Path
     ) -> None:
@@ -439,7 +439,7 @@ class TestMissionCreateHandler:
 class TestMissionRunHandler:
     """Tests for MissionRunHandler."""
 
-    @patch("jarvis_engine.learning_missions.run_learning_mission")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_empty_mission_name_raises_value_error(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
@@ -454,7 +454,7 @@ class TestMissionRunHandler:
         assert result.report == {}
         assert result.ingested_record_id == ""
 
-    @patch("jarvis_engine.learning_missions.run_learning_mission")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_successful_run_without_ingest(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
@@ -475,7 +475,7 @@ class TestMissionRunHandler:
         assert result.report == fake_report
         assert result.ingested_record_id == ""
 
-    @patch("jarvis_engine.learning_missions.run_learning_mission")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_successful_run_with_auto_ingest(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
@@ -512,7 +512,7 @@ class TestMissionRunHandler:
         assert first_call.kwargs["kind"] == "semantic"
         assert "Water is H2O" in first_call.kwargs["content"]
 
-    @patch("jarvis_engine.learning_missions.run_learning_mission")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_no_verified_findings_skips_ingest(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
@@ -530,7 +530,7 @@ class TestMissionRunHandler:
         assert result.return_code == 0
         assert result.ingested_record_id == ""
 
-    @patch("jarvis_engine.learning_missions.run_learning_mission")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_ingest_failure_still_returns_report(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:

@@ -305,7 +305,7 @@ def _collect_from_learning_missions(
 ) -> None:
     """Source 5: Fallback -- completed learning mission topics."""
     try:
-        from jarvis_engine.learning_missions import load_missions
+        from jarvis_engine.learning.missions import load_missions
 
         missions = load_missions(root)
         for m in reversed(missions):

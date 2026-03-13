@@ -216,7 +216,7 @@ class HealthRoutesMixin:
             logger.debug("Recent activity events gather failed: %s", exc)
             combined["recent_events"] = []
         try:
-            from jarvis_engine.learning_missions import get_now_working_on
+            from jarvis_engine.learning.missions import get_now_working_on
 
             combined["now_working_on"] = get_now_working_on(self._root)
         except SUBSYSTEM_ERRORS as exc:

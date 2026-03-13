@@ -643,7 +643,7 @@ class TestPrepareHistory:
             lambda *_args: None,
         )
         monkeypatch.setattr(
-            "jarvis_engine.learning_missions.get_now_working_on",
+            "jarvis_engine.learning.missions.get_now_working_on",
             lambda _root: {
                 "mission_topic": "Desktop redesign",
                 "current_step": "Animating live capsule",
@@ -679,7 +679,7 @@ class TestPrepareHistory:
         monkeypatch.setattr(f"{_VP}._get_history_messages", lambda: [])
         monkeypatch.setattr(f"{_VP}._conversation_continuity_instruction", lambda *_args: None)
         monkeypatch.setattr(
-            "jarvis_engine.learning_missions.get_now_working_on",
+            "jarvis_engine.learning.missions.get_now_working_on",
             lambda _root: None,
         )
         csm = MagicMock()

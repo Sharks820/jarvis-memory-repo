@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from jarvis_engine import main as main_mod
-from jarvis_engine import cli_system as cli_system_mod
+from jarvis_engine.cli import system as cli_system_mod
 
 
 # ===========================================================================

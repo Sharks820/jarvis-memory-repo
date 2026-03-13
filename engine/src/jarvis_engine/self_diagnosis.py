@@ -356,7 +356,7 @@ class DiagnosticEngine:
         """Check for stuck or failing learning missions."""
         issues: list[DiagnosticIssue] = []
         try:
-            from jarvis_engine.learning_missions import load_missions
+            from jarvis_engine.learning.missions import load_missions
             missions = load_missions(self._root)
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Mission health check failed: %s", exc)
@@ -595,7 +595,7 @@ class DiagnosticEngine:
     def _fix_clear_stuck_missions(self) -> dict[str, Any]:
         """Cancel missions running > 30 minutes."""
         try:
-            from jarvis_engine.learning_missions import load_missions, cancel_mission
+            from jarvis_engine.learning.missions import load_missions, cancel_mission
             from jarvis_engine._compat import UTC
         except (ImportError, OSError, ValueError) as exc:
             return {"applied": False, "result": f"Cannot load mission module: {exc}"}

@@ -37,8 +37,8 @@ class TestCmdStatus:
             cloud_burst_enabled=False,
             events=[],
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_status
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_status
             rc = cmd_status()
         assert rc == 0
         out = capsys.readouterr().out
@@ -56,8 +56,8 @@ class TestCmdStatus:
             cloud_burst_enabled=False,
             events=[event],
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_status
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_status
             rc = cmd_status()
         assert rc == 0
         out = capsys.readouterr().out
@@ -74,8 +74,8 @@ class TestCmdLog:
 
     def test_log_returns_zero(self, capsys):
         result = SimpleNamespace(ts="2026-01-01T00:00:00Z", event_type="info", message="test msg")
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_log
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_log
             rc = cmd_log("info", "test msg")
         assert rc == 0
         out = capsys.readouterr().out
@@ -92,8 +92,8 @@ class TestCmdIngest:
 
     def test_ingest_returns_zero(self, capsys):
         result = SimpleNamespace(record_id="r1", source="cli", kind="episodic", task_id="t1")
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_ingest
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_ingest
             rc = cmd_ingest("cli", "episodic", "t1", "some content")
         assert rc == 0
         out = capsys.readouterr().out
@@ -115,8 +115,8 @@ class TestCmdGamingMode:
             detected_process=None,
             effective_enabled=True,
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_gaming_mode
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_gaming_mode
             rc = cmd_gaming_mode(True, "manual", "")
         assert rc == 0
         out = capsys.readouterr().out
@@ -130,8 +130,8 @@ class TestCmdGamingMode:
             detected_process="steam.exe",
             effective_enabled=True,
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_gaming_mode
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_gaming_mode
             rc = cmd_gaming_mode(None, "", "enable")
         assert rc == 0
         out = capsys.readouterr().out
@@ -147,8 +147,8 @@ class TestCmdRuntimeControl:
 
     def test_runtime_control_pause(self, capsys):
         result = SimpleNamespace(state={"daemon_paused": True, "safe_mode": False, "updated_utc": "now", "reason": "manual"})
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_runtime_control
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_runtime_control
             rc = cmd_runtime_control(pause=True, resume=False, safe_on=False, safe_off=False, reset=False, reason="manual")
         assert rc == 0
         out = capsys.readouterr().out
@@ -166,8 +166,8 @@ class TestCmdPersonaConfig:
     def test_persona_config_enable(self, capsys):
         cfg = SimpleNamespace(enabled=True, mode="default", style="concise", humor_level=3, updated_utc="now")
         result = SimpleNamespace(config=cfg)
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_persona_config
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_persona_config
             rc = cmd_persona_config(enable=True, disable=False, humor_level=3, mode="default", style="concise")
         assert rc == 0
         out = capsys.readouterr().out
@@ -176,8 +176,8 @@ class TestCmdPersonaConfig:
 
     def test_persona_config_error(self, capsys):
         result = SimpleNamespace(config={"error": "conflicting flags"})
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_persona_config
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_persona_config
             rc = cmd_persona_config(enable=True, disable=True, humor_level=None, mode="", style="")
         assert rc == 1
         out = capsys.readouterr().out
@@ -198,8 +198,8 @@ class TestCmdMemorySnapshot:
             signature_path="/tmp/sig.json", sha256="abc123", file_count=5,
             ok=False, reason="", expected_sha256="", actual_sha256="",
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_memory_snapshot
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_memory_snapshot
             rc = cmd_memory_snapshot(True, None, "test")
         assert rc == 0
         out = capsys.readouterr().out
@@ -212,8 +212,8 @@ class TestCmdMemorySnapshot:
             ok=True, reason="match", expected_sha256="aaa", actual_sha256="aaa",
             snapshot_path="", metadata_path="", signature_path="", sha256="", file_count=0,
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_memory_snapshot
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_memory_snapshot
             rc = cmd_memory_snapshot(False, "/tmp/snap.zip", "")
         assert rc == 0
 
@@ -223,8 +223,8 @@ class TestCmdMemorySnapshot:
             ok=False, reason="", expected_sha256="", actual_sha256="",
             snapshot_path="", metadata_path="", signature_path="", sha256="", file_count=0,
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_memory_snapshot
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_memory_snapshot
             rc = cmd_memory_snapshot(False, None, "")
         assert rc == 2
 
@@ -245,8 +245,8 @@ class TestCmdMemoryMaintenance:
             "snapshot": {"path": "/tmp/snap.zip"},
         }
         result = SimpleNamespace(report=report)
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_memory_maintenance
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_memory_maintenance
             rc = cmd_memory_maintenance(1800, "test note")
         assert rc == 0
         out = capsys.readouterr().out
@@ -266,8 +266,8 @@ class TestCmdMigrateMemory:
             return_code=0,
             summary={"totals": {"inserted": 50, "skipped": 2, "errors": 0}, "db_path": "/tmp/mem.db"},
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_migrate_memory
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_migrate_memory
             rc = cmd_migrate_memory()
         assert rc == 0
         out = capsys.readouterr().out
@@ -275,8 +275,8 @@ class TestCmdMigrateMemory:
 
     def test_migrate_failure(self, capsys):
         result = SimpleNamespace(return_code=1, summary={})
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_migrate_memory
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_migrate_memory
             rc = cmd_migrate_memory()
         assert rc == 1
 
@@ -295,8 +295,8 @@ class TestCmdWeather:
             current={"temp_F": "72", "temp_C": "22", "FeelsLikeF": "70", "humidity": "30"},
             description="Clear sky",
         )
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_weather
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_weather
             rc = cmd_weather("Denver")
         assert rc == 0
         out = capsys.readouterr().out
@@ -305,8 +305,8 @@ class TestCmdWeather:
 
     def test_weather_failure(self, capsys):
         result = SimpleNamespace(return_code=1, location="", current={}, description="")
-        with patch("jarvis_engine.cli_system._get_bus", return_value=_mock_bus(result)):
-            from jarvis_engine.cli_system import cmd_weather
+        with patch("jarvis_engine.cli.system._get_bus", return_value=_mock_bus(result)):
+            from jarvis_engine.cli.system import cmd_weather
             rc = cmd_weather("InvalidPlace")
         assert rc == 1
 
@@ -321,14 +321,14 @@ class TestCmdServeMobile:
     def test_missing_token(self, capsys, monkeypatch):
         monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
         monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
-        from jarvis_engine.cli_system import cmd_serve_mobile
+        from jarvis_engine.cli.system import cmd_serve_mobile
         rc = cmd_serve_mobile("127.0.0.1", 8787, None, None)
         assert rc == 2
         assert "missing mobile token" in capsys.readouterr().out
 
     def test_missing_signing_key(self, capsys, monkeypatch):
         monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
-        from jarvis_engine.cli_system import cmd_serve_mobile
+        from jarvis_engine.cli.system import cmd_serve_mobile
         rc = cmd_serve_mobile("127.0.0.1", 8787, "tok123", None)
         assert rc == 2
         assert "missing signing key" in capsys.readouterr().out
@@ -336,7 +336,7 @@ class TestCmdServeMobile:
     def test_config_file_not_found(self, capsys, tmp_path, monkeypatch):
         monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
         monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
-        from jarvis_engine.cli_system import cmd_serve_mobile
+        from jarvis_engine.cli.system import cmd_serve_mobile
         rc = cmd_serve_mobile("127.0.0.1", 8787, None, None, config_file=str(tmp_path / "nonexistent.json"))
         assert rc == 2
         assert "config file not found" in capsys.readouterr().out
