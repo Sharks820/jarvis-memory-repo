@@ -19,7 +19,7 @@ import tkinter as tk
 from collections.abc import Callable
 from typing import Any, ClassVar, Protocol, cast
 
-from jarvis_engine.widget_helpers import _http_json
+from jarvis_engine.desktop.helpers import _http_json
 
 logger = logging.getLogger(__name__)
 
@@ -572,22 +572,21 @@ class ConversationMixin:
     # ------------------------------------------------------------------
 
     def _show_learned_indicator(self: Any) -> None:
-        """Show a brief 'Learned' indicator that fades after 2s."""
+        """Update the persistent learned counter chip and flash in chat."""
+        # Update persistent counter chip
+        count = getattr(self, "_learned_count", 0) + 1
+        self._learned_count = count
+        chip_var = getattr(self, "_learned_chip_var", None)
+        chip_label = getattr(self, "_learned_chip_label", None)
+        if chip_var is not None:
+            chip_var.set(f"Learned {count}")
+        if chip_label is not None:
+            chip_label.pack(side=tk.RIGHT, padx=(4, 0))
+        # Also log in chat so user sees what was learned
         self.output.config(state=tk.NORMAL)
-        marker = self.output.index(tk.END)
-        self.output.insert(tk.END, "  Learned\n", "learned")
+        self.output.insert(tk.END, f"  Learned ({count} this session)\n", "learned")
         self.output.see(tk.END)
         self.output.config(state=tk.DISABLED)
-
-        def _remove() -> None:
-            try:
-                self.output.config(state=tk.NORMAL)
-                self.output.delete(marker, f"{marker}+1l")
-                self.output.config(state=tk.DISABLED)
-            except tk.TclError:
-                logger.debug("Failed to remove learned indicator (widget may be destroyed)")
-
-        self.after(2000, _remove)
 
     def _show_welcome(self: Any) -> None:
         """Show one-time welcome message in chat."""

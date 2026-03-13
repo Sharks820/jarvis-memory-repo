@@ -21,14 +21,14 @@ from jarvis_engine._constants import (
     FAST_LOCAL_MODEL,
 )
 from jarvis_engine._shared import env_int as _env_int
-from jarvis_engine.desktop_controller import (
+from jarvis_engine.desktop.controller import (
     DesktopInteractionController,
     DesktopWidgetState,
 )
-from jarvis_engine.widget_conversation import ConversationMixin
-from jarvis_engine.widget_orb import OrbAnimationMixin
-from jarvis_engine.widget_tray import TrayMixin
-from jarvis_engine.widget_helpers import (  # noqa: F401 -- re-exported for tests
+from jarvis_engine.desktop.conversation import ConversationMixin
+from jarvis_engine.desktop.orb import OrbAnimationMixin
+from jarvis_engine.desktop.tray import TrayMixin
+from jarvis_engine.desktop.helpers import (  # noqa: F401 -- re-exported for tests
     WidgetConfig,
     _DPAPI_AVAILABLE,
     _TOAST_COOLDOWN_SECONDS,
@@ -79,9 +79,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     WARN = "#d15a5a"
     LAUNCHER_TRANSPARENT = "#010203"
     PANEL_DEFAULT_WIDTH = 470
-    PANEL_DEFAULT_HEIGHT = 840
+    PANEL_DEFAULT_HEIGHT = 960
     PANEL_MIN_WIDTH = 340
-    PANEL_MIN_HEIGHT = 460
+    PANEL_MIN_HEIGHT = 560
 
     # Model rotation: (alias, display_name, best_use_title, accent_color)
     # "auto" lets IntentClassifier decide; others override the model choice.
@@ -588,13 +588,12 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             command=self._toggle_live_detail_section,
         )
         self._live_detail_toggle_btn.pack(side=tk.RIGHT, padx=(0, 6))
-        self._live_detail_body = tk.Frame(capsule, bg="#0a1424")
-
+        # --- Always-visible context and activity section ---
         self._live_context_var = tk.StringVar(
             value="Voice, missions, and desktop context stay synchronized here."
         )
         self._live_context_label = tk.Label(
-            self._live_detail_body,
+            capsule,
             textvariable=self._live_context_var,
             bg="#0a1424",
             fg="#d8e7ff",
@@ -603,7 +602,49 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             wraplength=330 if self._compact_layout else 385,
             anchor="w",
         )
-        self._live_context_label.pack(fill=tk.X, padx=10, pady=(0, 6))
+        self._live_context_label.pack(fill=tk.X, padx=10, pady=(4, 2))
+
+        # Always-visible activity row
+        activity_row = tk.Frame(capsule, bg="#0a1424")
+        activity_row.pack(fill=tk.X, padx=10, pady=(0, 4))
+        self._activity_chip_var = tk.StringVar(value="No fresh signals yet")
+        self._activity_chip_label = tk.Label(
+            activity_row,
+            textvariable=self._activity_chip_var,
+            bg="#132238",
+            fg=self.MUTED,
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+            anchor="w",
+        )
+        self._activity_chip_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._learned_count = 0
+        self._learned_chip_var = tk.StringVar(value="")
+        self._learned_chip_label = tk.Label(
+            activity_row,
+            textvariable=self._learned_chip_var,
+            bg="#1a3a1a",
+            fg="#7dd3a0",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        # Hidden until first learning event
+        self._intel_chip_var = tk.StringVar(value="Intel --")
+        self._intel_chip_label = tk.Label(
+            activity_row,
+            textvariable=self._intel_chip_var,
+            bg="#123624",
+            fg="#b7f0cf",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._intel_chip_label.pack(side=tk.RIGHT)
+
+        # --- Collapsible detail section (mission progress, ops rail) ---
+        self._live_detail_body = tk.Frame(capsule, bg="#0a1424")
 
         progress_row = tk.Frame(self._live_detail_body, bg="#0a1424")
         progress_row.pack(fill=tk.X, padx=10, pady=(0, 8))
@@ -665,53 +706,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
 
         self._build_live_ops_rail(self._live_detail_body)
-
-        bottom_row = tk.Frame(capsule, bg="#0a1424")
-        bottom_row.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self._live_capsule_bottom = bottom_row
-        self._live_signal_canvas = tk.Canvas(
-            bottom_row,
-            width=58,
-            height=20,
-            bg="#0a1424",
-            highlightthickness=0,
-            bd=0,
-        )
-        self._live_signal_canvas.pack(side=tk.LEFT, padx=(0, 8))
-        self._live_signal_bars = [
-            self._live_signal_canvas.create_rectangle(
-                4 + index * 10,
-                10,
-                10 + index * 10,
-                18,
-                fill="#34d3ba",
-                outline="",
-            )
-            for index in range(5)
-        ]
-        self._activity_chip_var = tk.StringVar(value="No fresh signals yet")
-        self._activity_chip_label = tk.Label(
-            bottom_row,
-            textvariable=self._activity_chip_var,
-            bg="#132238",
-            fg=self.MUTED,
-            font=("Segoe UI", 8, "bold"),
-            padx=8,
-            pady=3,
-            anchor="w",
-        )
-        self._activity_chip_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._intel_chip_var = tk.StringVar(value="Intel --")
-        self._intel_chip_label = tk.Label(
-            bottom_row,
-            textvariable=self._intel_chip_var,
-            bg="#123624",
-            fg="#b7f0cf",
-            font=("Segoe UI", 8, "bold"),
-            padx=8,
-            pady=3,
-        )
-        self._intel_chip_label.pack(side=tk.RIGHT)
         self._apply_live_detail_state()
 
     def _build_live_ops_rail(self, capsule: tk.Frame) -> None:
@@ -795,7 +789,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         session_header.pack(fill=tk.X, padx=6, pady=(4, 0))
         self._session_toggle_btn = tk.Button(
             session_header,
-            text="Show Session" if self._compact_layout else "Hide Session",
+            text="Show Session",
             bg=self.PANEL,
             fg=self.MUTED,
             activebackground=self.PANEL,
@@ -807,7 +801,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._session_toggle_btn.pack(side=tk.RIGHT)
         self._session_body = tk.Frame(sec, bg=self.PANEL)
-        self._session_collapsed = tk.BooleanVar(value=self._compact_layout)
+        self._session_collapsed = tk.BooleanVar(value=True)
 
         self._entry(self._session_body, "Base URL", self.base_var)
         self._entry(self._session_body, "Master password", self.master_var, show="*")
@@ -1044,7 +1038,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             anchor="w",
         )
         self._continuity_counts_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._continuity_collapsed = tk.BooleanVar(value=self._compact_layout)
+        self._continuity_collapsed = tk.BooleanVar(value=True)
         self._continuity_toggle_btn = tk.Button(
             header,
             text="Show Continuity" if self._continuity_collapsed.get() else "Hide Continuity",
@@ -1116,7 +1110,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             anchor="w",
         )
         self._diagnostics_summary_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._diagnostics_collapsed = tk.BooleanVar(value=self._compact_layout)
+        self._diagnostics_collapsed = tk.BooleanVar(value=True)
         self._diagnostics_toggle_btn = tk.Button(
             header,
             text="Show Health" if self._diagnostics_collapsed.get() else "Hide Health",
@@ -1199,7 +1193,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._live_detail_body.pack_forget()
             self._live_detail_toggle_btn.config(text="Expand Live View")
         else:
-            self._live_detail_body.pack(fill=tk.X, padx=0, pady=(0, 0), before=self._live_capsule_bottom)
+            self._live_detail_body.pack(fill=tk.X, padx=0, pady=(0, 0))
             self._live_detail_toggle_btn.config(text="Collapse Live View")
 
     def _toggle_live_detail_section(self) -> None:

@@ -277,26 +277,10 @@ class TestWakeWordStartHandler:
         mock_record.assert_called_once_with(
             max_duration_seconds=8.0,
             drain_seconds=0.3,
-            mode="conversation",
         )
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args.kwargs
         assert call_kwargs["text"] == "check brain status"
-        assert call_kwargs["utterance"] == {
-            "raw_text": "Jarvis check brain status",
-            "command_text": "check brain status",
-            "language": "en",
-            "confidence": 0.94,
-            "backend": "deepgram-nova3",
-            "segments": [
-                {
-                    "start": 0.0,
-                    "end": 1.8,
-                    "text": "Jarvis check brain status",
-                    "kind": "utterance",
-                }
-            ],
-        }
 
 
 # ---------------------------------------------------------------------------

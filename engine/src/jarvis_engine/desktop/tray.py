@@ -16,7 +16,7 @@ import threading
 import tkinter as tk
 from typing import Any
 
-from jarvis_engine.widget_helpers import _create_tray_icon_image
+from jarvis_engine.desktop.helpers import _create_tray_icon_image
 
 logger = logging.getLogger(__name__)
 

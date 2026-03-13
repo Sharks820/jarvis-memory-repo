@@ -197,7 +197,9 @@ class DesktopInteractionController:
             self._cancel_event.clear()
             self._command_generation += 1
             generation = self._command_generation
-        self.set_state(DesktopWidgetState.PROCESSING)
+            self._state = DesktopWidgetState.PROCESSING
+        if self._on_state_change is not None:
+            self._on_state_change(DesktopWidgetState.PROCESSING)
         return generation
 
     def complete_command(self, generation: int) -> bool:
@@ -205,8 +207,10 @@ class DesktopInteractionController:
             if self._command_generation != generation:
                 return False
             should_reset = self._state is DesktopWidgetState.PROCESSING
-        if should_reset:
-            self.set_state(DesktopWidgetState.IDLE)
+            if should_reset:
+                self._state = DesktopWidgetState.IDLE
+        if should_reset and self._on_state_change is not None:
+            self._on_state_change(DesktopWidgetState.IDLE)
         return True
 
     def cancel_command(self) -> None:
@@ -216,8 +220,10 @@ class DesktopInteractionController:
     def processing_timed_out(self) -> bool:
         with self._lock:
             timed_out = self._state is DesktopWidgetState.PROCESSING
-        if timed_out:
-            self.set_state(DesktopWidgetState.IDLE)
+            if timed_out:
+                self._state = DesktopWidgetState.IDLE
+        if timed_out and self._on_state_change is not None:
+            self._on_state_change(DesktopWidgetState.IDLE)
         return timed_out
 
     def begin_dictation(self) -> bool:
@@ -227,14 +233,18 @@ class DesktopInteractionController:
                 DesktopWidgetState.PROCESSING,
             ):
                 return False
-        self.set_state(DesktopWidgetState.LISTENING)
+            self._state = DesktopWidgetState.LISTENING
+        if self._on_state_change is not None:
+            self._on_state_change(DesktopWidgetState.LISTENING)
         return True
 
     def end_dictation(self) -> None:
         with self._lock:
             should_reset = self._state is DesktopWidgetState.LISTENING
-        if should_reset:
-            self.set_state(DesktopWidgetState.IDLE)
+            if should_reset:
+                self._state = DesktopWidgetState.IDLE
+        if should_reset and self._on_state_change is not None:
+            self._on_state_change(DesktopWidgetState.IDLE)
 
     def try_start_hotword_loop(self) -> bool:
         with self._lock:

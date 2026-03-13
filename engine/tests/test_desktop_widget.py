@@ -1732,13 +1732,13 @@ class TestWidgetStateMachine:
         """Large displays should keep the premium default widget footprint."""
         from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
-        assert JarvisDesktopWidget._panel_size_for_screen(1920, 1080) == (470, 840)
+        assert JarvisDesktopWidget._panel_size_for_screen(1920, 1080) == (470, 960)
 
     def test_panel_size_for_screen_clamps_to_small_display(self):
         """Small displays should get a panel that actually fits on-screen."""
         from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
-        assert JarvisDesktopWidget._panel_size_for_screen(1366, 768) == (470, 680)
+        assert JarvisDesktopWidget._panel_size_for_screen(1366, 768) == (470, 680)  # clamped to screen
 
     def test_compact_layout_enabled_for_short_screens(self):
         """Short screens should switch the widget into compact vertical layout."""

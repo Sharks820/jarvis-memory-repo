@@ -20,7 +20,7 @@ import tkinter as tk
 from collections.abc import Callable
 from typing import Any, Protocol, cast
 
-from jarvis_engine.widget_helpers import (
+from jarvis_engine.desktop.helpers import (
     _is_position_on_screen,
     _save_widget_cfg,
     _snap_to_edge,
