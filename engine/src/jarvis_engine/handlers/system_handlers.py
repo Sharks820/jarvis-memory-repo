@@ -176,7 +176,7 @@ class DesktopWidgetHandler:
 
     def handle(self, cmd: DesktopWidgetCommand) -> DesktopWidgetResult:
         try:
-            from jarvis_engine.desktop_widget import run_desktop_widget
+            from jarvis_engine.desktop.widget import run_desktop_widget
         except ImportError as exc:
             logger.warning("desktop_widget module not available: %s", exc)
             return DesktopWidgetResult(return_code=2)

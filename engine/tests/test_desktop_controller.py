@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from jarvis_engine.desktop_controller import (
+from jarvis_engine.desktop.controller import (
     DesktopInteractionController,
     DesktopWidgetState,
 )

@@ -264,10 +264,10 @@ def test_desktop_widget_success() -> None:
     import types
 
     mock_run = MagicMock()
-    mock_widget_mod = types.ModuleType("jarvis_engine.desktop_widget")
+    mock_widget_mod = types.ModuleType("jarvis_engine.desktop.widget")
     mock_widget_mod.run_desktop_widget = mock_run  # type: ignore[attr-defined]
 
-    with patch.dict(sys.modules, {"jarvis_engine.desktop_widget": mock_widget_mod}):
+    with patch.dict(sys.modules, {"jarvis_engine.desktop.widget": mock_widget_mod}):
         handler = DesktopWidgetHandler(ROOT)
         result = handler.handle(DesktopWidgetCommand())
 
@@ -278,13 +278,13 @@ def test_desktop_widget_success() -> None:
 def test_desktop_widget_import_error() -> None:
     """Returns rc=2 when desktop_widget module is not importable."""
     handler = DesktopWidgetHandler(ROOT)
-    with patch.dict("sys.modules", {"jarvis_engine.desktop_widget": None}):
+    with patch.dict("sys.modules", {"jarvis_engine.desktop.widget": None}):
         # Force an ImportError by patching the import mechanism
         import builtins
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
-            if name == "jarvis_engine.desktop_widget":
+            if name == "jarvis_engine.desktop.widget":
                 raise ImportError("no tkinter")
             return original_import(name, *args, **kwargs)
 

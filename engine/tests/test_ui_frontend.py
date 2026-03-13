@@ -31,7 +31,7 @@ class TestActivityEventDedup:
 
     def test_new_events_are_displayed(self):
         """New events (unseen event_ids) are passed to _log."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
         events = [
@@ -46,7 +46,7 @@ class TestActivityEventDedup:
 
     def test_duplicate_events_are_skipped(self):
         """Events with already-seen event_ids are not displayed again."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
         stub._seen_event_ids = {"evt-001": None}
@@ -62,7 +62,7 @@ class TestActivityEventDedup:
 
     def test_empty_events_no_log(self):
         """No log calls when events list is empty."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
         JarvisDesktopWidget._update_activity_events(stub, [])
@@ -70,7 +70,7 @@ class TestActivityEventDedup:
 
     def test_seen_dict_capped_at_500(self):
         """Seen event IDs dict is capped to prevent unbounded memory growth."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
         # Pre-fill with 510 event IDs (ordered dict)
@@ -84,7 +84,7 @@ class TestActivityEventDedup:
 
     def test_error_category_uses_error_role(self):
         """Events with error/security category use error role."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
         events = [
@@ -173,7 +173,7 @@ class TestSetOnlineSignature:
 
     def test_set_online_accepts_recent_events(self):
         """_set_online method signature includes recent_events parameter."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
         import inspect
         sig = inspect.signature(JarvisDesktopWidget._set_online)
         param_names = list(sig.parameters.keys())
@@ -181,7 +181,7 @@ class TestSetOnlineSignature:
 
     def test_set_online_recent_events_default_none(self):
         """recent_events parameter defaults to None."""
-        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        from jarvis_engine.desktop.widget import JarvisDesktopWidget
         import inspect
         sig = inspect.signature(JarvisDesktopWidget._set_online)
         param = sig.parameters["recent_events"]

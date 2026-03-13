@@ -212,7 +212,7 @@ class TestSTTReliability:
     def test_voice_dictate_respects_timeout(self, monkeypatch) -> None:
         """M4: Voice dictate should timeout and not hang indefinitely."""
         desktop_widget = pytest.importorskip(
-            "jarvis_engine.desktop_widget",
+            "jarvis_engine.desktop.widget",
             reason="tkinter not available in this environment",
         )
 

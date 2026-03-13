@@ -9,8 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jarvis_engine import desktop_widget, widget_helpers
-from jarvis_engine.desktop_widget import JarvisDesktopWidget
+from jarvis_engine.desktop import widget as desktop_widget
+from jarvis_engine.desktop import helpers as widget_helpers
+from jarvis_engine.desktop.widget import JarvisDesktopWidget
 
 
 class TestWidgetSTTReliability:

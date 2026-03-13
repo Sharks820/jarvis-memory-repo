@@ -44,7 +44,7 @@ _PUBLIC_MODULES = [
     "jarvis_engine.config",
     "jarvis_engine.connectors",
     "jarvis_engine.daemon_loop",
-    "jarvis_engine.desktop_widget",
+    "jarvis_engine.desktop.widget",
     "jarvis_engine.growth_tracker",
     "jarvis_engine.ingest",
     "jarvis_engine.intelligence_dashboard",
