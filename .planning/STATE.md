@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair tranches shipped; repo runtime green at 5596 passed, repo-wide mypy baseline still 118/31, ruff clean)
+Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair tranches shipped; repo runtime green at 5597 passed, repo-wide mypy baseline still 118/31, ruff clean)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-12): 5596 passing, 15 skipped, 0 failures
+- Latest full test run (2026-03-12): 5597 passing, 14 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 118 errors across 31 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
@@ -133,7 +133,7 @@ Progress (v5.0): [██████░░░░] 55%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 111 errors / 30 files
+  - mypy: 118 errors / 31 files
   - bandit: 66 findings (0 high, 9 medium, 57 low)
 - Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
 - User-reported runtime issues persist in real-world usage:
