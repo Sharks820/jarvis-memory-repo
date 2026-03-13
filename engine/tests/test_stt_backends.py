@@ -14,7 +14,7 @@ import pytest
 
 import httpx
 
-from jarvis_engine.stt_backends import (
+from jarvis_engine.stt.backends import (
     _load_keyterms,
     _parse_deepgram_response,
     _numpy_to_wav_bytes,
@@ -226,7 +226,7 @@ class TestTryDeepgram:
         import sys
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False), \
              patch.dict(sys.modules, {"httpx": mock_httpx}), \
-             patch("jarvis_engine.stt_backends._load_keyterms", return_value=["test"]):
+             patch("jarvis_engine.stt.backends._load_keyterms", return_value=["test"]):
             result = _try_deepgram(np.zeros(16000, dtype=np.float32), language="en")
 
         assert result is not None
@@ -253,7 +253,7 @@ class TestTryDeepgram:
         import sys
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False), \
              patch.dict(sys.modules, {"httpx": mock_httpx}), \
-             patch("jarvis_engine.stt_backends._load_keyterms", return_value=[]):
+             patch("jarvis_engine.stt.backends._load_keyterms", return_value=[]):
             result = _try_deepgram(np.zeros(16000, dtype=np.float32), language="en")
 
         assert result is None
@@ -274,7 +274,7 @@ class TestTryDeepgram:
         import sys
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False), \
              patch.dict(sys.modules, {"httpx": mock_httpx}), \
-             patch("jarvis_engine.stt_backends._load_keyterms", return_value=[]):
+             patch("jarvis_engine.stt.backends._load_keyterms", return_value=[]):
             result = _try_deepgram(np.zeros(16000, dtype=np.float32), language="en")
 
         assert result is None
@@ -305,7 +305,7 @@ class TestTryDeepgram:
         import sys
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False), \
              patch.dict(sys.modules, {"httpx": mock_httpx}), \
-             patch("jarvis_engine.stt_backends._load_keyterms", return_value=[]), \
+             patch("jarvis_engine.stt.backends._load_keyterms", return_value=[]), \
              patch("builtins.open", MagicMock(return_value=io.BytesIO(b"fake wav data"))):
             result = _try_deepgram("/tmp/test.wav", language="en")
 
@@ -338,7 +338,7 @@ class TestTryDeepgram:
         import sys
         with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False), \
              patch.dict(sys.modules, {"httpx": mock_httpx}), \
-             patch("jarvis_engine.stt_backends._load_keyterms") as mock_load:
+             patch("jarvis_engine.stt.backends._load_keyterms") as mock_load:
             _try_deepgram(np.zeros(16000, dtype=np.float32), language="en", keyterms=["custom"])
 
         # _load_keyterms should NOT have been called when keyterms provided
@@ -371,7 +371,7 @@ class TestRecordFromMicrophone:
 
         import sys
         with patch.dict(sys.modules, {"sounddevice": mock_sd}), \
-             patch("jarvis_engine.stt_backends.sd", mock_sd, create=True):
+             patch("jarvis_engine.stt.backends.sd", mock_sd, create=True):
             # Patch the import inside the function
             original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
 

@@ -290,7 +290,7 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         Used by the Deepgram keyterm loader in :mod:`jarvis_engine.stt`.
         If ``False``, lines are returned as-is (stripped of leading/trailing
         whitespace only).  Used by the LLM post-correction vocab loader in
-        :mod:`jarvis_engine.stt_postprocess`.
+        :mod:`jarvis_engine.stt.postprocess`.
     """
     cache_key = "stripped" if strip_parens else "raw"
 

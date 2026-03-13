@@ -45,8 +45,8 @@ def test_confidence_retry_triggers_on_low_confidence() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=high_conf_result), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello jarvis"
@@ -94,8 +94,8 @@ def test_confidence_retry_keeps_higher_confidence() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=groq_result), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=local_result), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Parakeet result should be kept (highest confidence)
@@ -127,8 +127,8 @@ def test_no_retry_when_confidence_sufficient() -> None:
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "turn on lights"
@@ -230,8 +230,8 @@ def test_confidence_retry_graceful_on_failure() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=low_conf), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Low-confidence result returned (only backend that worked)
@@ -262,8 +262,8 @@ def test_auto_mode_tries_all_chain_backends() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None) as mock_dg, \
          patch("jarvis_engine.stt._try_groq", return_value=None) as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency", return_value=low_result) as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "maybe hello"
@@ -300,8 +300,8 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
              patch("jarvis_engine.stt._try_deepgram", return_value=None), \
              patch("jarvis_engine.stt._try_groq", return_value=None), \
              patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-             patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-             patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+             patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+             patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
             result = transcribe_smart(fake_audio, root_dir=root)
 
         assert result.text == "turn on lights"
@@ -329,13 +329,15 @@ def test_transcribe_smart_builds_default_entities_and_prompt() -> None:
     )
 
     with patch("jarvis_engine.stt._try_parakeet", return_value=result_obj) as mock_pk, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_post:
+patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_post:
+
         transcribe_smart(fake_audio)
 
     assert "Jarvis" in mock_pk.call_args.kwargs["prompt"]
     assert "Ollama" in mock_pk.call_args.kwargs["prompt"]
     assert "Jarvis" in mock_post.call_args.kwargs["entity_list"]
+
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +358,8 @@ def test_transcribe_smart_forced_groq() -> None:
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=groq_result) as mock_groq, \
          patch("jarvis_engine.stt._try_local") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello"
@@ -386,8 +388,8 @@ def test_transcribe_smart_forced_local() -> None:
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_parakeet") as mock_pk, \
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.backend == "faster-whisper"
@@ -411,7 +413,7 @@ def test_transcribe_smart_all_backends_fail() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio)
 
     assert result.text == ""
@@ -481,8 +483,8 @@ def test_transcribe_smart_calls_preprocess() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio) as mock_preprocess, \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio) as mock_preprocess, \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", return_value="hello world"):
         result = transcribe_smart(fake_audio)
         mock_preprocess.assert_called_once()
 
@@ -505,8 +507,8 @@ def test_transcribe_smart_calls_postprocess() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="Hello, Conner!") as mock_post:
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", return_value="Hello, Conner!") as mock_post:
         mock_gateway = MagicMock(spec=ModelGateway)
         result = transcribe_smart(fake_audio, gateway=mock_gateway, entity_list=["Conner"])
         mock_post.assert_called_once_with(
@@ -539,12 +541,14 @@ def test_transcribe_smart_postprocesses_segments() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
+
         result = transcribe_smart(fake_audio, entity_list=["Conner"])
 
     assert result.text == "Hello Conner brain status"
     assert result.segments is not None
     assert [segment["text"] for segment in result.segments] == ["Hello Conner", "Brain status"]
+
 
 
 def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
@@ -561,8 +565,8 @@ def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
 
     with patch.dict("os.environ", {"JARVIS_STT_BACKEND": "local"}), \
          patch("jarvis_engine.stt._try_local", return_value=mock_result), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio") as mock_preprocess, \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio") as mock_preprocess, \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", return_value="hello world"):
         result = transcribe_smart("/tmp/audio.wav")
         mock_preprocess.assert_not_called()
 
@@ -610,8 +614,8 @@ def test_transcribe_smart_fallback_chain_order():
          patch("jarvis_engine.stt._try_deepgram", side_effect=mock_deepgram), \
          patch("jarvis_engine.stt._try_groq", side_effect=mock_groq), \
          patch("jarvis_engine.stt._try_local_emergency", side_effect=mock_local), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Groq result is used (highest confidence, above threshold)
@@ -642,8 +646,8 @@ def test_transcribe_smart_parakeet_primary():
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello world"
@@ -669,7 +673,7 @@ def test_transcribe_smart_all_fail_fallback_chain():
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio)
 
     assert result.text == ""
@@ -697,8 +701,8 @@ def test_transcribe_smart_forced_parakeet():
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello"
@@ -729,8 +733,8 @@ def test_transcribe_smart_forced_deepgram():
          patch("jarvis_engine.stt._try_parakeet") as mock_pk, \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello jarvis"
@@ -765,8 +769,8 @@ def test_transcribe_smart_low_confidence_fallthrough():
          patch("jarvis_engine.stt._try_deepgram", return_value=high_conf), \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Deepgram result used (above threshold)
@@ -835,7 +839,7 @@ def test_forced_parakeet_failure():
     fake_audio = np.zeros(16000, dtype=np.float32)
 
     with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio)
 
     assert result.text == ""
@@ -871,8 +875,8 @@ def test_full_pipeline_parakeet_happy_path():
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp, \
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp, \
          patch("jarvis_engine.stt._log_stt_metric") as mock_metric:
         result = transcribe_smart(fake_audio)
 
@@ -946,8 +950,8 @@ def test_full_pipeline_fallback_to_backend(
          patch("jarvis_engine.stt._try_deepgram", return_value=_resolve(dg_return)), \
          patch("jarvis_engine.stt._try_groq", return_value=_resolve(groq_return)), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=_resolve(local_return)), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == expected_text
@@ -986,8 +990,8 @@ def test_full_pipeline_confidence_fallthrough():
          patch("jarvis_engine.stt._try_deepgram", return_value=high_result), \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Deepgram result used (confidence 0.9 >= threshold 0.6)
@@ -1027,8 +1031,8 @@ def test_full_pipeline_postprocessing_integration():
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=mock_postprocess):
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=mock_postprocess):
         result = transcribe_smart(fake_audio)
 
     # Post-processing applied: fillers removed, entity corrected
@@ -1064,8 +1068,8 @@ def test_full_pipeline_personal_vocab_flows():
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt._load_keyterms", return_value=vocab_terms), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp:
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp:
         result = transcribe_smart(fake_audio, entity_list=vocab_terms)
 
     # Verify Deepgram received keyterms
@@ -1227,7 +1231,7 @@ def test_caller_proactive_handler_integration():
 
     with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio), \
          patch("jarvis_engine.stt.transcribe_smart", return_value=pipeline_result), \
-         patch("jarvis_engine.stt_postprocess._load_personal_vocab", return_value=["Conner"]), \
+         patch("jarvis_engine.stt.postprocess._load_personal_vocab", return_value=["Conner"]), \
          patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time:
         mock_time.sleep = MagicMock()
         mock_time.time.return_value = 0.0

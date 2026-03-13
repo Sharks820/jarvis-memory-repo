@@ -25,7 +25,7 @@ class TestNoiseFloorCalibration:
 
     def test_threshold_proportional_to_ambient(self):
         """Calibrated threshold should be 2.5x the ambient RMS."""
-        from jarvis_engine.stt_backends import _calibrate_noise_floor
+        from jarvis_engine.stt.backends import _calibrate_noise_floor
 
         # Simulate a stream returning ambient audio with known RMS
         ambient_level = 0.008  # RMS we want to achieve
@@ -44,7 +44,7 @@ class TestNoiseFloorCalibration:
 
     def test_threshold_clamped_min(self):
         """Threshold should be clamped to minimum 0.005 in very quiet environments."""
-        from jarvis_engine.stt_backends import (
+        from jarvis_engine.stt.backends import (
             _calibrate_noise_floor,
             _NOISE_FLOOR_MIN,
         )
@@ -62,7 +62,7 @@ class TestNoiseFloorCalibration:
 
     def test_threshold_clamped_max(self):
         """Threshold should be clamped to maximum 0.05 in noisy environments."""
-        from jarvis_engine.stt_backends import (
+        from jarvis_engine.stt.backends import (
             _calibrate_noise_floor,
             _NOISE_FLOOR_MAX,
         )
@@ -80,7 +80,7 @@ class TestNoiseFloorCalibration:
 
     def test_calibration_reads_500ms(self):
         """Calibration should read exactly 500ms of audio (8000 samples at 16kHz)."""
-        from jarvis_engine.stt_backends import _calibrate_noise_floor
+        from jarvis_engine.stt.backends import _calibrate_noise_floor
 
         sample_rate = 16000
         expected_samples = 8000  # 500ms at 16kHz
@@ -95,7 +95,7 @@ class TestNoiseFloorCalibration:
 
     def test_calibration_fallback_on_read_error(self):
         """If stream.read fails, fall back to default threshold (0.01)."""
-        from jarvis_engine.stt_backends import _calibrate_noise_floor
+        from jarvis_engine.stt.backends import _calibrate_noise_floor
 
         stream = MagicMock()
         stream.read.side_effect = OSError("mic error")
@@ -105,7 +105,7 @@ class TestNoiseFloorCalibration:
 
     def test_noise_floor_used_in_record_when_no_silero(self):
         """record_from_microphone should use adaptive noise floor when Silero unavailable."""
-        from jarvis_engine.stt_backends import _calibrate_noise_floor
+        from jarvis_engine.stt.backends import _calibrate_noise_floor
 
         # This is an integration-style check: verify _calibrate_noise_floor
         # is called with a stream when Silero VAD is not available.

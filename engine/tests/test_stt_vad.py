@@ -34,7 +34,7 @@ class _SileroModelStub:
 
 def test_constructor_defaults() -> None:
     """SileroVADDetector stores threshold, onset/offset, and sampling_rate."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     assert d._threshold == 0.4
@@ -47,7 +47,7 @@ def test_constructor_defaults() -> None:
 
 def test_constructor_custom_params() -> None:
     """Constructor accepts custom threshold and sampling_rate."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.3, sampling_rate=8000)
     assert d._threshold == 0.3
@@ -57,7 +57,7 @@ def test_constructor_custom_params() -> None:
 
 def test_constructor_explicit_onset_offset() -> None:
     """Constructor accepts explicit onset and offset thresholds."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.35, offset_threshold=0.65)
     assert d._onset_threshold == 0.35
@@ -70,7 +70,7 @@ def test_constructor_explicit_onset_offset() -> None:
 
 def test_ensure_model_loads_silero_and_sets_threads() -> None:
     """_ensure_model loads Silero VAD model and calls torch.set_num_threads(1)."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -88,7 +88,7 @@ def test_ensure_model_loads_silero_and_sets_threads() -> None:
 
 def test_ensure_model_called_once() -> None:
     """_ensure_model is a no-op after the model is already loaded."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     d._model = MagicMock(spec=_SileroModelStub)  # pretend already loaded
@@ -104,7 +104,7 @@ def test_ensure_model_called_once() -> None:
 
 def test_is_speech_high_confidence_returns_true() -> None:
     """is_speech returns True when model confidence > onset_threshold."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.4, offset_threshold=0.6)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -130,7 +130,7 @@ def test_is_speech_high_confidence_returns_true() -> None:
 
 def test_is_speech_low_confidence_returns_false() -> None:
     """is_speech returns False when model confidence < onset_threshold."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.4, offset_threshold=0.6)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -154,7 +154,7 @@ def test_is_speech_low_confidence_returns_false() -> None:
 
 def test_get_confidence_returns_raw_value() -> None:
     """get_confidence returns the raw probability from the model."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -178,7 +178,7 @@ def test_get_confidence_returns_raw_value() -> None:
 
 def test_process_chunk_splits_large_chunk() -> None:
     """process_chunk splits 1280-sample chunk into 2x 512-sample windows."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.5, offset_threshold=0.7)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -202,7 +202,7 @@ def test_process_chunk_splits_large_chunk() -> None:
 
 def test_process_chunk_all_low_confidence() -> None:
     """process_chunk returns False when all sub-windows have low confidence."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.5, offset_threshold=0.7)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -222,7 +222,7 @@ def test_process_chunk_all_low_confidence() -> None:
 
 def test_process_chunk_small_chunk_delegates_to_is_speech() -> None:
     """process_chunk with <=512 samples delegates to is_speech."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.4, offset_threshold=0.6)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -248,7 +248,7 @@ def test_process_chunk_small_chunk_delegates_to_is_speech() -> None:
 
 def test_reset_calls_model_reset_states() -> None:
     """reset() calls model.reset_states() when model is loaded."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -263,7 +263,7 @@ def test_reset_calls_model_reset_states() -> None:
 
 def test_reset_noop_when_model_not_loaded() -> None:
     """reset() is a no-op when model hasn't been loaded (but clears hysteresis)."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     d._in_speech = True
@@ -280,7 +280,7 @@ def test_reset_noop_when_model_not_loaded() -> None:
 
 def test_graceful_degradation_no_silero() -> None:
     """When silero_vad is not installed, is_speech returns False, get_confidence returns 0.0."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     # Simulate import failure by leaving _model as None and patching _ensure_model
@@ -301,7 +301,7 @@ def test_graceful_degradation_no_silero() -> None:
 
 def test_available_when_both_installed() -> None:
     """available returns True when torch and silero_vad are importable."""
-    from jarvis_engine import stt_vad
+    from jarvis_engine.stt import vad as stt_vad
 
     # Reset cached values
     stt_vad._torch_available = None
@@ -323,7 +323,7 @@ def test_available_when_both_installed() -> None:
 
 def test_available_when_torch_missing() -> None:
     """available returns False when torch is not importable."""
-    from jarvis_engine import stt_vad
+    from jarvis_engine.stt import vad as stt_vad
 
     d = stt_vad.SileroVADDetector()
 
@@ -340,7 +340,7 @@ def test_available_when_torch_missing() -> None:
 
 def test_available_when_silero_missing() -> None:
     """available returns False when silero_vad is not importable."""
-    from jarvis_engine import stt_vad
+    from jarvis_engine.stt import vad as stt_vad
 
     d = stt_vad.SileroVADDetector()
 
@@ -361,7 +361,7 @@ def test_available_when_silero_missing() -> None:
 
 def test_get_vad_detector_returns_singleton() -> None:
     """get_vad_detector returns the same instance on repeated calls."""
-    from jarvis_engine import stt_vad
+    from jarvis_engine.stt import vad as stt_vad
 
     # Reset singleton
     stt_vad._vad_instance = None
@@ -381,7 +381,7 @@ def test_get_vad_detector_returns_singleton() -> None:
 
 def test_process_chunk_exact_two_windows() -> None:
     """process_chunk with 1024 samples processes exactly 2 windows."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.5, offset_threshold=0.7)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -406,7 +406,7 @@ def test_process_chunk_exact_two_windows() -> None:
 
 def test_get_confidence_handles_model_exception() -> None:
     """get_confidence returns 0.0 if model inference raises."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector()
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -429,7 +429,7 @@ def test_get_confidence_handles_model_exception() -> None:
 
 def test_hysteresis_onset_then_offset() -> None:
     """Speech stays True after onset until confidence drops below (1-offset)."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.4, offset_threshold=0.6)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -460,7 +460,7 @@ def test_hysteresis_onset_then_offset() -> None:
 
 def test_onset_rejects_noise() -> None:
     """Speech is not detected when confidence stays below onset_threshold."""
-    from jarvis_engine.stt_vad import SileroVADDetector
+    from jarvis_engine.stt.vad import SileroVADDetector
 
     d = SileroVADDetector(onset_threshold=0.4, offset_threshold=0.6)
     mock_model = MagicMock(spec=_SileroModelStub)
@@ -484,7 +484,7 @@ def test_onset_rejects_noise() -> None:
 
 def test_get_vad_detector_onset_offset_params() -> None:
     """get_vad_detector passes onset/offset thresholds to detector."""
-    from jarvis_engine import stt_vad
+    from jarvis_engine.stt import vad as stt_vad
 
     stt_vad._vad_instance = None
     try:

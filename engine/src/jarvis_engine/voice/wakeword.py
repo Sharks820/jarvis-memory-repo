@@ -88,7 +88,7 @@ class WakeWordDetector:
 
         # Initialize Silero VAD (lower threshold for wake word sensitivity)
         try:
-            from jarvis_engine.stt_vad import SileroVADDetector
+            from jarvis_engine.stt.vad import SileroVADDetector
 
             self._vad = SileroVADDetector(threshold=0.3)
             self._vad_available = self._vad.available

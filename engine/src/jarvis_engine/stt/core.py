@@ -29,8 +29,8 @@ from pathlib import Path
 import numpy as np
 
 from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine.stt_contracts import TranscriptionSegment
-from jarvis_engine.stt_backends import (  # noqa: F401 -- re-exports
+from jarvis_engine.stt.contracts import TranscriptionSegment
+from jarvis_engine.stt.backends import (  # noqa: F401 -- re-exports
     _load_keyterms,
     _numpy_to_wav_bytes,
     _try_deepgram,
@@ -721,7 +721,7 @@ def _preprocess_audio_if_needed(
     if not isinstance(audio, np.ndarray) or len(audio) == 0:
         return audio, None
     try:
-        from jarvis_engine.stt_postprocess import preprocess_audio
+        from jarvis_engine.stt.postprocess import preprocess_audio
 
         audio = preprocess_audio(audio)
         if len(audio) == 0:
@@ -898,7 +898,7 @@ def _apply_postprocessing(
     if not result.text.strip():
         return result
     try:
-        from jarvis_engine.stt_postprocess import (
+        from jarvis_engine.stt.postprocess import (
             postprocess_transcription,
             postprocess_transcription_segments,
         )

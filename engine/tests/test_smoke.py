@@ -66,8 +66,8 @@ _PUBLIC_MODULES = [
     "jarvis_engine.ops.runtime_control",
     "jarvis_engine.scam_hunter",
     "jarvis_engine.stt",
-    "jarvis_engine.stt_postprocess",
-    "jarvis_engine.stt_vad",
+    "jarvis_engine.stt.postprocess",
+    "jarvis_engine.stt.vad",
     "jarvis_engine.task_orchestrator",
     "jarvis_engine.temporal",
     "jarvis_engine.voice",
@@ -726,7 +726,7 @@ class TestSTTPipelineSmoke:
 
     def test_postprocess_returns_string(self):
         pytest.importorskip("numpy", reason="numpy required for STT")
-        from jarvis_engine.stt_postprocess import postprocess_transcription
+        from jarvis_engine.stt.postprocess import postprocess_transcription
 
         assert isinstance(
             postprocess_transcription(
@@ -737,13 +737,13 @@ class TestSTTPipelineSmoke:
 
     def test_postprocess_empty_string(self):
         pytest.importorskip("numpy", reason="numpy required for STT")
-        from jarvis_engine.stt_postprocess import postprocess_transcription
+        from jarvis_engine.stt.postprocess import postprocess_transcription
 
         assert isinstance(postprocess_transcription("", confidence=1.0), str)
 
     def test_postprocess_low_confidence_no_raise(self):
         pytest.importorskip("numpy", reason="numpy required for STT")
-        from jarvis_engine.stt_postprocess import postprocess_transcription
+        from jarvis_engine.stt.postprocess import postprocess_transcription
 
         assert isinstance(
             postprocess_transcription("maybe unclear here", confidence=0.2), str

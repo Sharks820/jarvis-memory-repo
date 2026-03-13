@@ -264,7 +264,7 @@ class TestWakeWordStartHandler:
 
         with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio) as mock_record, \
              patch("jarvis_engine.stt.transcribe_smart", return_value=mock_result), \
-             patch("jarvis_engine.stt_postprocess._load_personal_vocab", return_value=["Jarvis"]), \
+             patch("jarvis_engine.stt.postprocess._load_personal_vocab", return_value=["Jarvis"]), \
              patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time, \
              patch("jarvis_engine.voice.intents.cmd_voice_run_impl") as mock_run, \
              patch("jarvis_engine.config.repo_root", return_value=tmp_path):

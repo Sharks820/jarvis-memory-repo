@@ -26,7 +26,7 @@ import numpy as np
 from jarvis_engine.stt_contracts import TranscriptionSegment
 
 if TYPE_CHECKING:
-    from jarvis_engine.stt import TranscriptionResult
+    from jarvis_engine.stt.core import TranscriptionResult
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +294,7 @@ def _try_deepgram(
     """
     # Import TranscriptionResult lazily to avoid circular imports at
     # module load time (stt.py imports from this module).
-    from jarvis_engine.stt import TranscriptionResult
+    from jarvis_engine.stt.core import TranscriptionResult
 
     api_key = os.environ.get("DEEPGRAM_API_KEY", "")
     if not api_key:
@@ -370,7 +370,7 @@ def _init_vad(sample_rate: int) -> tuple[_VadDetector | None, bool]:
     vad_detector = None
     use_silero = False
     try:
-        from jarvis_engine.stt_vad import get_vad_detector
+        from jarvis_engine.stt.vad import get_vad_detector
 
         vad_detector = cast(_VadDetector, get_vad_detector(sampling_rate=sample_rate))
         use_silero = vad_detector.available

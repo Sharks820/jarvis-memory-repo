@@ -292,7 +292,7 @@ def test_try_deepgram_with_numpy_audio():
 
 def test_deepgram_params_include_required_fields():
     """_build_deepgram_params includes utterances, endpointing=300, numerals=true."""
-    from jarvis_engine.stt_backends import _build_deepgram_params
+    from jarvis_engine.stt.backends import _build_deepgram_params
 
     params = _build_deepgram_params("en", keyterms=[])
     param_dict = {k: v for k, v in params}
@@ -309,7 +309,7 @@ def test_deepgram_params_include_required_fields():
 
 def test_deepgram_keyword_boost_uses_float():
     """Keywords include float intensity boost (e.g., 'term:2.0')."""
-    from jarvis_engine.stt_backends import _build_deepgram_params
+    from jarvis_engine.stt.backends import _build_deepgram_params
 
     params = _build_deepgram_params("en", keyterms=["Conner", "Jarvis"])
     keyword_values = [v for k, v in params if k == "keywords"]

@@ -589,14 +589,14 @@ def test_confidence_threshold_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     """JARVIS_STT_CONFIDENCE_THRESHOLD env var overrides default threshold."""
     monkeypatch.setenv("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.8")
     # Re-import to pick up the new env var value
-    import jarvis_engine.stt as stt_mod
-    importlib.reload(stt_mod)
+    import jarvis_engine.stt.core as stt_core
+    importlib.reload(stt_core)
     try:
-        assert stt_mod.CONFIDENCE_RETRY_THRESHOLD == 0.8
+        assert stt_core.CONFIDENCE_RETRY_THRESHOLD == 0.8
     finally:
         # Restore original value
         monkeypatch.delenv("JARVIS_STT_CONFIDENCE_THRESHOLD", raising=False)
-        importlib.reload(stt_mod)
+        importlib.reload(stt_core)
 
 
 # ---------------------------------------------------------------------------
@@ -606,13 +606,13 @@ def test_confidence_threshold_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_groq_model_name_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     """JARVIS_GROQ_STT_MODEL env var overrides default model name."""
     monkeypatch.setenv("JARVIS_GROQ_STT_MODEL", "whisper-large-v3")
-    import jarvis_engine.stt as stt_mod
-    importlib.reload(stt_mod)
+    import jarvis_engine.stt.core as stt_core
+    importlib.reload(stt_core)
     try:
-        assert stt_mod.GROQ_STT_MODEL == "whisper-large-v3"
+        assert stt_core.GROQ_STT_MODEL == "whisper-large-v3"
     finally:
         monkeypatch.delenv("JARVIS_GROQ_STT_MODEL", raising=False)
-        importlib.reload(stt_mod)
+        importlib.reload(stt_core)
 
 
 # ---------------------------------------------------------------------------

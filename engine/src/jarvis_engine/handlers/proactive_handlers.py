@@ -166,7 +166,7 @@ class WakeWordStartHandler:
                 finally:
                     detector.resume()
                 # Load personal vocab for NER entity correction
-                from jarvis_engine.stt_postprocess import _load_personal_vocab
+                from jarvis_engine.stt.postprocess import _load_personal_vocab
 
                 _entities = _load_personal_vocab()
                 result = transcribe_smart(

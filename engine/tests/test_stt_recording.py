@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from jarvis_engine.stt_vad import SileroVADDetector
+from jarvis_engine.stt.vad import SileroVADDetector
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +204,8 @@ def test_record_from_microphone_with_silero_vad() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt.get_vad_detector", return_value=mock_vad, create=True), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+         patch("jarvis_engine.stt.backends.get_vad_detector", return_value=mock_vad, create=True), \
+         patch("jarvis_engine.stt.vad.get_vad_detector", return_value=mock_vad):
         result = stt_mod.record_from_microphone()
 
     assert len(result) > 0
@@ -252,7 +252,7 @@ def test_record_from_microphone_rms_fallback() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+         patch("jarvis_engine.stt.vad.get_vad_detector", return_value=mock_vad):
         result = stt_mod.record_from_microphone()
 
     assert len(result) > 0
@@ -285,7 +285,7 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+         patch("jarvis_engine.stt.vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone(drain_seconds=0.0)
 
     # stream.read should be called with 512 samples (32ms at 16kHz)
@@ -326,7 +326,7 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+         patch("jarvis_engine.stt.vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone(drain_seconds=0.0)
 
     # First read is noise floor calibration (8000 samples = 500ms).
@@ -360,7 +360,7 @@ def test_record_from_microphone_resets_vad_state() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+         patch("jarvis_engine.stt.vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone(max_duration_seconds=0.1)
 
     mock_vad.reset.assert_called_once()
@@ -395,7 +395,7 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
-         patch("jarvis_engine.stt_vad.get_vad_detector", side_effect=ImportError("no module")):
+         patch("jarvis_engine.stt.vad.get_vad_detector", side_effect=ImportError("no module")):
         result = stt_mod.record_from_microphone()
 
     # Should still produce audio (fell back to RMS)
@@ -413,14 +413,14 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
 
 def test_record_microphone_default_silence_duration_is_command_mode() -> None:
     """Default silence_duration is 0.8s (command mode), not 2.0s."""
-    from jarvis_engine.stt_backends import _SILENCE_DURATION_COMMAND
+    from jarvis_engine.stt.backends import _SILENCE_DURATION_COMMAND
 
     assert _SILENCE_DURATION_COMMAND == 0.8
 
 
 def test_record_microphone_dictation_mode_silence_duration() -> None:
     """Dictation mode uses 2.0s silence duration."""
-    from jarvis_engine.stt_backends import _SILENCE_DURATION_DICTATION
+    from jarvis_engine.stt.backends import _SILENCE_DURATION_DICTATION
 
     assert _SILENCE_DURATION_DICTATION == 2.0
 
@@ -501,7 +501,7 @@ def test_record_microphone_conversation_mode_allows_longer_pause() -> None:
 
 def test_capture_loop_prepends_pre_speech_audio() -> None:
     """Pre-speech ring buffer audio is prepended when speech starts."""
-    from jarvis_engine.stt_backends import _capture_audio_loop
+    from jarvis_engine.stt.backends import _capture_audio_loop
 
     call_count = [0]
     samples_per_chunk = 1600  # 100ms at 16kHz

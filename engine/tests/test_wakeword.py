@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from jarvis_engine.stt_vad import SileroVADDetector
+from jarvis_engine.stt.vad import SileroVADDetector
 from jarvis_engine.voice.wakeword import WakeWordDetector
 
 
@@ -1118,7 +1118,7 @@ def test_wakeword_silero_vad_integration() -> None:
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
-        if name == "jarvis_engine.stt_vad":
+        if name == "jarvis_engine.stt.vad":
             module = MagicMock()
             module.SileroVADDetector.return_value = mock_vad
             return module
@@ -1175,7 +1175,7 @@ def test_wakeword_vad_reset_after_detection() -> None:
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
-        if name == "jarvis_engine.stt_vad":
+        if name == "jarvis_engine.stt.vad":
             module = MagicMock()
             module.SileroVADDetector.return_value = mock_vad
             return module
@@ -1231,7 +1231,7 @@ def test_wakeword_rms_fallback() -> None:
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
-        if name == "jarvis_engine.stt_vad":
+        if name == "jarvis_engine.stt.vad":
             module = MagicMock()
             module.SileroVADDetector.return_value = mock_vad
             return module
@@ -1265,7 +1265,7 @@ def test_wakeword_vad_stored_on_instance() -> None:
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             raise ImportError("no sounddevice")
-        if name == "jarvis_engine.stt_vad":
+        if name == "jarvis_engine.stt.vad":
             module = MagicMock()
             module.SileroVADDetector.return_value = mock_vad
             return module
