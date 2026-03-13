@@ -19,14 +19,11 @@ import os
 import struct
 import time
 from collections import deque
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 import numpy as np
 
-from jarvis_engine.stt.contracts import TranscriptionSegment
-
-if TYPE_CHECKING:
-    from jarvis_engine.stt.core import TranscriptionResult
+from jarvis_engine.stt.contracts import TranscriptionResult, TranscriptionSegment
 
 logger = logging.getLogger(__name__)
 
@@ -304,10 +301,6 @@ def _try_deepgram(
         Explicit keyterm list.  If *None*, auto-loaded from
         ``personal_vocab.txt`` via :func:`_load_keyterms`.
     """
-    # Import TranscriptionResult lazily to avoid circular imports at
-    # module load time (stt.py imports from this module).
-    from jarvis_engine.stt.core import TranscriptionResult
-
     api_key = os.environ.get("DEEPGRAM_API_KEY", "")
     if not api_key:
         return None

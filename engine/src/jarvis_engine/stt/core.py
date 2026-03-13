@@ -22,14 +22,13 @@ import math
 import os
 import threading
 import time
-from dataclasses import dataclass
 from typing import Any, Protocol, cast
 from pathlib import Path
 
 import numpy as np
 
 from jarvis_engine._shared import now_iso
-from jarvis_engine.stt.contracts import TranscriptionSegment
+from jarvis_engine.stt.contracts import TranscriptionResult, TranscriptionSegment
 from jarvis_engine.stt.backends import (  # noqa: F401 -- re-exports
     _load_keyterms,
     _numpy_to_wav_bytes,
@@ -64,19 +63,6 @@ class _HTTPJsonResponse(Protocol):
     text: str
 
     def json(self) -> dict[str, Any]: ...
-
-
-@dataclass
-class TranscriptionResult:
-    """Result of a speech-to-text transcription."""
-
-    text: str = ""
-    language: str = ""
-    confidence: float = 0.0
-    duration_seconds: float = 0.0
-    backend: str = ""
-    retried: bool = False
-    segments: list[TranscriptionSegment] | None = None
 
 
 # STT quality metrics logging

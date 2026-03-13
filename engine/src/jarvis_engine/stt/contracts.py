@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
 
@@ -12,6 +13,19 @@ class TranscriptionSegment(TypedDict):
     end: float
     text: str
     kind: NotRequired[str]
+
+
+@dataclass
+class TranscriptionResult:
+    """Result of a speech-to-text transcription."""
+
+    text: str = ""
+    language: str = ""
+    confidence: float = 0.0
+    duration_seconds: float = 0.0
+    backend: str = ""
+    retried: bool = False
+    segments: list[TranscriptionSegment] | None = None
 
 
 class VoiceUtterance(TypedDict):

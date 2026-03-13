@@ -43,32 +43,61 @@ from jarvis_engine.security.injection_firewall import (
 from jarvis_engine.security.output_scanner import OutputScanner
 from jarvis_engine.security.threat_detector import ThreatAssessment, ThreatDetector
 
-# --- New module imports (graceful degradation if missing) ---
+# --- Optional security module imports (graceful degradation if missing) ---
 
+try:
+    from jarvis_engine.security.action_auditor import ActionAuditor
+except ImportError:
+    ActionAuditor = None  # type: ignore[assignment,misc]
 
-def _try_import(module_path: str, class_name: str) -> type | None:
-    """Import *class_name* from *module_path*, returning ``None`` on failure."""
-    try:
-        import importlib
-        mod = importlib.import_module(module_path)
-        return getattr(mod, class_name)
-    except (ImportError, AttributeError):  # pragma: no cover
-        return None
+try:
+    from jarvis_engine.security.scope_enforcer import ScopeEnforcer
+except ImportError:
+    ScopeEnforcer = None  # type: ignore[assignment,misc]
 
+try:
+    from jarvis_engine.security.heartbeat import HeartbeatMonitor
+except ImportError:
+    HeartbeatMonitor = None  # type: ignore[assignment,misc]
 
-ActionAuditor = _try_import("jarvis_engine.security.action_auditor", "ActionAuditor")
-ScopeEnforcer = _try_import("jarvis_engine.security.scope_enforcer", "ScopeEnforcer")
-HeartbeatMonitor = _try_import("jarvis_engine.security.heartbeat", "HeartbeatMonitor")
-ResourceMonitor = _try_import("jarvis_engine.security.resource_monitor", "ResourceMonitor")
-ThreatIntelFeed = _try_import("jarvis_engine.security.threat_intel", "ThreatIntelFeed")
-ThreatNeutralizer = _try_import("jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer")
-HomeNetworkMonitor = _try_import("jarvis_engine.security.network_defense", "HomeNetworkMonitor")
-KnownDeviceRegistry = _try_import("jarvis_engine.security.network_defense", "KnownDeviceRegistry")
-BreachMonitor = _try_import("jarvis_engine.security.identity_shield", "BreachMonitor")
-FamilyShield = _try_import("jarvis_engine.security.identity_shield", "FamilyShield")
-ImpersonationDetector = _try_import("jarvis_engine.security.identity_shield", "ImpersonationDetector")
-TyposquatMonitor = _try_import("jarvis_engine.security.identity_shield", "TyposquatMonitor")
-_OwnerSessionManagerClass = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
+try:
+    from jarvis_engine.security.resource_monitor import ResourceMonitor
+except ImportError:
+    ResourceMonitor = None  # type: ignore[assignment,misc]
+
+try:
+    from jarvis_engine.security.threat_intel import ThreatIntelFeed
+except ImportError:
+    ThreatIntelFeed = None  # type: ignore[assignment,misc]
+
+try:
+    from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
+except ImportError:
+    ThreatNeutralizer = None  # type: ignore[assignment,misc]
+
+try:
+    from jarvis_engine.security.network_defense import HomeNetworkMonitor, KnownDeviceRegistry
+except ImportError:
+    HomeNetworkMonitor = None  # type: ignore[assignment,misc]
+    KnownDeviceRegistry = None  # type: ignore[assignment,misc]
+
+try:
+    from jarvis_engine.security.identity_shield import (
+        BreachMonitor,
+        FamilyShield,
+        ImpersonationDetector,
+        TyposquatMonitor,
+    )
+except ImportError:
+    BreachMonitor = None  # type: ignore[assignment,misc]
+    FamilyShield = None  # type: ignore[assignment,misc]
+    ImpersonationDetector = None  # type: ignore[assignment,misc]
+    TyposquatMonitor = None  # type: ignore[assignment,misc]
+
+try:
+    from jarvis_engine.security.owner_session import OwnerSessionManager as _OwnerSessionManagerClass
+except ImportError:
+    _OwnerSessionManagerClass = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 

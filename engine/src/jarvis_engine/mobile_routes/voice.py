@@ -23,6 +23,8 @@ from jarvis_engine._constants import (
 )
 from jarvis_engine._shared import make_thread_aware_repo_root
 from jarvis_engine.mobile_routes._helpers import (
+    MobileRouteHandlerProtocol,
+    MobileRouteServerProtocol,
     _parse_bool,
     _thread_local,
 )
@@ -35,17 +37,16 @@ def _unescape_response(text: str) -> str:
     return text.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
 
 
-class _VoiceServerProtocol(Protocol):
-    """Subset of MobileIngestServer used by voice methods."""
+class _VoiceServerProtocol(MobileRouteServerProtocol, Protocol):
+    """Server protocol for voice routes, extending the shared base."""
 
     repo_root: Path
 
 
-class _VoiceHandlerProtocol(Protocol):
-    """Subset of MobileIngestHandler used by voice methods."""
+class _VoiceHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
+    """Handler protocol for voice routes, extending the shared base."""
 
     server: _VoiceServerProtocol
-    _root: Path
 
     def _command_failure_result(
         self,
