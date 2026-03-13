@@ -431,7 +431,9 @@ class TestVoiceListenHandler:
         assert result.text == "hello world"
         assert result.confidence == 0.95
         assert result.duration_seconds == 3.2
-        assert result.segments == [{"start": 0.0, "end": 1.0, "text": "hello world"}]
+        assert result.segments == [
+            {"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}
+        ]
 
     def test_parameters_forwarded(self, tmp_path: Path) -> None:
         mock_stt = MagicMock()

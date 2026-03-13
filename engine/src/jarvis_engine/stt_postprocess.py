@@ -407,6 +407,59 @@ def _load_personal_vocab() -> list[str]:
     return load_personal_vocab_lines(strip_parens=False)
 
 
+def _clean_llm_correction_candidate(text: str) -> str:
+    """Normalize common wrapper noise around LLM correction output."""
+    candidate = text.strip().strip("`")
+    candidate = candidate.strip().strip('"').strip("'")
+    lower = candidate.lower()
+    for prefix in ("corrected text:", "corrected:", "transcription:", "output:"):
+        if lower.startswith(prefix):
+            candidate = candidate[len(prefix) :].strip().strip('"').strip("'")
+            break
+    return candidate
+
+
+_COMMENTARY_PREFIXES: tuple[str, ...] = (
+    "here is",
+    "here's",
+    "i corrected",
+    "the corrected",
+    "note:",
+    "explanation:",
+)
+_WORDISH_RE = re.compile(r"[a-z0-9']+")
+
+
+def _accept_llm_correction(original: str, candidate: str) -> bool:
+    """Return True when an LLM correction stays close enough to the source."""
+    if not candidate:
+        return False
+    lower = candidate.lower()
+    if lower.startswith(_COMMENTARY_PREFIXES):
+        return False
+    if "\n" in candidate or "```" in candidate:
+        return False
+    if len(candidate) > max(len(original) * 2, len(original) + 40):
+        return False
+
+    original_words = _WORDISH_RE.findall(original.lower())
+    candidate_words = _WORDISH_RE.findall(lower)
+    if candidate_words and len(candidate_words) > max(
+        len(original_words) + 4,
+        int(len(original_words) * 1.5) + 2,
+    ):
+        return False
+
+    if original_words:
+        original_set = set(original_words)
+        overlap = len(original_set & set(candidate_words))
+        required_overlap = 1 if len(original_set) <= 2 else max(2, len(original_set) // 2)
+        if overlap < required_overlap:
+            return False
+
+    return True
+
+
 def correct_with_llm(
     text: str,
     gateway: _LLMCompletionGateway | None,
@@ -441,8 +494,8 @@ def correct_with_llm(
             max_tokens=512,
             route_reason="stt-post-correction",
         )
-        corrected = response.text.strip()
-        if corrected:
+        corrected = _clean_llm_correction_candidate(response.text)
+        if _accept_llm_correction(text, corrected):
             return corrected
         return text
     except (
@@ -464,12 +517,7 @@ def correct_with_llm(
 
 
 def correct_entities(text: str, entity_list: list[str]) -> str:
-    """Correct entity names using exact and phonetic matching.
-
-    For each word in the text, checks:
-    1. Case-insensitive exact match against entity_list
-    2. Phonetic similarity (Metaphone) for near-misses
-    """
+    """Correct entity names using exact phrase, exact token, and phonetic matching."""
     if not entity_list or not text:
         return text
 
@@ -479,12 +527,31 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
     except ImportError:
         logger.debug("jellyfish not installed, using exact-match entity correction only")
 
-    # Build lookup maps
+    cleaned_entities: list[str] = []
+    seen_entities: set[str] = set()
+    for entity in entity_list:
+        cleaned = str(entity).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen_entities:
+            continue
+        seen_entities.add(lowered)
+        cleaned_entities.append(cleaned)
+
+    corrected_text = text
+    for entity in sorted((value for value in cleaned_entities if " " in value), key=len, reverse=True):
+        pattern = re.compile(
+            rf"(?<!\w){re.escape(entity).replace(r'\ ', r'\s+')}(?!\w)",
+            re.IGNORECASE,
+        )
+        corrected_text = pattern.sub(entity, corrected_text)
+
     exact_map: dict[str, str] = {}
     phonetic_map: dict[str, str] = {}
-    for entity in entity_list:
+    for entity in cleaned_entities:
         exact_map[entity.lower()] = entity
-        if jellyfish is not None:
+        if jellyfish is not None and " " not in entity:
             try:
                 code = jellyfish.metaphone(entity)
                 phonetic_map[code] = entity
@@ -492,24 +559,20 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
                 logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
 
     _PUNCT = ".,!?;:'\""
-    words = text.split()
+    words = corrected_text.split()
     corrected_words = []
     for word in words:
-        # Strip punctuation for matching
         stripped = word.strip(_PUNCT)
         if not stripped:
-            # Word is entirely punctuation — keep as-is
             corrected_words.append(word)
             continue
         prefix = word[: word.index(stripped[0])]
         suffix = word[word.rindex(stripped[-1]) + 1 :]
 
-        # Exact match
         if stripped.lower() in exact_map:
             corrected_words.append(prefix + exact_map[stripped.lower()] + suffix)
             continue
 
-        # Phonetic match
         if jellyfish is not None:
             try:
                 word_code = jellyfish.metaphone(stripped)
@@ -527,7 +590,6 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         corrected_words.append(word)
 
     return " ".join(corrected_words)
-
 
 # ---------------------------------------------------------------------------
 # Stage 6: Full Pipeline Orchestration

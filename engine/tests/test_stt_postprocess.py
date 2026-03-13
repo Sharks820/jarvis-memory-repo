@@ -243,6 +243,31 @@ def test_correct_with_llm_returns_corrected_text() -> None:
     assert result == "Hello, Conner!"
 
 
+def test_correct_with_llm_strips_simple_labels() -> None:
+    """Simple wrapper labels are stripped before acceptance."""
+    from jarvis_engine.stt_postprocess import correct_with_llm
+
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Corrected text: Hello, Conner!")
+
+    result = correct_with_llm("hello conner", mock_gateway)
+    assert result == "Hello, Conner!"
+
+
+def test_correct_with_llm_rejects_commentary_output() -> None:
+    """Commentary-style outputs are rejected to avoid semantic drift."""
+    from jarvis_engine.stt_postprocess import correct_with_llm
+
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(
+        spec=GatewayResponse,
+        text="Here is the corrected text: Hello, Conner!",
+    )
+
+    result = correct_with_llm("hello conner", mock_gateway)
+    assert result == "hello conner"
+
+
 def test_correct_with_llm_fallback_on_error() -> None:
     """On gateway error, original text is returned unchanged."""
     from jarvis_engine.stt_postprocess import correct_with_llm
@@ -326,6 +351,17 @@ def test_correct_entities_multiple_entities() -> None:
     result = correct_entities("hey jarvis tell conner", ["Jarvis", "Conner"])
     assert "Jarvis" in result
     assert "Conner" in result
+
+
+def test_correct_entities_phrase_exact_match() -> None:
+    """Multi-word entities are corrected as phrases, not as unrelated tokens."""
+    from jarvis_engine.stt_postprocess import correct_entities
+
+    result = correct_entities(
+        "run ops brief after brain status",
+        ["Ops Brief", "Brain Status"],
+    )
+    assert result == "run Ops Brief after Brain Status"
 
 
 def test_correct_entities_empty_list() -> None:
