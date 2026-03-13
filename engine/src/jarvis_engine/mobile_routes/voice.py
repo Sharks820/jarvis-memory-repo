@@ -20,7 +20,6 @@ from jarvis_engine._constants import (
     MAX_COMMAND_STDOUT_TAIL_LINES,
     MAX_COMMAND_TEXT_CHARS,
     OPS_SNAPSHOT_FILENAME,
-    SUBSYSTEM_ERRORS,
 )
 from jarvis_engine._shared import make_thread_aware_repo_root
 from jarvis_engine.mobile_routes._helpers import (

@@ -12,9 +12,6 @@ Consolidates duplicated helpers to a single source of truth:
 - extract_keywords / is_privacy_sensitive: text analysis
 - get_local_model / get_fast_local_model: LLM model name resolution
 - make_task_id / recency_weight: task and scoring utilities
-
-FTS5/DB helpers (sanitize_fts_query, FTS5_SPECIAL_RE, FTS5_KEYWORDS,
-placeholder_csv) are re-exported from :mod:`jarvis_engine._db_pragmas`.
 """
 
 from __future__ import annotations
@@ -23,18 +20,14 @@ __all__ = [
     "atomic_write_json",
     "check_path_within_root",
     "env_int",
-    "FTS5_KEYWORDS",
-    "FTS5_SPECIAL_RE",
     "load_json_file",
     "load_jsonl_tail",
     "load_personal_vocab_lines",
     "make_thread_aware_repo_root",
     "now_iso",
     "parse_iso_timestamp",
-    "placeholder_csv",
     "safe_float",
     "safe_int",
-    "sanitize_fts_query",
     "set_process_title",
     "sha256_hex",
     "sha256_short",
@@ -345,15 +338,6 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         return _personal_vocab_cache["raw"]
 
 
-# FTS5 query sanitization — canonical home is _db_pragmas.py;
-# re-exported here for backward compatibility.
-from jarvis_engine._db_pragmas import (  # noqa: F401
-    FTS5_KEYWORDS,
-    FTS5_SPECIAL_RE,
-    sanitize_fts_query,
-    placeholder_csv,
-)
-
 
 def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
     """Read the last *limit* JSON objects from a JSONL file.
@@ -537,6 +521,4 @@ def recency_weight(
     delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
     return math.exp(-delta_hours / decay_hours)
 
-
-# placeholder_csv re-exported from _db_pragmas above
 

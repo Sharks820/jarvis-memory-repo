@@ -22,7 +22,8 @@ import struct
 import threading
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso, sanitize_fts_query
+from jarvis_engine._db_pragmas import placeholder_csv as _placeholder_csv, sanitize_fts_query
+from jarvis_engine._shared import now_iso
 from jarvis_engine._constants import EMBEDDING_DIM
 from jarvis_engine.knowledge._base import upsert_fts_kg
 
@@ -48,8 +49,6 @@ RELATION_SYNONYMS: dict[str, str] = {
     "is_an": "type_of",
 }
 
-
-from jarvis_engine._shared import placeholder_csv as _placeholder_csv
 
 
 def _keyword_like_where(count: int) -> str:

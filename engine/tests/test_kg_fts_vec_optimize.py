@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from conftest import MockEmbeddingService
-from jarvis_engine._shared import sanitize_fts_query
+from jarvis_engine._db_pragmas import sanitize_fts_query
 from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.knowledge.regression import RegressionChecker
 from jarvis_engine.memory.engine import MemoryEngine

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from jarvis_engine._shared import sanitize_fts_query
+from jarvis_engine._db_pragmas import sanitize_fts_query
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.search import hybrid_search
 from jarvis_engine.memory.tiers import Tier, TierManager

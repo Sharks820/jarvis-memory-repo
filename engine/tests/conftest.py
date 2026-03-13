@@ -191,7 +191,6 @@ def mock_bus(monkeypatch):
 
     Shared across test_main*.py modules.
     """
-    from jarvis_engine import main as main_mod
     from jarvis_engine import cli_ops as cli_ops_mod
     from jarvis_engine import cli_knowledge as cli_knowledge_mod
     from jarvis_engine import _cli_helpers as cli_helpers_mod

@@ -19,7 +19,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import now_iso, sanitize_fts_query
+from jarvis_engine._db_pragmas import placeholder_csv as _placeholder_csv, sanitize_fts_query
+from jarvis_engine._shared import now_iso
 from jarvis_engine._constants import EMBEDDING_DIM
 
 if TYPE_CHECKING:
@@ -32,8 +33,6 @@ _RECORD_LOOKUP_SQL = {
     "content_hash": "SELECT * FROM records WHERE content_hash = ?",
 }
 
-
-from jarvis_engine._shared import placeholder_csv as _placeholder_csv
 
 
 class OptimizeResult(TypedDict):
