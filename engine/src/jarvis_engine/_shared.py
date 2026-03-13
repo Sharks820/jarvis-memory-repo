@@ -70,7 +70,6 @@ logger = logging.getLogger(__name__)
 
 
 def now_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -197,7 +196,6 @@ def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
-    """Convert *value* to float, returning *default* on failure."""
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -205,7 +203,6 @@ def safe_float(value: Any, default: float = 0.0) -> float:
 
 
 def safe_int(value: Any, default: int = 0) -> int:
-    """Convert *value* to int, returning *default* on failure."""
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -246,20 +243,10 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
 
 
 def sha256_hex(text: str) -> str:
-    """Return the SHA-256 hex digest of *text* (UTF-8 encoded)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def sha256_short(data: bytes, length: int = 32) -> str:
-    """Return a truncated SHA-256 hex digest of *data*.
-
-    Args:
-        data: Raw bytes to hash.
-        length: Number of hex characters to return (default 32).
-
-    Returns:
-        The first *length* characters of the full SHA-256 hex digest.
-    """
     return hashlib.sha256(data).hexdigest()[:length]
 
 
@@ -439,27 +426,22 @@ def _get_privacy_re() -> re.Pattern[str]:
 
 
 def is_privacy_sensitive(text: str) -> bool:
-    """Return *True* if *text* contains any privacy keyword (word-boundary match)."""
     return bool(_get_privacy_re().search(text))
 
 
 def get_local_model() -> str:
-    """Return the configured local Ollama model name."""
     return os.environ.get("JARVIS_LOCAL_MODEL", DEFAULT_LOCAL_MODEL)
 
 
 def get_fast_local_model() -> str:
-    """Return the configured fast local Ollama model name."""
     return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
 
 
 def memory_db_path(root: Path) -> Path:
-    """Return the canonical path to the main Jarvis memory database."""
     return root / ".planning" / "brain" / "jarvis_memory.db"
 
 
 def runtime_dir(root: Path) -> Path:
-    """Return the canonical path to the runtime data directory."""
     return root / ".planning" / "runtime"
 
 
@@ -471,7 +453,6 @@ def extract_keywords(
     pattern: str = r"[a-zA-Z]+",
     deduplicate: bool = True,
 ) -> list[str]:
-    """Extract meaningful keywords from *text*."""
     if not text:
         return []
 

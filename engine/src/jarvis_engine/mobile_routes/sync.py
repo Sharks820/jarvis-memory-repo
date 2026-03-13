@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
 
-from jarvis_engine.mobile_routes._helpers import HeaderProtocol
+from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 if TYPE_CHECKING:
     from jarvis_engine.sync.auto_sync import AutoSyncConfig
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _SyncServerProtocol(Protocol):
+class _SyncServerProtocol(MobileRouteServerProtocol, Protocol):
     _auto_sync_config: AutoSyncConfig | None
     _sync_init_lock: Any
     _sync_transport: SyncTransport | None
@@ -28,24 +28,8 @@ class _SyncServerProtocol(Protocol):
         ...
 
 
-class _SyncHandlerProtocol(Protocol):
+class _SyncHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
     server: _SyncServerProtocol
-    headers: HeaderProtocol
-    _root: Path
-
-    def _validate_auth(self, body: bytes) -> bool:
-        ...
-
-    def _write_json(self, status: int, payload: dict[str, Any]) -> None:
-        ...
-
-    def _read_json_body(
-        self,
-        *,
-        max_content_length: int,
-        auth: bool = True,
-    ) -> tuple[dict[str, Any] | None, bytes | None]:
-        ...
 
     def _ensure_auto_sync(self) -> AutoSyncConfig:
         ...
