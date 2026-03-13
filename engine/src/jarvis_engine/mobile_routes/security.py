@@ -44,7 +44,7 @@ class SecurityRoutesMixin:
         if sec is None:
             self._write_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
-                {"ok": False, "error": "Security orchestrator not available"},
+                {"ok": False, "error": "Security orchestrator not available."},
             )
             return
         dashboard = {

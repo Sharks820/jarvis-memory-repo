@@ -9,6 +9,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine.daemon_loop import CycleState
 from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import harvest_discovery as harvest_discovery_mod
 from jarvis_engine import cli_ops as cli_ops_mod
@@ -165,10 +166,9 @@ class TestDaemonResourceGuardrails:
         # (the base monkeypatch replaces it with _fast_gather_cycle_state which
         # hardcodes sleep_seconds=0 and never calls recommend_daemon_sleep).
         def _throttled_gather(root, active_interval, idle_interval, idle_after):
+            from dataclasses import replace
             state = _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after)
-            state["sleep_seconds"] = 777
-            state["pressure_level"] = "mild"
-            return state
+            return replace(state, sleep_seconds=777, pressure_level="mild")
 
         monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _throttled_gather)
         monkeypatch.setattr(daemon_loop_mod, "_interruptible_sleep", lambda s: sleeps.append(int(s)))
@@ -184,10 +184,9 @@ class TestDaemonResourceGuardrails:
 
         # Override _gather_cycle_state to return severe pressure
         def _severe_gather(root, active_interval, idle_interval, idle_after):
+            from dataclasses import replace
             state = _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after)
-            state["pressure_level"] = "severe"
-            state["skip_heavy_tasks"] = True
-            return state
+            return replace(state, pressure_level="severe", skip_heavy_tasks=True)
 
         monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _severe_gather)
         # Re-enable _run_periodic_subsystems so the self-test skip logic runs
@@ -408,21 +407,21 @@ class TestLearningMissionPerformance:
 
 def _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after):
     """Instant stub for _gather_cycle_state — avoids filesystem I/O in tests."""
-    return {
-        "idle_seconds": 10.0,
-        "is_active": True,
-        "sleep_seconds": 0,
-        "resource_snapshot": {},
-        "pressure_level": "none",
-        "skip_heavy_tasks": False,
-        "gaming_state": {},
-        "control_state": {},
-        "auto_detect": False,
-        "detected_process": "",
-        "gaming_mode_enabled": False,
-        "daemon_paused": False,
-        "safe_mode": False,
-    }
+    return CycleState(
+        idle_seconds=10.0,
+        is_active=True,
+        sleep_seconds=0,
+        resource_snapshot={},
+        pressure_level="none",
+        skip_heavy_tasks=False,
+        gaming_state={},
+        control_state={},
+        auto_detect=False,
+        detected_process="",
+        gaming_mode_enabled=False,
+        daemon_paused=False,
+        safe_mode=False,
+    )
 
 
 def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:

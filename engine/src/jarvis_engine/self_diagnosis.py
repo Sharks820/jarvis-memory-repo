@@ -19,6 +19,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._compat import UTC
 from jarvis_engine._shared import parse_iso_timestamp
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,6 @@ _KG_AVG_CONFIDENCE_THRESHOLD = 0.5
 
 @dataclass
 class DiagnosticIssue:
-    """A single diagnostic finding."""
-
     id: str
     severity: str          # critical / high / medium / low / info
     component: str         # "memory", "database", "gateway", "missions", "voice", "security", "knowledge_graph"
@@ -70,11 +69,6 @@ class DiagnosticIssue:
 
     def __post_init__(self) -> None:
         if not self.timestamp:
-            try:
-                from jarvis_engine._compat import UTC
-            except ImportError:
-                from datetime import timezone as _tz
-                UTC = _tz.utc
             self.timestamp = datetime.now(UTC).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,7 +76,6 @@ class DiagnosticIssue:
 
 
 def _issue_id() -> str:
-    """Generate a short unique issue ID."""
     return uuid.uuid4().hex[:8]
 
 
@@ -93,7 +86,6 @@ class DiagnosticEngine:
         self._root = root
 
     def _get_db_path(self) -> Path:
-        """Resolve the memory database path (single source of truth)."""
         try:
             from jarvis_engine._shared import memory_db_path
             return memory_db_path(self._root)
@@ -374,11 +366,6 @@ class DiagnosticEngine:
             return issues
 
         # Check for stuck missions (running > 10 minutes)
-        try:
-            from jarvis_engine._compat import UTC
-        except ImportError:
-            from datetime import timezone as _tz
-            UTC = _tz.utc
         now = datetime.now(UTC)
 
         stuck_ids: list[str] = []

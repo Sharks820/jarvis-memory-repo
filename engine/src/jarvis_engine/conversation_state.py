@@ -53,11 +53,6 @@ _TIMELINE_VACUUM_THRESHOLD = 1000
 _MAX_ENTITY_LENGTH = 200
 _MAX_ENTITIES_PER_TURN = 50
 _MAX_ROLLING_SUMMARY_CHARS = 2000
-# ---------------------------------------------------------------------------
-# Compiled regex patterns — grouped by purpose for navigability.
-# All compiled once at module level for performance.
-# ---------------------------------------------------------------------------
-
 # Content sanitization patterns (used by _is_suspicious_entity)
 _RE_CODE_BLOCK = re.compile(r"```")
 _RE_URL_ENCODED = re.compile(r"(?:%[0-9A-Fa-f]{2}){3,}")

@@ -7,9 +7,6 @@ from pathlib import Path
 
 from jarvis_engine.config import repo_root
 
-# ---------------------------------------------------------------------------
-# Imports from split CLI modules
-# ---------------------------------------------------------------------------
 from jarvis_engine.cli_ops import (  # noqa: E402
     cmd_ops_brief,
     cmd_ops_export_actions,
@@ -99,11 +96,6 @@ from jarvis_engine._constants import ACTIONS_FILENAME, DEFAULT_API_PORT, OPS_SNA
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Dispatch adapters (namespace → typed call)
-# ---------------------------------------------------------------------------
-
-
 def _dispatch_serve_mobile(args: argparse.Namespace) -> int:
     """Resolve --tls / --no-tls into a tri-state: True, False, or None (auto)."""
     _tls_flag: bool | None = None
@@ -166,13 +158,7 @@ def _dispatch_voice_run(args: argparse.Namespace) -> int:
     )
 
 
-# ---------------------------------------------------------------------------
-# Argparse subcommand registration
-# ---------------------------------------------------------------------------
-
-
 def _register_core_commands(sub: argparse._SubParsersAction) -> None:
-    """Register status, log, ingest, serve-mobile, route subcommands."""
     sub.add_parser("status", help="Show engine bootstrap status.").set_defaults(handler=lambda a: cmd_status())
 
     p_log = sub.add_parser("log", help="Append an event to memory log.")
@@ -238,7 +224,6 @@ def _register_core_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_growth_commands(sub: argparse._SubParsersAction) -> None:
-    """Register growth-eval, growth-report, growth-audit, intelligence-dashboard."""
     p_growth_eval = sub.add_parser("growth-eval", help="Run golden-task model growth evaluation.")
     p_growth_eval.add_argument("--model", required=True, help="Ollama model id.")
     p_growth_eval.add_argument("--endpoint", default="http://127.0.0.1:11434")
@@ -298,7 +283,6 @@ def _register_growth_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_brain_knowledge_commands(sub: argparse._SubParsersAction) -> None:
-    """Register brain-status/context/compact/regression, knowledge-status, contradiction, fact-lock."""
     p_brain_status = sub.add_parser("brain-status", help="Show high-level brain memory branch stats.")
     p_brain_status.add_argument("--json", action="store_true")
     p_brain_status.set_defaults(handler=lambda a: cmd_brain_status(as_json=a.json))
@@ -350,7 +334,6 @@ def _register_brain_knowledge_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_memory_commands(sub: argparse._SubParsersAction) -> None:
-    """Register memory-snapshot, maintenance, web-research, sync, self-heal, persona, migrate, widget."""
     p_snapshot = sub.add_parser("memory-snapshot", help="Create or verify signed memory snapshot.")
     p_snapshot_group = p_snapshot.add_mutually_exclusive_group(required=True)
     p_snapshot_group.add_argument("--create", action="store_true")
@@ -396,7 +379,6 @@ def _register_memory_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_task_commands(sub: argparse._SubParsersAction) -> None:
-    """Register run-task subcommand."""
     p_run_task = sub.add_parser("run-task", help="Run multimodal Jarvis task.")
     p_run_task.add_argument("--type", required=True, choices=["image", "code", "video", "model3d"])
     p_run_task.add_argument("--prompt", required=True)
@@ -418,7 +400,6 @@ def _register_task_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
-    """Register ops-brief, ops-export-actions, ops-sync, ops-autopilot, daemon-run."""
     p_ops_brief = sub.add_parser("ops-brief", help="Generate daily life operations brief.")
     p_ops_brief.add_argument(
         "--snapshot-path",
@@ -483,7 +464,6 @@ def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_mission_learning_commands(sub: argparse._SubParsersAction) -> None:
-    """Register mission-create/status/run/cancel, consolidate."""
     p_mission_create = sub.add_parser("mission-create", help="Create a learning mission.")
     p_mission_create.add_argument("--topic", required=True)
     p_mission_create.add_argument("--objective", default="")
@@ -518,7 +498,6 @@ def _register_mission_learning_commands(sub: argparse._SubParsersAction) -> None
 
 
 def _register_runtime_security_commands(sub: argparse._SubParsersAction) -> None:
-    """Register runtime-control, owner-guard, gaming-mode, automation-run, connect-*."""
     p_runtime = sub.add_parser("runtime-control", help="Pause/resume daemon and toggle safe mode.")
     p_runtime_group = p_runtime.add_mutually_exclusive_group()
     p_runtime_group.add_argument("--pause", action="store_true")
@@ -581,7 +560,6 @@ def _register_runtime_security_commands(sub: argparse._SubParsersAction) -> None
 
 
 def _register_phone_commands(sub: argparse._SubParsersAction) -> None:
-    """Register phone-action, phone-spam-guard."""
     p_phone_action = sub.add_parser("phone-action", help="Queue phone action (send SMS/place call/ignore/block).")
     p_phone_action.add_argument("--action", required=True, choices=["send_sms", "place_call", "ignore_call", "block_number", "silence_unknown_callers"])
     p_phone_action.add_argument("--number", default="")
@@ -610,7 +588,6 @@ def _register_phone_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_voice_commands(sub: argparse._SubParsersAction) -> None:
-    """Register voice-list, voice-say, voice-enroll, voice-verify, voice-run, voice-listen."""
     sub.add_parser("voice-list", help="List available local Windows voices.").set_defaults(handler=lambda a: cmd_voice_list())
 
     p_voice = sub.add_parser("voice-say", help="Speak text with local Windows voice synthesis.")
@@ -674,7 +651,6 @@ def _register_voice_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_harvesting_commands(sub: argparse._SubParsersAction) -> None:
-    """Register harvest, ingest-session, harvest-budget."""
     p_harvest = sub.add_parser("harvest", help="Harvest knowledge about a topic from external AI sources.")
     p_harvest.add_argument("--topic", required=True, help="Topic to harvest knowledge about.")
     p_harvest.add_argument("--providers", default=None, help="Comma-separated list of providers (default: all available).")
@@ -697,7 +673,6 @@ def _register_harvesting_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_learning_commands(sub: argparse._SubParsersAction) -> None:
-    """Register learn, cross-branch-query, flag-expired, memory-eval."""
     p_learn = sub.add_parser("learn", help="Manually trigger learning from text input.")
     p_learn.add_argument("--user-message", required=True, help="User message text.")
     p_learn.add_argument("--assistant-response", required=True, help="Assistant response text.")
@@ -714,7 +689,6 @@ def _register_learning_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def _register_proactive_commands(sub: argparse._SubParsersAction) -> None:
-    """Register proactive-check, wake-word, cost-reduction, self-test."""
     p_proactive = sub.add_parser("proactive-check", help="Manually trigger proactive evaluation.")
     p_proactive.add_argument("--snapshot-path", default="", help="Path to ops snapshot JSON.")
     p_proactive.set_defaults(handler=lambda a: cmd_proactive_check(snapshot_path=a.snapshot_path))

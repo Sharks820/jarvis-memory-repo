@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
+#: A command handler: accepts a single command dataclass and returns a result.
+CommandHandler = Callable[[Any], Any]
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,11 +60,11 @@ class CommandBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: dict[type, Callable[..., Any]] = {}
+        self._handlers: dict[type, CommandHandler] = {}
         self._lock = threading.RLock()
         self.ctx: AppContext = AppContext()
 
-    def register(self, command_type: type, handler: Callable[..., Any]) -> None:
+    def register(self, command_type: type, handler: CommandHandler) -> None:
         """Register *handler* for *command_type*.  Warns on overwrite."""
         with self._lock:
             if command_type in self._handlers:

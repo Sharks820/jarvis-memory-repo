@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, cast
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
-from jarvis_engine.command_bus import CommandBus
+from jarvis_engine.command_bus import CommandBus, CommandHandler
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
     BrainContextCommand,
@@ -127,8 +127,8 @@ logger = logging.getLogger(__name__)
 def _register_with_fallback(
     bus: CommandBus,
     command_type: type,
-    handler_factory: Callable[[], Any],
-    fallback_factory: Callable[[], Any],
+    handler_factory: Callable[[], CommandHandler],
+    fallback_factory: Callable[[], CommandHandler],
 ) -> None:
     """Register a command handler, falling back to a simpler handler on failure.
 

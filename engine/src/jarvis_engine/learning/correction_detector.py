@@ -15,6 +15,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from jarvis_engine._constants import STOP_WORDS
 from jarvis_engine._shared import extract_keywords as _extract_keywords_core
 from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
 
@@ -362,63 +363,11 @@ class CorrectionDetector:
 
 # Helpers
 
-_CORRECTION_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "the",
-        "is",
-        "it",
-        "its",
-        "was",
-        "were",
-        "be",
-        "been",
-        "am",
-        "are",
-        "do",
-        "did",
-        "does",
-        "to",
-        "of",
-        "in",
-        "on",
-        "at",
-        "for",
-        "by",
-        "and",
-        "or",
-        "but",
-        "not",
-        "no",
-        "so",
-        "if",
-        "as",
-        "my",
-        "me",
-        "i",
-        "we",
-        "us",
-        "he",
-        "she",
-        "they",
-        "that",
-        "this",
-        "with",
-        "from",
-        "has",
-        "had",
-        "have",
-        "s",
-    }
-)
-
-
 def _extract_keywords(text: str) -> list[str]:
     """Extract meaningful keywords from *text* for KG searching."""
     return _extract_keywords_core(
         text,
-        stop_words=_CORRECTION_STOPWORDS,
+        stop_words=STOP_WORDS,
         min_length=3,
         pattern=r"[a-zA-Z0-9]+",
         deduplicate=False,

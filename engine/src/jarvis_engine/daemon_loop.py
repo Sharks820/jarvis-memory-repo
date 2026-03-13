@@ -57,11 +57,7 @@ def _emit(line: str) -> None:
 
 @dataclass
 class CycleState:
-    """Typed state bundle returned by ``_gather_cycle_state``.
-
-    Supports ``state["key"]`` dict-style access for backward compatibility
-    with tests that substitute plain dicts via monkeypatch.
-    """
+    """Typed state bundle returned by ``_gather_cycle_state``."""
 
     idle_seconds: float | None
     is_active: bool
@@ -77,18 +73,6 @@ class CycleState:
     daemon_paused: bool
     safe_mode: bool
 
-    # dict-style access for backward compat with tests returning plain dicts
-    def __getitem__(self, key: str) -> Any:  # noqa: ANN401
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key) from None
-
-    def get(self, key: str, default: Any = None) -> Any:  # noqa: ANN401
-        return getattr(self, key, default)
-
-    def keys(self):
-        return [f.name for f in self.__dataclass_fields__.values()]
 
 
 @dataclass
@@ -129,7 +113,6 @@ _cycle_start: list[float] = [0.0]
 
 
 def _emit_cycle_failure(event: str, exc: Exception, *, message: str) -> None:
-    """Log and surface a subsystem failure using the daemon's standard contract."""
     logger.warning("%s: %s", message, exc)
     _emit(f"{event}_error={exc}")
 
@@ -168,12 +151,6 @@ def _get_daemon_bus() -> CommandBus:
 # Daemon cycle state for KG regression tracking
 _daemon_kg: dict[str, Any] = {"prev_metrics": None}
 _daemon_kg_prev_metrics_lock = threading.Lock()
-
-
-# Gaming mode helpers — now live in gaming_mode.py, imported above.
-
-
-# Mission run helpers
 
 
 def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
@@ -218,9 +195,6 @@ def _run_next_pending_mission(*, max_results: int = 6, max_pages: int = 10) -> i
             auto_ingest=True,
         )
     return 0
-
-
-# Mobile API watchdog restart
 
 
 def _restart_mobile_api(service_name: str) -> None:
@@ -276,9 +250,6 @@ def _restart_mobile_api(service_name: str) -> None:
         _emit(f"watchdog_restart_mobile_api_error={exc}")
 
 
-# Extracted subsystem helpers — each encapsulates one daemon responsibility
-
-
 def _register_daemon_pid(root: Path) -> bool:
     from jarvis_engine.ops.process_manager import is_service_running, write_pid_file
 
@@ -318,23 +289,23 @@ def _log_cycle_end(cycles: int, rc: int) -> None:
 def _print_cycle_status(
     cycles: int,
     cycle_start_ts: str,
-    state: CycleState | dict,
+    state: CycleState,
 ) -> None:
     _emit(f"cycle={cycles} ts={cycle_start_ts}")
-    _emit(f"daemon_paused={state['daemon_paused']}")
-    _emit(f"safe_mode={state['safe_mode']}")
-    _emit(f"gaming_mode={state['gaming_mode_enabled']}")
-    _emit(f"gaming_mode_auto_detect={state['auto_detect']}")
-    if state["detected_process"]:
-        _emit(f"gaming_mode_detected_process={state['detected_process']}")
-    if state["gaming_state"].get("reason", ""):
-        _emit(f"gaming_mode_reason={state['gaming_state'].get('reason', '')}")
-    if state["control_state"].get("reason", ""):
-        _emit(f"runtime_control_reason={state['control_state'].get('reason', '')}")
-    _emit(f"device_active={state['is_active']}")
-    _emit(f"resource_pressure_level={state['pressure_level']}")
+    _emit(f"daemon_paused={state.daemon_paused}")
+    _emit(f"safe_mode={state.safe_mode}")
+    _emit(f"gaming_mode={state.gaming_mode_enabled}")
+    _emit(f"gaming_mode_auto_detect={state.auto_detect}")
+    if state.detected_process:
+        _emit(f"gaming_mode_detected_process={state.detected_process}")
+    if state.gaming_state.get("reason", ""):
+        _emit(f"gaming_mode_reason={state.gaming_state.get('reason', '')}")
+    if state.control_state.get("reason", ""):
+        _emit(f"runtime_control_reason={state.control_state.get('reason', '')}")
+    _emit(f"device_active={state.is_active}")
+    _emit(f"resource_pressure_level={state.pressure_level}")
     try:
-        _m = state["resource_snapshot"].get("metrics", {})
+        _m = state.resource_snapshot.get("metrics", {})
         _rss = _m.get("process_memory_mb", {}).get("current", 0.0)
         _cpu = _m.get("process_cpu_pct", {}).get("current", 0.0)
         _emb = _m.get("embedding_cache_mb", {}).get("current", 0.0)
@@ -343,12 +314,12 @@ def _print_cycle_status(
         _emit(f"resource_embedding_cache_mb={_emb}")
     except (AttributeError, KeyError, TypeError) as exc:
         logger.debug("Resource metric print failed: %s", exc)
-    if state["pressure_level"] in {"mild", "severe"}:
-        _emit(f"resource_throttle_sleep_s={state['sleep_seconds']}")
-        if state["skip_heavy_tasks"]:
+    if state.pressure_level in {"mild", "severe"}:
+        _emit(f"resource_throttle_sleep_s={state.sleep_seconds}")
+        if state.skip_heavy_tasks:
             _emit("resource_skip_heavy_tasks=true")
-    if state["idle_seconds"] is not None:
-        _emit(f"idle_seconds={round(state['idle_seconds'], 1)}")
+    if state.idle_seconds is not None:
+        _emit(f"idle_seconds={round(state.idle_seconds, 1)}")
 
 
 def _log_resource_pressure(
@@ -387,7 +358,6 @@ def _log_resource_pressure(
 
 
 def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
-    """Run pending missions and auto-generate new ones (never raises)."""
     # Skip if in failure backoff cooldown
     if cycles < _daemon_mission["backoff_until_cycle"]:
         _emit(f"mission_cycle_skipped=backoff_until_cycle_{_daemon_mission['backoff_until_cycle']}")
@@ -734,9 +704,6 @@ def _run_auto_harvest_cycle(root: Path) -> None:
         _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
 
-# Main daemon loop implementation
-
-
 def _gather_cycle_state(
     root: Path,
     active_interval: int,
@@ -937,7 +904,6 @@ def _interruptible_sleep(seconds: float) -> None:
 
 
 def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
-    """Update and act on the circuit breaker. Returns updated failure count."""
     max_consecutive_failures = 10
     if rc == 0:
         return 0
@@ -952,35 +918,34 @@ def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
 
 def _emit_cycle_status(
     cycles: int,
-    state: CycleState | dict,
+    state: CycleState,
     last_pressure_level: str,
 ) -> None:
     cycle_start_ts = now_iso()
     _log_cycle_start(cycles, cycle_start_ts)
     _print_cycle_status(cycles, cycle_start_ts, state)
     _log_resource_pressure(
-        cycles, state["pressure_level"], last_pressure_level,
-        state["resource_snapshot"], state["sleep_seconds"],
-        state["skip_heavy_tasks"],
+        cycles, state.pressure_level, last_pressure_level,
+        state.resource_snapshot, state.sleep_seconds,
+        state.skip_heavy_tasks,
     )
 
 
-def _should_skip_cycle(state: CycleState | dict, idle_interval: int) -> str | None:
+def _should_skip_cycle(state: CycleState, idle_interval: int) -> str | None:
     """Check if the cycle should be skipped.
 
     Returns a skip-reason string to print, or ``None`` when the cycle
     should proceed normally.  When skipped the caller should sleep for
     ``max(idle_interval, 600)`` seconds.
     """
-    if state["daemon_paused"]:
+    if state.daemon_paused:
         return "cycle_skipped=runtime_control_daemon_paused"
-    if state["gaming_mode_enabled"]:
+    if state.gaming_mode_enabled:
         return "cycle_skipped=gaming_mode_enabled"
     return None
 
 
 def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
-    """Implementation body for daemon-run (called by handler via callback)."""
     from jarvis_engine.cli_system import cmd_mobile_desktop_sync, cmd_self_heal
     from jarvis_engine.cli_ops import cmd_ops_autopilot
 
@@ -1027,7 +992,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             _cycle_start[0] = time.monotonic()
             state = _gather_cycle_state(root, active_interval, idle_interval, idle_after)
             _emit_cycle_status(cycles, state, last_pressure_level)
-            last_pressure_level = state["pressure_level"]
+            last_pressure_level = state.pressure_level
 
             skip_reason = _should_skip_cycle(state, idle_interval)
             if skip_reason:
@@ -1038,14 +1003,14 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                 continue
 
             _run_periodic_subsystems(
-                root, cycles, state["skip_heavy_tasks"], cfg,
+                root, cycles, state.skip_heavy_tasks, cfg,
                 cmd_mobile_desktop_sync, cmd_self_heal,
             )
 
             rc = _run_core_autopilot(
                 cfg.snapshot_path, cfg.actions_path, cfg.execute,
                 cfg.approve_privileged, cfg.auto_open_connectors,
-                state["safe_mode"], cmd_ops_autopilot,
+                state.safe_mode, cmd_ops_autopilot,
             )
             _emit(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
@@ -1062,8 +1027,8 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
 
             if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                 break
-            _emit(f"sleep_s={state['sleep_seconds']}")
-            _interruptible_sleep(state["sleep_seconds"])
+            _emit(f"sleep_s={state.sleep_seconds}")
+            _interruptible_sleep(state.sleep_seconds)
     except KeyboardInterrupt:
         _emit("jarvis_daemon_stopped=true")
     finally:

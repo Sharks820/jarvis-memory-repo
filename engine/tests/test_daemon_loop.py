@@ -11,6 +11,7 @@ import pytest
 import jarvis_engine.daemon_loop as daemon_loop_mod
 import jarvis_engine.gaming_mode as gaming_mode_mod
 from jarvis_engine.daemon_loop import (
+    CycleState,
     _handle_circuit_breaker,
     _print_cycle_status,
     _should_skip_cycle,
@@ -40,6 +41,27 @@ from jarvis_engine.harvest_discovery import (
     _collect_from_strong_kg_areas,
     _collect_from_learning_missions,
 )
+
+
+def _make_cycle_state(**overrides) -> CycleState:
+    """Create a CycleState with sensible defaults, overridable by keyword args."""
+    defaults = dict(
+        idle_seconds=10.0,
+        is_active=True,
+        sleep_seconds=0,
+        resource_snapshot={"metrics": {}},
+        pressure_level="none",
+        skip_heavy_tasks=False,
+        gaming_state={},
+        control_state={},
+        auto_detect=False,
+        detected_process="",
+        gaming_mode_enabled=False,
+        daemon_paused=False,
+        safe_mode=False,
+    )
+    defaults.update(overrides)
+    return CycleState(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -357,21 +379,21 @@ class TestCycleManagement:
 
     def test_should_skip_cycle_paused(self) -> None:
         """Cycle should be skipped when daemon is paused."""
-        state = {"daemon_paused": True, "gaming_mode_enabled": False}
+        state = _make_cycle_state(daemon_paused=True)
         reason = _should_skip_cycle(state, 120)
         assert reason is not None
         assert "daemon_paused" in reason
 
     def test_should_skip_cycle_gaming(self) -> None:
         """Cycle should be skipped when gaming mode is enabled."""
-        state = {"daemon_paused": False, "gaming_mode_enabled": True}
+        state = _make_cycle_state(gaming_mode_enabled=True)
         reason = _should_skip_cycle(state, 120)
         assert reason is not None
         assert "gaming_mode" in reason
 
     def test_should_not_skip_normal(self) -> None:
         """Cycle should proceed normally when not paused and not gaming."""
-        state = {"daemon_paused": False, "gaming_mode_enabled": False}
+        state = _make_cycle_state()
         reason = _should_skip_cycle(state, 120)
         assert reason is None
 
@@ -405,21 +427,7 @@ class TestStatusPrinting:
 
     def test_prints_basic_status(self, capsys) -> None:
         """Should print cycle number, pause state, and mode info."""
-        state = {
-            "daemon_paused": False,
-            "safe_mode": False,
-            "gaming_mode_enabled": False,
-            "auto_detect": False,
-            "detected_process": "",
-            "gaming_state": {},
-            "control_state": {},
-            "is_active": True,
-            "pressure_level": "none",
-            "resource_snapshot": {"metrics": {}},
-            "sleep_seconds": 120,
-            "skip_heavy_tasks": False,
-            "idle_seconds": 5.0,
-        }
+        state = _make_cycle_state(idle_seconds=5.0, sleep_seconds=120)
         _print_cycle_status(1, "2026-01-01T00:00:00Z", state)
         output = capsys.readouterr().out
         assert "cycle=1" in output
@@ -429,21 +437,14 @@ class TestStatusPrinting:
 
     def test_prints_detected_process(self, capsys) -> None:
         """Should print detected game process when present."""
-        state = {
-            "daemon_paused": False,
-            "safe_mode": False,
-            "gaming_mode_enabled": True,
-            "auto_detect": True,
-            "detected_process": "cs2.exe",
-            "gaming_state": {"reason": "auto-detected"},
-            "control_state": {},
-            "is_active": True,
-            "pressure_level": "none",
-            "resource_snapshot": {"metrics": {}},
-            "sleep_seconds": 120,
-            "skip_heavy_tasks": False,
-            "idle_seconds": None,
-        }
+        state = _make_cycle_state(
+            gaming_mode_enabled=True,
+            auto_detect=True,
+            detected_process="cs2.exe",
+            gaming_state={"reason": "auto-detected"},
+            idle_seconds=None,
+            sleep_seconds=120,
+        )
         _print_cycle_status(2, "2026-01-01T00:00:00Z", state)
         output = capsys.readouterr().out
         assert "cs2.exe" in output
@@ -451,21 +452,12 @@ class TestStatusPrinting:
 
     def test_prints_pressure_throttle_info(self, capsys) -> None:
         """Should print throttle info when under resource pressure."""
-        state = {
-            "daemon_paused": False,
-            "safe_mode": False,
-            "gaming_mode_enabled": False,
-            "auto_detect": False,
-            "detected_process": "",
-            "gaming_state": {},
-            "control_state": {},
-            "is_active": True,
-            "pressure_level": "mild",
-            "resource_snapshot": {"metrics": {}},
-            "sleep_seconds": 180,
-            "skip_heavy_tasks": True,
-            "idle_seconds": 30.0,
-        }
+        state = _make_cycle_state(
+            pressure_level="mild",
+            sleep_seconds=180,
+            skip_heavy_tasks=True,
+            idle_seconds=30.0,
+        )
         _print_cycle_status(3, "2026-01-01T00:00:00Z", state)
         output = capsys.readouterr().out
         assert "resource_throttle_sleep_s=180" in output
@@ -606,13 +598,14 @@ class TestGatherCycleState:
                                   "reason": ""}):
             state = _gather_cycle_state(root, 120, 300, 300)
 
-        required_keys = {
+        required_attrs = [
             "idle_seconds", "is_active", "sleep_seconds", "resource_snapshot",
             "pressure_level", "skip_heavy_tasks", "gaming_state", "control_state",
             "auto_detect", "detected_process", "gaming_mode_enabled",
             "daemon_paused", "safe_mode",
-        }
-        assert required_keys.issubset(state.keys())
+        ]
+        for attr in required_attrs:
+            assert hasattr(state, attr), f"CycleState missing attribute: {attr}"
 
     def test_idle_detection_active(self, root) -> None:
         """Should detect active user when idle time is below threshold."""
@@ -632,8 +625,8 @@ class TestGatherCycleState:
                                   "reason": ""}):
             state = _gather_cycle_state(root, 120, 300, 300)
 
-        assert state["is_active"] is True
-        assert state["sleep_seconds"] == 120
+        assert state.is_active is True
+        assert state.sleep_seconds == 120
 
     def test_idle_detection_idle(self, root) -> None:
         """Should detect idle user when idle time exceeds threshold."""
@@ -653,8 +646,8 @@ class TestGatherCycleState:
                                   "reason": ""}):
             state = _gather_cycle_state(root, 120, 300, 300)
 
-        assert state["is_active"] is False
-        assert state["sleep_seconds"] == 300
+        assert state.is_active is False
+        assert state.sleep_seconds == 300
 
 
 # ===================================================================

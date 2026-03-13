@@ -4,6 +4,7 @@ import re
 from typing import TypedDict
 from urllib.parse import urlparse
 
+from jarvis_engine._constants import STOP_WORDS
 from jarvis_engine._shared import now_iso
 from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
@@ -23,43 +24,13 @@ class WebResearchResult(TypedDict):
     generated_utc: str
 
 
-STOPWORDS = {
-    "about",
-    "after",
-    "also",
-    "because",
-    "between",
-    "could",
-    "does",
-    "from",
-    "have",
-    "into",
-    "just",
-    "more",
-    "other",
-    "over",
-    "some",
-    "than",
-    "that",
-    "them",
-    "then",
-    "there",
-    "these",
-    "they",
-    "this",
-    "what",
-    "when",
-    "where",
-    "which",
-    "while",
-    "with",
-    "your",
-}
+# Backward-compatible alias — consolidated into _constants.STOP_WORDS
+STOPWORDS = STOP_WORDS
 
 
 def _query_keywords(query: str) -> set[str]:
     words = re.findall(r"[a-zA-Z0-9]{3,}", query.lower())
-    return {word for word in words if word not in STOPWORDS}
+    return {word for word in words if word not in STOP_WORDS}
 
 
 # _is_safe_public_url, _search_web, _search_duckduckgo, _fetch_page_text imported from web_fetch

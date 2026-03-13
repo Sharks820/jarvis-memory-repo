@@ -71,7 +71,7 @@ class DataRoutesMixin:
         quality = payload.get("quality")
         if quality not in ("positive", "negative", "neutral"):
             self._write_json(HTTPStatus.BAD_REQUEST, {
-                "ok": False, "error": "quality must be 'positive', 'negative', or 'neutral'",
+                "ok": False, "error": "Quality must be 'positive', 'negative', or 'neutral'.",
             })
             return
         route = str(payload.get("route", "")).strip()[:100]

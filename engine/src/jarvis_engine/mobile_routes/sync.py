@@ -116,7 +116,7 @@ class SyncRoutesMixin:
             HTTPStatus.GONE,
             {
                 "ok": False,
-                "error": "Deprecated. Use /sync/pull or /sync/push",
+                "error": "Deprecated: use /sync/pull or /sync/push.",
                 "endpoints": ["/sync/pull", "/sync/push", "/sync/status"],
             },
         )

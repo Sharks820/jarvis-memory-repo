@@ -269,13 +269,13 @@ class CommandRoutesMixin:
             return
         topic = str(payload.get("topic", "")).strip()
         if not topic:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "topic is required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Topic is required."})
             return
         objective = str(payload.get("objective", "")).strip()[:400]
         sources = payload.get("sources")
         if sources is not None:
             if not isinstance(sources, list):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "sources must be a list"})
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Sources must be a list."})
                 return
             sources = [str(s).strip() for s in sources if str(s).strip()][:6]
         try:
@@ -378,7 +378,7 @@ class CommandRoutesMixin:
         qs = _parse_query_params(self.path)
         mission_id = str(qs.get("id", [""])[0]).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "id query parameter is required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Query parameter 'id' is required."})
             return
         try:
             from jarvis_engine.learning_missions import get_mission_steps
@@ -400,7 +400,7 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
             from jarvis_engine.learning_missions import pause_mission
@@ -424,7 +424,7 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
             from jarvis_engine.learning_missions import resume_mission
@@ -448,7 +448,7 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Field 'mission_id' is required."})
             return
         try:
             from jarvis_engine.learning_missions import restart_mission
@@ -544,7 +544,7 @@ class CommandRoutesMixin:
         att_raw = str(qs.get("attendees", [""])[0]).strip()
         attendees: list[str] = [a.strip() for a in att_raw.split(",") if a.strip()] if att_raw else []
         if not title and not attendees:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "title or attendees required"})
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Title or attendees required."})
             return
         briefing: dict[str, Any] = {
             "title": title,
