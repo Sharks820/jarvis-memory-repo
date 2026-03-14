@@ -342,11 +342,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         return screen_h < 900
 
     @staticmethod
-    def _command_box_height(compact_layout: bool) -> int:
-        """Return the command input height for the current layout density."""
-        return 3 if compact_layout else 5
-
-    @staticmethod
     def _collapse_live_details_by_default(compact_layout: bool) -> bool:
         """Return whether the live-detail block should start collapsed."""
         return compact_layout
@@ -467,19 +462,194 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         body = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
         body.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
 
-        self._build_command_area(body)
-        self._build_status_bar(body)
+        # Bottom-anchored command pill — packed first with side=BOTTOM
+        # so it is always visible regardless of window height.
+        self._build_command_pill(body)
+
+        # Collapsible controls drawer sits above the command pill.
+        self._build_controls_drawer(body)
+
+        # Chat area fills all remaining vertical space (chat-first layout).
         self._build_chat_area(body)
 
-        # Info panels below the chat — collapsed by default so they don't
-        # steal vertical space from the conversation output.
-        self._build_continuity_rail(body)
-        self._build_diagnostics_section(body)
-
         # Tooltips on key controls
-        _Tooltip(self.command_text, "Type a command or question")
+        _Tooltip(self.command_text, "Type a command or question — Enter sends, Shift+Enter for newline")
         _Tooltip(self._voice_btn, "Click or say 'Jarvis' to dictate")
         _Tooltip(self._send_btn, "Send command (Enter)")
+
+    def _build_command_pill(self, body: tk.Frame) -> None:
+        """Build a compact command input row at the bottom: [Voice] [Input...] [Send].
+
+        This is the primary interaction point — always visible, anchored to
+        the bottom of the panel like a messaging app.
+        """
+        pill = tk.Frame(body, bg="#0a1424", highlightbackground=self.EDGE, highlightthickness=1)
+        pill.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(4, 8))
+        self._command_pill = pill
+
+        # Model indicator row (compact)
+        model_row = tk.Frame(pill, bg="#0a1424")
+        model_row.pack(fill=tk.X, padx=6, pady=(4, 0))
+        _m = self.MODEL_ROTATION[0]
+        self._model_label = tk.Label(
+            model_row,
+            text=f"\u21b9 Tab  {_m[1]} \u00b7 {_m[2]}",
+            bg="#0a1424",
+            fg=_m[3],
+            font=("Segoe UI", 8),
+            anchor="w",
+        )
+        self._model_label.pack(side=tk.LEFT)
+        _Tooltip(self._model_label, "Press Tab to cycle through available LLM models")
+
+        # Main input row: [Voice] [Text Input] [Send]
+        input_row = tk.Frame(pill, bg="#0a1424")
+        input_row.pack(fill=tk.X, padx=6, pady=(4, 6))
+
+        self._voice_btn = tk.Button(
+            input_row,
+            text="\U0001F3A4",
+            bg=self.ACCENT_2,
+            fg="#ffffff",
+            activebackground="#2b8dd4",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 12),
+            cursor="hand2",
+            width=3,
+            command=self._dictate_async,
+        )
+        self._voice_btn.pack(side=tk.LEFT, padx=(0, 4))
+
+        self.command_text = tk.Text(
+            input_row,
+            height=1,
+            wrap=tk.WORD,
+            bg="#081127",
+            fg=self.TEXT,
+            insertbackground=self.TEXT,
+            relief=tk.FLAT,
+            highlightbackground="#2a4368",
+            highlightthickness=1,
+            font=("Consolas", 11),
+        )
+        self.command_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        self.command_text.bind("<Return>", self._on_command_enter)
+        self.command_text.bind("<Tab>", self._on_tab_cycle_model)
+        self.command_text.bind("<KeyRelease>", self._auto_grow_command)
+
+        # Ghost placeholder
+        self._placeholder_active = True
+        self.command_text.insert("1.0", "Ask Jarvis anything...")
+        self.command_text.config(fg=self.MUTED)
+        self.command_text.bind("<FocusIn>", self._on_command_focus_in)
+        self.command_text.bind("<FocusOut>", self._on_command_focus_out)
+
+        self._send_btn = tk.Button(
+            input_row,
+            text="\u27A4",
+            bg=self.ACCENT,
+            fg="#ffffff",
+            activebackground="#1ae6c8",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 13, "bold"),
+            cursor="hand2",
+            width=3,
+            command=self._send_command_async,
+        )
+        self._send_btn.pack(side=tk.LEFT)
+
+        self._cancel_btn = self._btn(input_row, "\u25A0", self._cancel_command, "#c0392b")
+        # Hidden by default — _apply_controller_state shows it during processing
+
+        # Hover effects for modern feel
+        self._voice_btn.bind("<Enter>", lambda e: self._voice_btn.config(bg="#2b8dd4"))
+        self._voice_btn.bind("<Leave>", lambda e: self._voice_btn.config(bg=self.ACCENT_2))
+        self._send_btn.bind("<Enter>", lambda e: self._send_btn.config(bg="#1ae6c8"))
+        self._send_btn.bind("<Leave>", lambda e: self._send_btn.config(bg=self.ACCENT))
+
+    def _auto_grow_command(self, _event: Any = None) -> None:
+        """Auto-grow the command input from 1 to 4 lines as the user types."""
+        if getattr(self, "_placeholder_active", False):
+            return
+        try:
+            lines = int(self.command_text.index("end-1c").split(".")[0])
+            new_height = min(max(lines, 1), 4)
+            self.command_text.configure(height=new_height)
+        except (tk.TclError, ValueError):
+            pass
+
+    def _on_command_focus_in(self, _event: Any = None) -> None:
+        """Clear ghost placeholder when the command input gets focus."""
+        if self._placeholder_active:
+            self.command_text.delete("1.0", tk.END)
+            self.command_text.config(fg=self.TEXT)
+            self._placeholder_active = False
+
+    def _on_command_focus_out(self, _event: Any = None) -> None:
+        """Restore ghost placeholder when the command input loses focus and is empty."""
+        try:
+            if str(self.command_text.cget("state")) == "disabled":
+                return
+            content = self.command_text.get("1.0", tk.END).strip()
+            if not content:
+                self._placeholder_active = True
+                self.command_text.insert("1.0", "Ask Jarvis anything...")
+                self.command_text.config(fg=self.MUTED)
+        except (tk.TclError, RuntimeError):
+            pass
+
+    def _build_controls_drawer(self, body: tk.Frame) -> None:
+        """Build a collapsible drawer containing session config, flags, quick actions, etc.
+
+        Collapsed by default to maximize chat space. Sits above the command pill.
+        """
+        drawer = tk.Frame(body, bg=self.PANEL)
+        drawer.pack(side=tk.BOTTOM, fill=tk.X)
+        self._controls_drawer = drawer
+
+        # Toggle button row
+        toggle_row = tk.Frame(drawer, bg=self.PANEL)
+        toggle_row.pack(fill=tk.X, padx=10, pady=(4, 0))
+
+        self._controls_collapsed = tk.BooleanVar(value=True)
+        self._controls_toggle_btn = tk.Button(
+            toggle_row,
+            text="\u25B6 Controls & Info",
+            bg="#10213a",
+            fg=self.MUTED,
+            activebackground="#173158",
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2",
+            command=self._toggle_controls_drawer,
+        )
+        self._controls_toggle_btn.pack(side=tk.LEFT)
+
+        # Drawer body (hidden by default)
+        self._controls_body = tk.Frame(drawer, bg=self.PANEL)
+
+        # Build all control sections inside the drawer body
+        self._build_session_config(self._controls_body)
+        self._build_command_flags(self._controls_body)
+        self._build_quick_actions(self._controls_body)
+        self._build_fetch_buttons(self._controls_body)
+        self._build_status_bar(self._controls_body)
+        self._build_continuity_rail(self._controls_body)
+        self._build_diagnostics_section(self._controls_body)
+
+    def _toggle_controls_drawer(self) -> None:
+        """Toggle visibility of the controls drawer."""
+        if self._controls_collapsed.get():
+            self._controls_body.pack(fill=tk.X, padx=0, pady=(4, 0))
+            self._controls_toggle_btn.config(text="\u25BC Controls & Info")
+            self._controls_collapsed.set(False)
+        else:
+            self._controls_body.pack_forget()
+            self._controls_toggle_btn.config(text="\u25B6 Controls & Info")
+            self._controls_collapsed.set(True)
 
     def _build_toolbar(self, shell: tk.Frame) -> None:
         """Build the header toolbar with title, buttons, status orb, and intel label."""
@@ -792,15 +962,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._voice_chip_label.pack(side=tk.LEFT, padx=(6, 0))
 
-    def _build_command_area(self, body: tk.Frame) -> None:
-        """Build the session config, command input, flags, action buttons, and quick actions."""
-        self._build_session_config(body)
-        self._build_command_input(body)
-        self._build_command_flags(body)
-        self._build_action_buttons(body)
-        self._build_quick_actions(body)
-        self._build_fetch_buttons(body)
-
     def _build_session_config(self, body: tk.Frame) -> None:
         """Build the Secure Session config section with URL, password, and advanced fields."""
         sec = tk.LabelFrame(body, text="Secure Session", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
@@ -877,42 +1038,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._apply_session_section_state()
 
-    def _build_command_input(self, body: tk.Frame) -> None:
-        """Build the command text area with model indicator row."""
-        cmd_block = tk.Frame(body, bg=self.PANEL)
-        cmd_block.pack(fill=tk.X, padx=10)
-        tk.Label(cmd_block, text="Command", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        self.command_text = tk.Text(
-            cmd_block,
-            height=self._command_box_height(self._compact_layout),
-            wrap=tk.WORD,
-            bg="#081127",
-            fg=self.TEXT,
-            insertbackground=self.TEXT,
-            relief=tk.FLAT,
-            highlightbackground="#2a4368",
-            highlightthickness=1,
-            font=("Consolas", 11),
-        )
-        self.command_text.pack(fill=tk.X, pady=(4, 4))
-        self.command_text.bind("<Return>", self._on_command_enter)
-        self.command_text.bind("<Tab>", self._on_tab_cycle_model)
-
-        # Model indicator row
-        model_row = tk.Frame(cmd_block, bg=self.PANEL)
-        model_row.pack(fill=tk.X, pady=(0, 2))
-        _m = self.MODEL_ROTATION[0]
-        self._model_label = tk.Label(
-            model_row,
-            text=f"\u21b9 Tab  {_m[1]} \u00b7 {_m[2]}",
-            bg=self.PANEL,
-            fg=_m[3],
-            font=("Segoe UI", 9),
-            anchor="w",
-        )
-        self._model_label.pack(side=tk.LEFT)
-        _Tooltip(self._model_label, "Press Tab to cycle through available LLM models")
-
     def _build_command_flags(self, body: tk.Frame) -> None:
         """Build the checkbox flags row (Allow PC Actions, Speak, Wake Word, etc.)."""
         flags = tk.Frame(body, bg=self.PANEL)
@@ -947,18 +1072,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             for index, toggle in enumerate(toggles):
                 toggle.pack(side=tk.LEFT, padx=(0, 10 if index < len(toggles) - 1 else 0))
         self._push_session_snapshot()
-
-    def _build_action_buttons(self, body: tk.Frame) -> None:
-        """Build the Voice Dictate, Send, and Stop action buttons."""
-        row = tk.Frame(body, bg=self.PANEL)
-        row.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._voice_btn = self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2)
-        self._voice_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._send_btn = self._btn(row, "Send", self._send_command_async, self.ACCENT)
-        self._send_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._cancel_btn = self._btn(row, "\u25A0 Stop", self._cancel_command, "#c0392b")
-        self._cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._cancel_btn.pack_forget()  # Hidden by default, shown during processing
 
     def _build_quick_actions(self, body: tk.Frame) -> None:
         """Build the Pause, Resume, and Safe Mode quick action buttons."""
@@ -1270,7 +1383,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._diagnostics_toggle_btn.config(text="Hide Health")
 
     def _toggle_diagnostics_section(self) -> None:
-        """Toggle the diagnostics drawer body."""
+        """Toggle the diagnostics drawer body, auto-expanding the controls drawer if needed."""
+        controls_collapsed = getattr(self, "_controls_collapsed", None)
+        if controls_collapsed is not None and controls_collapsed.get():
+            self._toggle_controls_drawer()
         self._diagnostics_collapsed.set(not bool(self._diagnostics_collapsed.get()))
         self._apply_diagnostics_section_state()
 
@@ -1352,8 +1468,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             logger.debug("Toast notification failed (widget may be destroyed)")
 
     def _set_command_text(self, value: str) -> None:
-        self.command_text.delete("1.0", tk.END)
-        self.command_text.insert("1.0", value)
+        self._placeholder_active = False
+        try:
+            self.command_text.config(state=tk.NORMAL, fg=self.TEXT)
+            self.command_text.delete("1.0", tk.END)
+            self.command_text.insert("1.0", value)
+        except tk.TclError:
+            logger.debug("Failed to set command text (widget may be destroyed or disabled)")
 
     def _set_command_text_async(self, value: str) -> None:
         self.after(0, self._set_command_text, value)
@@ -1672,7 +1793,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if cancel_btn is not None:
             try:
                 if state is DesktopWidgetState.PROCESSING:
-                    cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    cancel_btn.pack(side=tk.LEFT, padx=(4, 0))
                 else:
                     cancel_btn.pack_forget()
             except tk.TclError:
@@ -2295,6 +2416,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         except (OSError, subprocess.SubprocessError, FileNotFoundError) as exc:
             logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
         self.command_text.config(state=tk.NORMAL)
+        self._on_command_focus_out()
         self._log("Command cancelled.", role="system")
 
     def _cancel_processing_timeout(self) -> None:
@@ -2314,6 +2436,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             timeout_s = max(1, self._processing_timeout_ms // _MS_PER_SECOND)
             self._log(f"Command timed out ({timeout_s}s). Ready for new commands.", role="error")
             self.command_text.config(state=tk.NORMAL)
+            self._on_command_focus_out()
 
     def _handle_command_error(self, message: str) -> None:
         """Log a command error with a ready prompt and briefly flash the error state."""
@@ -2331,7 +2454,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._log("Still processing previous command. Please wait...", role="system")
             return None
         text = self.command_text.get("1.0", tk.END).strip()
-        if not text:
+        if not text or getattr(self, "_placeholder_active", False):
             self._log("No command text.")
             return None
         lower = text.lower().strip()
@@ -2351,6 +2474,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._hide_thinking()
             try:
                 self.command_text.config(state=tk.NORMAL)
+                # Restore ghost placeholder if the command box is empty
+                self._on_command_focus_out()
             except tk.TclError:
                 logger.debug("Failed to re-enable command input after processing")
             controller.complete_command(gen)

@@ -203,7 +203,7 @@ class ConversationMixin:
             bg="#123059",
             troughcolor="#081127",
             activebackground="#4da9ff",
-            width=14,
+            width=8,
             borderwidth=0,
             relief=tk.FLAT,
         )
@@ -321,7 +321,7 @@ class ConversationMixin:
             bg="#123059",
             troughcolor="#081127",
             activebackground="#4da9ff",
-            width=14,
+            width=8,
             borderwidth=0,
             relief=tk.FLAT,
         )
@@ -426,6 +426,8 @@ class ConversationMixin:
         def _on_close() -> None:
             self._popout_win = None
             self._popout_text = None
+            self._popout_thinking_frame = None
+            self._popout_thinking_label = None
             win.destroy()
 
         win.protocol("WM_DELETE_WINDOW", _on_close)

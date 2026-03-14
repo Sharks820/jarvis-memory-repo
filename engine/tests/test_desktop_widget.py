@@ -1747,13 +1747,6 @@ class TestWidgetStateMachine:
         assert JarvisDesktopWidget._use_compact_layout(768) is True
         assert JarvisDesktopWidget._use_compact_layout(1080) is False
 
-    def test_command_box_height_shrinks_in_compact_layout(self):
-        """Compact layout should trim the command box so output keeps more vertical space."""
-        from jarvis_engine.desktop.widget import JarvisDesktopWidget
-
-        assert JarvisDesktopWidget._command_box_height(True) == 3
-        assert JarvisDesktopWidget._command_box_height(False) == 5
-
     def test_compact_layout_collapses_live_and_snapshot_sections_by_default(self):
         """Compact layout should prioritize output space over secondary telemetry panels."""
         from jarvis_engine.desktop.widget import JarvisDesktopWidget
