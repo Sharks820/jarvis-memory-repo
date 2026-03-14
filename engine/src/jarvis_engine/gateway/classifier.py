@@ -18,7 +18,7 @@ import logging
 import os
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
 from jarvis_engine._protocols import EmbedServiceProtocol

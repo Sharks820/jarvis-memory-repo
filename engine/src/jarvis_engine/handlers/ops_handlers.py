@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -227,7 +226,7 @@ class MissionCreateHandler:
         except ValueError as exc:
             logger.warning("Mission creation failed: %s", exc)
             return MissionCreateResult(return_code=2, message=str(exc))
-        return MissionCreateResult(mission=mission, return_code=0)
+        return MissionCreateResult(mission=cast(dict[str, Any], mission), return_code=0)
 
 
 class MissionStatusHandler:
@@ -306,7 +305,7 @@ class MissionRunHandler:
                     continue
                 content = f"{statement} [sources: {domains}]"
                 try:
-                    result = pipeline.ingest(
+                    result = cast(Any, pipeline).ingest(
                         source="mission",
                         kind="semantic",
                         task_id=f"mission-{report.get('mission_id', '')}",
@@ -321,7 +320,7 @@ class MissionRunHandler:
                 except SUBSYSTEM_ERRORS_DB as exc:
                     logger.warning("Mission auto-ingest failed for finding: %s", exc)
         return MissionRunResult(
-            report=report,
+            report=cast(dict[str, Any], report),
             return_code=0,
             ingested_record_id=ingested_ids[0] if ingested_ids else "",
         )
@@ -382,7 +381,7 @@ class GrowthReportHandler:
             return GrowthReportResult(message=str(exc))
         rows = read_history(cmd.history_path)
         summary = summarize_history(rows, last=cmd.last)
-        return GrowthReportResult(summary=summary)
+        return GrowthReportResult(summary=cast(dict[str, Any], summary))
 
 
 class GrowthAuditHandler:
@@ -403,7 +402,7 @@ class GrowthAuditHandler:
         except (RuntimeError, IndexError) as exc:
             logger.warning("GrowthAudit run lookup failed: %s", exc)
             return GrowthAuditResult(message=str(exc))
-        return GrowthAuditResult(run=run)
+        return GrowthAuditResult(run=cast(dict[str, Any], run))
 
 
 class MissionPauseHandler:
@@ -533,7 +532,7 @@ class IntelligenceDashboardHandler:
             kg=self._kg,
             engine=self._engine,
         )
-        return IntelligenceDashboardResult(dashboard=dashboard)
+        return IntelligenceDashboardResult(dashboard=cast(dict[str, Any], dashboard))
 
 
 class DiagnosticRunHandler:

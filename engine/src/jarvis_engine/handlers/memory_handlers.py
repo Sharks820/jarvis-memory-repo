@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
@@ -82,7 +82,7 @@ class BrainStatusHandler:
         from jarvis_engine.memory.brain import brain_status
 
         status = brain_status(self._root)
-        return BrainStatusResult(status=status)
+        return BrainStatusResult(status=cast("dict[str, Any]", status))
 
 
 class BrainContextHandler:
@@ -146,7 +146,7 @@ class BrainContextHandler:
             max_items=max(1, min(cmd.max_items, 40)),
             max_chars=max(500, min(cmd.max_chars, 12000)),
         )
-        return BrainContextResult(packet=packet)
+        return BrainContextResult(packet=cast("dict[str, Any]", packet))
 
 
 class BrainCompactHandler:
@@ -157,7 +157,7 @@ class BrainCompactHandler:
         from jarvis_engine.memory.brain import brain_compact
 
         result = brain_compact(self._root, keep_recent=max(200, min(cmd.keep_recent, 50000)))
-        return BrainCompactResult(result=result)
+        return BrainCompactResult(result=cast("dict[str, Any]", result))
 
 
 class BrainRegressionHandler:
@@ -168,7 +168,7 @@ class BrainRegressionHandler:
         from jarvis_engine.memory.brain import brain_regression_report
 
         report = brain_regression_report(self._root)
-        return BrainRegressionResult(report=report)
+        return BrainRegressionResult(report=cast("dict[str, Any]", report))
 
 
 class IngestHandler:
@@ -270,4 +270,4 @@ class MemoryMaintenanceHandler:
             keep_recent=max(200, min(cmd.keep_recent, 50000)),
             snapshot_note=cmd.snapshot_note.strip()[:160],
         )
-        return MemoryMaintenanceResult(report=report)
+        return MemoryMaintenanceResult(report=cast("dict[str, Any]", report))

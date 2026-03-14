@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Protocol, Sequence, TypedDict, runtime_checkable
 
 from jarvis_engine._shared import sha256_hex
 
@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 
 # Semantic near-duplicate threshold (cosine similarity)
 _DEDUP_COSINE_THRESHOLD = 0.92
+
+
+@runtime_checkable
+class _HarvesterProviderProtocol(Protocol):
+    """Structural interface shared by all harvest providers."""
+
+    name: str
+
+    @property
+    def is_available(self) -> bool: ...
+
+    def query(self, *, topic: str, system_prompt: str, max_tokens: int) -> HarvestResult: ...
 
 
 class ProviderResult(TypedDict):
@@ -92,7 +104,7 @@ class KnowledgeHarvester:
 
     def __init__(
         self,
-        providers: list,
+        providers: Sequence[_HarvesterProviderProtocol],
         pipeline: "EnrichedIngestPipeline | None" = None,
         cost_tracker: "CostTracker | None" = None,
         budget_manager: "BudgetManager | None" = None,
@@ -111,8 +123,8 @@ class KnowledgeHarvester:
     def _check_provider_readiness(
         self,
         name: str,
-        provider: object,
-    ) -> dict | None:
+        provider: _HarvesterProviderProtocol,
+    ) -> ProviderResult | None:
         """Return a skip-result dict if the provider is unavailable or over budget.
 
         Returns ``None`` when the provider is ready to query.
@@ -159,7 +171,7 @@ class KnowledgeHarvester:
     def _ingest_harvest_result(
         self,
         result: HarvestResult,
-        provider: object,
+        provider: _HarvesterProviderProtocol,
         topic_tag: str,
         topic: str,
         seen_hashes: set[str],
@@ -225,7 +237,7 @@ class KnowledgeHarvester:
         else:
             provider_names = self.available_providers()
 
-        results = []
+        results: list[ProviderResult] = []
         topic_tag = cmd.topic.lower().replace(" ", "_")[:50]
         seen_hashes: set[str] = set()
 

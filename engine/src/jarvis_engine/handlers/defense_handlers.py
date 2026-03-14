@@ -45,7 +45,6 @@ from jarvis_engine.commands.defense_commands import (
 if TYPE_CHECKING:
     from jarvis_engine.security.forensic_logger import ForensicLogger
     from jarvis_engine.security.orchestrator import SecurityOrchestrator
-    from jarvis_engine.security.memory_provenance import MemoryProvenance
 
 logger = logging.getLogger(__name__)
 

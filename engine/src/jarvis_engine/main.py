@@ -51,7 +51,8 @@ from jarvis_engine.cli.voice import (  # noqa: E402
 )
 from jarvis_engine.cli.system import (  # noqa: E402
     cmd_gaming_mode,
-    cmd_open_web,
+    cmd_open_web,  # noqa: F401 — re-exported for voice/intents.py
+    cmd_weather,  # noqa: F401 — re-exported for voice/intents.py
     cmd_status,
     cmd_log,
     cmd_ingest,
@@ -66,7 +67,6 @@ from jarvis_engine.cli.system import (  # noqa: E402
     cmd_self_heal,
     cmd_memory_eval,
     cmd_daemon_run,
-    cmd_weather,
 )
 from jarvis_engine.cli.security import (  # noqa: E402
     cmd_owner_guard,

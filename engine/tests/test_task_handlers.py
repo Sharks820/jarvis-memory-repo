@@ -522,7 +522,8 @@ class TestWebResearchHandlerExtended:
             ):
                 result = handler.handle(cmd)
         assert result.return_code == 0
-        assert result.auto_ingest_record_id == "rec-123"
+        # auto_ingest_memory is fire-and-forget (returns None); record_id stays ""
+        assert result.auto_ingest_record_id == ""
 
     def test_auto_ingest_failure_handled_gracefully(self):
         handler = WebResearchHandler(root=Path("."))

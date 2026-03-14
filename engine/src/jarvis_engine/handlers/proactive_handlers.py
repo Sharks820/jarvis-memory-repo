@@ -152,7 +152,7 @@ class WakeWordStartHandler:
             """Wake word detected — record command, transcribe, and dispatch."""
             logger.info("Wake word detected! Listening for command...")
             try:
-                from jarvis_engine.stt import record_from_microphone, transcribe_smart
+                from jarvis_engine.stt.core import record_from_microphone, transcribe_smart
 
                 # Pause wake word mic stream to avoid dual-stream conflicts,
                 # then record on a fresh stream with buffer drain.

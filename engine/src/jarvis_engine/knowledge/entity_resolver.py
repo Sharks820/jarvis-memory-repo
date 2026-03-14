@@ -13,7 +13,8 @@ import sqlite3
 import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
 from jarvis_engine._constants import EMBEDDING_DIM
 from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
@@ -61,7 +62,7 @@ class EntityResolver:
     def __init__(
         self,
         kg: KnowledgeGraph,
-        embed_service: object | None = None,
+        embed_service: Any | None = None,
         similarity_threshold: float = 0.85,
     ) -> None:
         self._kg = kg
@@ -226,6 +227,7 @@ class EntityResolver:
         Returns a dict mapping node_id to embedding vector.  May return an
         empty dict if all embeddings fail.
         """
+        assert self._embed_service is not None  # caller guards this
         embed_cache: dict[str, list[float]] = {}
         all_ids = [nid for nid, _lbl in members]
         all_labels = [lbl for _nid, lbl in members]
@@ -290,7 +292,7 @@ class EntityResolver:
 
     def _find_neighbours_numpy(
         self,
-        _np: object,
+        _np: ModuleType,
         embedded_ids: list[str],
         embedded_vecs: list[list[float]],
         label_map: dict[str, str],

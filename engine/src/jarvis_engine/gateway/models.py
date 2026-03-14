@@ -157,9 +157,9 @@ def _ensure_ollama() -> bool:
         _ollama_state["response_error_cls"] = result["error"]
         _ollama_state["has_ollama"] = True
         # Update module-level attributes for backward compatibility with test patches
-        _mod.OllamaClient = result["client"]
-        _mod.ResponseError = result["error"]  # type: ignore[misc]
-        _mod._HAS_OLLAMA = True
+        _mod.OllamaClient = result["client"]  # type: ignore[attr-defined]
+        _mod.ResponseError = result["error"]  # type: ignore[attr-defined]
+        _mod._HAS_OLLAMA = True  # type: ignore[attr-defined]
         return True
 
     logger.debug("Ollama import failed: %s", result.get("exc", "unknown"))
@@ -333,7 +333,7 @@ class ModelGateway:
             self._anthropic = None
 
         if _ensure_ollama():
-            self._ollama = OllamaClient(host=ollama_host, timeout=_OLLAMA_CLIENT_TIMEOUT_S)
+            self._ollama = OllamaClient(host=ollama_host, timeout=_OLLAMA_CLIENT_TIMEOUT_S)  # type: ignore[misc]
         else:
             self._ollama = None
         self._cost_tracker = cost_tracker

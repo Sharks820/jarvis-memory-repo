@@ -47,11 +47,13 @@ def _get_auto_ingest_store() -> "MemoryStore":
     if _auto_ingest_state["store"] is not None:
         return _auto_ingest_state["store"]
     with _auto_ingest_store_lock:
-        if _auto_ingest_state["store"] is None:
+        store = _auto_ingest_state["store"]
+        if store is None:
             from jarvis_engine.memory.store import MemoryStore
 
-            _auto_ingest_state["store"] = MemoryStore(repo_root())
-        return _auto_ingest_state["store"]
+            store = MemoryStore(repo_root())
+            _auto_ingest_state["store"] = store
+        return store
 
 
 def _auto_ingest_dedupe_path() -> Path:

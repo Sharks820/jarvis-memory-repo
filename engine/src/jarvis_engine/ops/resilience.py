@@ -5,7 +5,7 @@ import logging
 import re
 import secrets
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from jarvis_engine._shared import atomic_write_json, now_iso, runtime_dir, safe_float, safe_int
 from jarvis_engine.memory.brain import RegressionReport, brain_regression_report, brain_status
@@ -146,7 +146,7 @@ def run_mobile_desktop_sync(root: Path) -> SyncReport:
     report_path = runtime_dir(root) / "mobile_desktop_sync.json"
     atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
-    return report
+    return cast(SyncReport, report)
 
 
 def _scan_recent_logs(root: Path, *, max_lines: int = 200) -> dict[str, Any]:
@@ -214,11 +214,11 @@ def run_self_heal(
         or duplicate_ratio > 0.25
     )
     if should_maintain:
-        maintenance = run_memory_maintenance(
+        maintenance = cast("dict[str, Any]", run_memory_maintenance(
             root,
             keep_recent=max(200, min(keep_recent, 50000)),
             snapshot_note=snapshot_note[:160],
-        )
+        ))
         actions.append("memory_maintenance_run")
 
     logs = _scan_recent_logs(root)
@@ -243,4 +243,4 @@ def run_self_heal(
     report_path = runtime_dir(root) / "self_heal_report.json"
     atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
-    return report
+    return cast(SelfHealReport, report)

@@ -21,7 +21,7 @@ import os
 import sqlite3
 import threading
 import time
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from jarvis_engine._shared import recency_weight as _recency_weight_core
 
@@ -172,7 +172,7 @@ def hybrid_search(
     retrieval_mode = _trust_retrieval_mode()
 
     # 5. Recency + frequency boost
-    scored_records: list[tuple[float, dict]] = []
+    scored_records: list[tuple[float, dict[str, Any]]] = []
     for rid, score in scores.items():
         record = records_by_id.get(rid)
         if record is None:
@@ -213,4 +213,4 @@ def hybrid_search(
     if result_ids:
         _enqueue_access_updates(engine, result_ids)
 
-    return results
+    return cast(list[MemoryRecord], results)

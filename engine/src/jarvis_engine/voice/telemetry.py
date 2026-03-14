@@ -679,14 +679,17 @@ _telemetry_lock = threading.Lock()
 
 def get_voice_telemetry() -> VoiceTelemetry:
     """Return (or create) the module-level VoiceTelemetry singleton."""
-    if _telemetry_state["instance"] is not None:
-        return _telemetry_state["instance"]
+    inst = _telemetry_state["instance"]
+    if inst is not None:
+        return inst
     with _telemetry_lock:
         # Double-checked locking
-        if _telemetry_state["instance"] is not None:
-            return _telemetry_state["instance"]
-        _telemetry_state["instance"] = VoiceTelemetry()
-        return _telemetry_state["instance"]
+        inst = _telemetry_state["instance"]
+        if inst is not None:
+            return inst
+        telem = VoiceTelemetry()
+        _telemetry_state["instance"] = telem
+        return telem
 
 
 def _reset_telemetry() -> None:

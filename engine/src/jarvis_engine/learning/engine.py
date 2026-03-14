@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.correction_detector import CorrectionDetector
     from jarvis_engine.learning.feedback import ResponseFeedbackTracker
     from jarvis_engine.learning.preferences import PreferenceTracker
     from jarvis_engine.learning.usage_patterns import UsagePatternTracker
@@ -59,7 +60,7 @@ class ConversationLearningEngine:
         self._preference_tracker = preference_tracker
         self._feedback_tracker = feedback_tracker
         self._usage_tracker = usage_tracker
-        self._correction_detector: object | None = None
+        self._correction_detector: CorrectionDetector | None = None
 
     def learn_from_interaction(
         self,

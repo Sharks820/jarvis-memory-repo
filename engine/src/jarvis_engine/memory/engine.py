@@ -604,7 +604,7 @@ class MemoryEngine:
             Dict with 'analyzed' (bool), 'vacuumed' (bool), and any error messages.
         """
         self._check_open()
-        result: dict = {"analyzed": False, "vacuumed": False, "errors": []}
+        result: OptimizeResult = {"analyzed": False, "vacuumed": False, "errors": []}
 
         # ANALYZE: update statistics for the query planner (lightweight)
         try:

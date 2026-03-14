@@ -51,21 +51,9 @@ from jarvis_engine.security.threat_detector import ThreatAssessment, ThreatDetec
 
 import importlib
 
-_OPTIONAL_IMPORTS: list[tuple[str, str, str]] = [
-    ("ActionAuditor", "jarvis_engine.security.action_auditor", "ActionAuditor"),
-    ("ScopeEnforcer", "jarvis_engine.security.scope_enforcer", "ScopeEnforcer"),
-    ("HeartbeatMonitor", "jarvis_engine.security.heartbeat", "HeartbeatMonitor"),
-    ("ResourceMonitor", "jarvis_engine.security.resource_monitor", "ResourceMonitor"),
-    ("ThreatIntelFeed", "jarvis_engine.security.threat_intel", "ThreatIntelFeed"),
-    ("ThreatNeutralizer", "jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer"),
-    ("HomeNetworkMonitor", "jarvis_engine.security.network_defense", "HomeNetworkMonitor"),
-    ("KnownDeviceRegistry", "jarvis_engine.security.network_defense", "KnownDeviceRegistry"),
-    ("BreachMonitor", "jarvis_engine.security.identity_shield", "BreachMonitor"),
-    ("FamilyShield", "jarvis_engine.security.identity_shield", "FamilyShield"),
-    ("ImpersonationDetector", "jarvis_engine.security.identity_shield", "ImpersonationDetector"),
-    ("TyposquatMonitor", "jarvis_engine.security.identity_shield", "TyposquatMonitor"),
-    ("_OwnerSessionManagerClass", "jarvis_engine.security.owner_session", "OwnerSessionManager"),
-]
+
+
+
 
 
 def _try_import(module_path: str, class_name: str) -> type | None:
@@ -78,11 +66,20 @@ def _try_import(module_path: str, class_name: str) -> type | None:
 
 
 # Populate module-level names so the rest of the file can reference them normally.
-for _attr, _mod, _cls in _OPTIONAL_IMPORTS:
-    globals()[_attr] = _try_import(_mod, _cls)
-
-# Clean up loop variables from module namespace
-del _attr, _mod, _cls
+# Use explicit assignments so static analysers (ruff/mypy) can see the names.
+ActionAuditor: type | None = _try_import("jarvis_engine.security.action_auditor", "ActionAuditor")
+ScopeEnforcer: type | None = _try_import("jarvis_engine.security.scope_enforcer", "ScopeEnforcer")
+HeartbeatMonitor: type | None = _try_import("jarvis_engine.security.heartbeat", "HeartbeatMonitor")
+ResourceMonitor: type | None = _try_import("jarvis_engine.security.resource_monitor", "ResourceMonitor")
+ThreatIntelFeed: type | None = _try_import("jarvis_engine.security.threat_intel", "ThreatIntelFeed")
+ThreatNeutralizer: type | None = _try_import("jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer")
+HomeNetworkMonitor: type | None = _try_import("jarvis_engine.security.network_defense", "HomeNetworkMonitor")
+KnownDeviceRegistry: type | None = _try_import("jarvis_engine.security.network_defense", "KnownDeviceRegistry")
+BreachMonitor: type | None = _try_import("jarvis_engine.security.identity_shield", "BreachMonitor")
+FamilyShield: type | None = _try_import("jarvis_engine.security.identity_shield", "FamilyShield")
+ImpersonationDetector: type | None = _try_import("jarvis_engine.security.identity_shield", "ImpersonationDetector")
+TyposquatMonitor: type | None = _try_import("jarvis_engine.security.identity_shield", "TyposquatMonitor")
+_OwnerSessionManagerClass: type | None = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
 
 logger = logging.getLogger(__name__)
 

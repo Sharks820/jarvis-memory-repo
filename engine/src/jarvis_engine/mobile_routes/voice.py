@@ -75,6 +75,53 @@ class _VoiceHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def _validate_voice_text(
+        self,
+        payload: dict[str, Any],
+        correlation_id: str,
+    ) -> str | dict[str, Any]:
+        ...
+
+    def _validate_voice_payload(
+        self,
+        payload: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    @staticmethod
+    def _parse_voice_stdout(
+        stdout_lines: list[str],
+        default_status_code: str = "",
+    ) -> dict[str, str]:
+        ...
+
+    def _build_voice_result(
+        self,
+        *,
+        rc: int,
+        correlation_id: str,
+        parsed: dict[str, str],
+        stdout_lines: list[str],
+        stderr_lines: list[str] | None = None,
+        stdout_truncated: bool = False,
+    ) -> dict[str, Any]:
+        ...
+
+    def _run_voice_in_process(
+        self,
+        params: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        ...
+
+    def _run_voice_subprocess(
+        self,
+        params: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        ...
+
 
 class VoiceRoutesMixin:
     """Voice command validation, execution, and result building.

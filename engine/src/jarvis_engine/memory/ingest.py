@@ -12,7 +12,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, Union, cast
 
 from jarvis_engine._shared import now_iso, sha256_hex, sha256_short
 from jarvis_engine.learning.provenance import LearningProvenanceStore
@@ -24,7 +24,10 @@ from jarvis_engine.learning.trust import (
 )
 
 if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.knowledge.facts import FactExtractor
     from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.knowledge.llm_extractor import LLMFactExtractor
     from jarvis_engine.memory.classify import BranchClassifier
     from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
@@ -132,22 +135,22 @@ class EnrichedIngestPipeline:
         self._embed_service = embed_service
         self._classifier = classifier
         self._kg = knowledge_graph
-        self._gateway = gateway
-        self._fact_extractor = None  # Lazy-initialized on first use
-        self._llm_extractor = None  # Lazy-initialized on first use
+        self._gateway: ModelGateway | None = cast(Union["ModelGateway", None], gateway)
+        self._fact_extractor: FactExtractor | None = None
+        self._llm_extractor: LLMFactExtractor | None = None
         self._provenance_store = LearningProvenanceStore(
             db=engine.db,
             write_lock=engine.write_lock,
             db_lock=engine.db_lock,
         )
 
-    def set_gateway(self, gateway: "object | None") -> None:
+    def set_gateway(self, gateway: "ModelGateway | None") -> None:
         """Set the LLM gateway for fact extraction (late-binding).
 
         Called by the composition root when the gateway is created after the
         pipeline.  Avoids direct mutation of the private ``_gateway`` attribute.
         """
-        self._gateway = gateway
+        self._gateway = cast(Union["ModelGateway", None], gateway)
 
     def _embed_chunks(self, valid_chunks: list[str]) -> list:
         """Generate embeddings for all chunks, preferring batch mode.
@@ -181,7 +184,7 @@ class EnrichedIngestPipeline:
     def _build_record(
         self,
         chunk: str,
-        embedding: object,
+        embedding: list[float],
         source: str,
         kind: str,
         task_id: str,
@@ -292,7 +295,7 @@ class EnrichedIngestPipeline:
             record = self._build_record(
                 chunk, embedding, source, kind, task_id, ts, tag_str,
             )
-            was_inserted = self._engine.insert_record(record, embedding=embedding)
+            was_inserted = self._engine.insert_record(cast(dict[str, Any], record), embedding=embedding)
             if was_inserted:
                 record_id = record["record_id"]
                 inserted_ids.append(record_id)
@@ -386,7 +389,7 @@ class EnrichedIngestPipeline:
                 metadata={"indicator": indicator},
             )
 
-    def _get_llm_extractor(self) -> "object | None":
+    def _get_llm_extractor(self) -> LLMFactExtractor | None:
         """Lazy-initialize the LLM fact extractor if a gateway is available."""
         if self._llm_extractor is not None:
             return self._llm_extractor
@@ -423,6 +426,8 @@ class EnrichedIngestPipeline:
         if not triples:
             return
 
+        assert self._kg is not None  # guaranteed by _extract_all_facts guard
+
         # Ensure provenance node exists before creating edges (avoids FK violation)
         provenance_id = f"ingest:{record_id}"
         self._kg.add_fact(
@@ -456,8 +461,10 @@ class EnrichedIngestPipeline:
         try:
             from jarvis_engine.learning.cross_branch import create_cross_branch_edges
 
+            kg = self._kg  # already asserted non-None above
+            assert kg is not None
             for fact_id in created_fact_ids:
-                create_cross_branch_edges(self._kg, fact_id, record_id)
+                create_cross_branch_edges(kg, fact_id, record_id)
         except (ImportError, RuntimeError, OSError, ValueError, KeyError) as exc:
             logger.debug("Cross-branch edge creation failed: %s", exc)
 

@@ -12,7 +12,7 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso, runtime_dir
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def _capture_kg_metrics(root_resolved: Path) -> dict[str, Any] | None:
         try:
             _kg = KnowledgeGraph(_kg_engine)
             _checker = RegressionChecker(_kg)
-            return _checker.capture_metrics()
+            return cast("dict[str, Any] | None", _checker.capture_metrics())
         finally:
             _kg_engine.close()
     except (
@@ -359,9 +359,9 @@ def run_memory_maintenance(
                     try:
                         _kg = KnowledgeGraph(_kg_engine)
                         _checker = RegressionChecker(_kg)
-                        kg_regression = _checker.compare(
+                        kg_regression = cast("dict[str, Any]", _checker.compare(
                             prev_kg_metrics, current_kg_metrics
-                        )
+                        ))
                     finally:
                         _kg_engine.close()
     except (
@@ -400,4 +400,4 @@ def run_memory_maintenance(
         json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8"
     )
     report["report_path"] = str(out_path)
-    return report
+    return cast(MemoryMaintenanceReport, report)

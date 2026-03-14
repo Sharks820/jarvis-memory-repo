@@ -12,7 +12,6 @@ get_bus() -> CommandBus
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.config import repo_root

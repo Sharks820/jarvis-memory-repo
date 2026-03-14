@@ -608,7 +608,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
     are not installed.
     """
     try:
-        from jarvis_engine.stt import listen_and_transcribe
+        from jarvis_engine.stt.core import listen_and_transcribe
         result = listen_and_transcribe(
             max_duration_seconds=float(max(3, timeout_s)),
             language="en",

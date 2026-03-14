@@ -8,7 +8,7 @@ import os
 import re
 import webbrowser
 from pathlib import Path
-from typing import Any  # used for WeatherHandler.current dict (external API shape)
+from typing import Any, cast  # used for WeatherHandler.current dict (external API shape)
 from urllib.parse import quote
 from urllib.request import urlopen
 
@@ -149,7 +149,7 @@ class MobileDesktopSyncHandler:
 
         report = run_mobile_desktop_sync(self._root)
         return MobileDesktopSyncResult(
-            report=report,
+            report=cast("dict[str, Any]", report),
             return_code=0 if bool(report.get("sync_ok", False)) else 2,
         )
 
@@ -168,7 +168,7 @@ class SelfHealHandler:
             force_maintenance=cmd.force_maintenance,
         )
         rc = 0 if str(report.get("status", "")) in {"ok", "attention"} else 2
-        return SelfHealResult(report=report, return_code=rc)
+        return SelfHealResult(report=cast("dict[str, Any]", report), return_code=rc)
 
 
 class DesktopWidgetHandler:
@@ -306,4 +306,4 @@ class MigrateMemoryHandler:
         db_path = memory_db_path(self._root)
         summary = run_full_migration(self._root, db_path, embed_service)
         rc = 0 if summary.get("status") == "ok" else 2
-        return MigrateMemoryResult(summary=summary, return_code=rc)
+        return MigrateMemoryResult(summary=cast("dict[str, Any]", summary), return_code=rc)

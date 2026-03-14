@@ -96,7 +96,7 @@ class TierManager:
         and batch-updates only the changed tiers in one transaction.
         """
         records = engine.get_all_records_for_tier_maintenance()
-        changes = {"total": len(records), "promoted": 0, "demoted": 0, "unchanged": 0}
+        changes: TierMaintenanceResult = {"total": len(records), "promoted": 0, "demoted": 0, "unchanged": 0}
         tier_order = {"archive": -1, "cold": 0, "warm": 1, "hot": 2}
         updates: list[tuple[str, str]] = []
 

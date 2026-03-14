@@ -211,7 +211,7 @@ class VoiceListenHandler:
 
     def handle(self, cmd: VoiceListenCommand) -> VoiceListenResult:
         try:
-            from jarvis_engine.stt import listen_and_transcribe
+            from jarvis_engine.stt.core import listen_and_transcribe
         except ImportError as exc:
             logger.warning("STT module not available: %s", exc)
             return VoiceListenResult(message="error: STT module not available.")

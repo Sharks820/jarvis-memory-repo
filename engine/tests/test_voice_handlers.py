@@ -421,7 +421,7 @@ class TestVoiceListenHandler:
 
     def test_import_error(self, tmp_path: Path) -> None:
         handler = VoiceListenHandler(root=tmp_path)
-        with patch.dict("sys.modules", {"jarvis_engine.stt": None}):
+        with patch.dict("sys.modules", {"jarvis_engine.stt.core": None}):
             result = handler.handle(VoiceListenCommand())
         assert "not available" in result.message.lower()
 
@@ -436,7 +436,7 @@ class TestVoiceListenHandler:
             segments=[{"start": 0.0, "end": 1.0, "text": "hello world", "kind": "utterance"}],
         )
 
-        with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
+        with patch.dict("sys.modules", {"jarvis_engine.stt.core": mock_stt}):
             handler = VoiceListenHandler(root=tmp_path)
             result = handler.handle(VoiceListenCommand())
 
@@ -463,7 +463,7 @@ class TestVoiceListenHandler:
             text="", confidence=0.0, duration_seconds=0.0
         )
 
-        with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
+        with patch.dict("sys.modules", {"jarvis_engine.stt.core": mock_stt}):
             handler = VoiceListenHandler(root=tmp_path)
             handler.handle(
                 VoiceListenCommand(
@@ -486,7 +486,7 @@ class TestVoiceListenHandler:
             text="", confidence=0.0, duration_seconds=0.0
         )
 
-        with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
+        with patch.dict("sys.modules", {"jarvis_engine.stt.core": mock_stt}):
             handler = VoiceListenHandler(root=tmp_path)
             handler.handle(
                 VoiceListenCommand(
@@ -503,7 +503,7 @@ class TestVoiceListenHandler:
         mock_stt = MagicMock()
         mock_stt.listen_and_transcribe.side_effect = RuntimeError("mic busy")
 
-        with patch.dict("sys.modules", {"jarvis_engine.stt": mock_stt}):
+        with patch.dict("sys.modules", {"jarvis_engine.stt.core": mock_stt}):
             handler = VoiceListenHandler(root=tmp_path)
             result = handler.handle(VoiceListenCommand())
 

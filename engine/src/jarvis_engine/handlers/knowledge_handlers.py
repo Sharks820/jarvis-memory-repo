@@ -232,4 +232,4 @@ class KnowledgeRegressionHandler:
             # No snapshot path -- just return current metrics as baseline
             report = checker.compare(None, current)
 
-        return KnowledgeRegressionResult(report=report)
+        return KnowledgeRegressionResult(report=dict(report))

@@ -747,7 +747,7 @@ def _init_harvesting_subsystem(
 
         budget_manager = BudgetManager(db_path)
 
-        all_providers = [
+        all_providers: list[Any] = [
             MiniMaxProvider(),
             KimiProvider(),
             KimiNvidiaProvider(),

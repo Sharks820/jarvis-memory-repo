@@ -11,6 +11,7 @@ from urllib.error import URLError
 
 import logging
 from jarvis_engine.gateway.ollama_client import (
+    OllamaResponse,
     call_ollama_generate as _call_ollama_generate,
 )
 from jarvis_engine._shared import now_iso, sha256_hex
@@ -455,7 +456,7 @@ def _generate(
     temperature: float,
     think: bool | None,
     timeout_s: int,
-) -> dict[str, Any]:
+) -> OllamaResponse:
     effective_prompt = prompt
     if think is False:
         effective_prompt = "/nothink\n" + prompt

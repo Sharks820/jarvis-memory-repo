@@ -1502,10 +1502,12 @@ def get_conversation_state(
         return _state_holder["instance"]
     with _manager_lock:
         # Double-checked locking
-        if _state_holder["instance"] is not None:
-            return _state_holder["instance"]
-        _state_holder["instance"] = ConversationStateManager(state_dir=state_dir)
-        return _state_holder["instance"]
+        inst = _state_holder["instance"]
+        if inst is not None:
+            return inst
+        mgr = ConversationStateManager(state_dir=state_dir)
+        _state_holder["instance"] = mgr
+        return mgr
 
 
 def _reset_manager() -> None:

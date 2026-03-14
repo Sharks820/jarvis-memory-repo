@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, cast
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine._compat import UTC
@@ -62,11 +62,11 @@ class CycleState:
     idle_seconds: float | None
     is_active: bool
     sleep_seconds: int
-    resource_snapshot: dict
+    resource_snapshot: dict[str, Any]
     pressure_level: str
     skip_heavy_tasks: bool
-    gaming_state: dict
-    control_state: dict
+    gaming_state: dict[str, Any]
+    control_state: dict[str, Any]
     auto_detect: bool
     detected_process: str
     gaming_mode_enabled: bool
@@ -472,7 +472,7 @@ def _collect_kg_metrics(root: Path) -> None:
             else:
                 metrics = {"node_count": 0, "edge_count": 0}
         history_path = runtime_dir(root) / KG_METRICS_LOG
-        append_kg_metrics(metrics, history_path)
+        append_kg_metrics(cast("dict[Any, Any]", metrics), history_path)
         _emit(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
     except SUBSYSTEM_ERRORS_DB as exc:
         _emit_cycle_failure("kg_metrics", exc, message="Daemon KG metrics collection failed")
@@ -489,7 +489,7 @@ def _run_self_test_cycle(root: Path) -> None:
             tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
             quiz_result = tester.run_memory_quiz()
             quiz_history = runtime_dir(root) / SELF_TEST_HISTORY
-            tester.save_quiz_result(quiz_result, quiz_history)
+            tester.save_quiz_result(cast("dict[Any, Any]", quiz_result), quiz_history)
             regression = tester.check_regression(quiz_history)
             _emit(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
             _emit(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
@@ -652,7 +652,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
             if harvest_db_path.exists():
                 h_budget = BudgetManager(harvest_db_path)
             try:
-                h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
+                h_providers: list[Union[MiniMaxProvider, KimiProvider, KimiNvidiaProvider, GeminiProvider]] = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
                 h_available = [p for p in h_providers if p.is_available]
                 # Get pipeline components from daemon bus
                 h_bus = _get_daemon_bus()
@@ -738,11 +738,11 @@ def _gather_cycle_state(
         idle_seconds=idle_seconds,
         is_active=is_active,
         sleep_seconds=sleep_seconds,
-        resource_snapshot=resource_snapshot,
+        resource_snapshot=cast("dict[str, Any]", resource_snapshot),
         pressure_level=pressure_level,
         skip_heavy_tasks=skip_heavy_tasks,
-        gaming_state=gaming_state,
-        control_state=control_state,
+        gaming_state=cast("dict[str, Any]", gaming_state),
+        control_state=cast("dict[str, Any]", control_state),
         auto_detect=auto_detect,
         detected_process=detected_process,
         gaming_mode_enabled=bool(gaming_state.get("enabled", False)) or auto_detect_hit,
@@ -975,7 +975,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     # Warm-start STT backends in a background thread to eliminate cold-start
     # latency when the user first issues a voice command.
     try:
-        from jarvis_engine.stt import warmup_stt_backends
+        from jarvis_engine.stt.core import warmup_stt_backends
 
         threading.Thread(target=warmup_stt_backends, daemon=True).start()
         logger.debug("STT backend warmup started in background thread")

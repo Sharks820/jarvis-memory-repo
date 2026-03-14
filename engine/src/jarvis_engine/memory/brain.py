@@ -30,7 +30,7 @@ from jarvis_engine._shared import (
     sha256_short,
 )
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 
 _HASH_MAP_MAX_ENTRIES = 6000  # prune hash index above this size
@@ -591,7 +591,7 @@ def _try_hybrid_search(
         if not query_embedding:
             return None
         results = hybrid_search(engine, query, query_embedding, k=max_items * 3)
-        return results
+        return cast(list[dict[str, Any]], results)
     except (OSError, ValueError, TypeError, RuntimeError) as exc:
         logger.debug("hybrid_search failed, falling back to JSONL: %s", exc)
         return None

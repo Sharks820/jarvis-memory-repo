@@ -76,9 +76,11 @@ class AdversarialSelfTest:
         if tasks is None:
             tasks = DEFAULT_MEMORY_TASKS
 
+        if self._embed_service is None:
+            raise RuntimeError("embed_service is required for memory eval")
         results = run_memory_eval(tasks, self._engine, self._embed_service)
 
-        per_task_scores = [
+        per_task_scores: list[TaskScore] = [
             {"task_id": r.task_id, "score": r.overall_score} for r in results
         ]
 

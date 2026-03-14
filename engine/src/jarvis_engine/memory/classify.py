@@ -54,11 +54,11 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
             return 0.0
         return float(np.dot(va, vb) / (norm_a * norm_b))
     dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a < 1e-12 or norm_b < 1e-12:
+    norm_a_f: float = math.sqrt(sum(x * x for x in a))
+    norm_b_f: float = math.sqrt(sum(x * x for x in b))
+    if norm_a_f < 1e-12 or norm_b_f < 1e-12:
         return 0.0
-    return dot / (norm_a * norm_b)
+    return dot / (norm_a_f * norm_b_f)
 
 
 class BranchClassifier:

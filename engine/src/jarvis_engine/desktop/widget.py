@@ -544,6 +544,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.command_text.config(fg=self.MUTED)
         self.command_text.bind("<FocusIn>", self._on_command_focus_in)
         self.command_text.bind("<FocusOut>", self._on_command_focus_out)
+        self.command_text.bind("<Key>", self._on_command_keypress)
 
         self._send_btn = tk.Button(
             input_row,
@@ -592,6 +593,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             if str(self.command_text.cget("state")) == "disabled":
                 return
+            # Don't activate placeholder if widget still has keyboard focus
+            # (e.g. called programmatically from cleanup callbacks)
+            if self.command_text.focus_get() is self.command_text:
+                return
             content = self.command_text.get("1.0", tk.END).strip()
             if not content:
                 self._placeholder_active = True
@@ -599,6 +604,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.command_text.config(fg=self.MUTED)
         except (tk.TclError, RuntimeError):
             pass
+
+    def _on_command_keypress(self, _event: Any = None) -> None:
+        """Clear ghost placeholder on any keypress, even without a FocusIn event."""
+        if self._placeholder_active:
+            self.command_text.delete("1.0", tk.END)
+            self.command_text.config(fg=self.TEXT)
+            self._placeholder_active = False
 
     def _build_controls_drawer(self, body: tk.Frame) -> None:
         """Build a collapsible drawer containing session config, flags, quick actions, etc.

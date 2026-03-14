@@ -586,7 +586,7 @@ def run_learning_mission(
     }
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
-    atomic_write_json(report_path, report)
+    atomic_write_json(report_path, dict(report))  # type-safe dict conversion
 
     _update_step(root, mission_id, "finalize", status="completed", elapsed_ms=_now_ms() - _t5)
     _update_mission_progress(

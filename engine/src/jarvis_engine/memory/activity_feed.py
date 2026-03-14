@@ -270,14 +270,17 @@ _feed_lock = threading.Lock()
 
 
 def get_activity_feed(db_path: Path | str | None = None) -> ActivityFeed:
-    if _feed_holder["instance"] is not None and not _feed_holder["instance"]._closed:
-        return _feed_holder["instance"]
+    inst = _feed_holder["instance"]
+    if inst is not None and not inst._closed:
+        return inst
     with _feed_lock:
         # Double-checked locking
-        if _feed_holder["instance"] is not None and not _feed_holder["instance"]._closed:
-            return _feed_holder["instance"]
-        _feed_holder["instance"] = ActivityFeed(db_path=db_path)
-        return _feed_holder["instance"]
+        inst = _feed_holder["instance"]
+        if inst is not None and not inst._closed:
+            return inst
+        feed = ActivityFeed(db_path=db_path)
+        _feed_holder["instance"] = feed
+        return feed
 
 
 def log_activity(

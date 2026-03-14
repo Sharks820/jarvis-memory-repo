@@ -6,7 +6,7 @@ import logging
 from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine._shared import make_task_id
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -64,7 +64,7 @@ class RunTaskHandler:
         try:
             from jarvis_engine.memory.auto_ingest import auto_ingest_memory
 
-            auto_id = auto_ingest_memory(
+            auto_ingest_memory(
                 source="task_outcome",
                 kind="episodic",
                 task_id=make_task_id(f"task-{cmd.task_type}"),
@@ -180,7 +180,7 @@ class WebResearchHandler:
                         if domain:
                             top_domains.append(domain)
                     domain_text = ", ".join(dict.fromkeys(top_domains))
-                    auto_id = auto_ingest_memory(
+                    auto_ingest_memory(
                         source="task_outcome",
                         kind="semantic",
                         task_id=make_task_id("web-research"),
@@ -193,7 +193,7 @@ class WebResearchHandler:
             except SUBSYSTEM_ERRORS_DB as exc:
                 logger.warning("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(
-            return_code=0, report=report, auto_ingest_record_id=auto_id
+            return_code=0, report=cast("dict[str, Any]", report), auto_ingest_record_id=auto_id
         )
 
 

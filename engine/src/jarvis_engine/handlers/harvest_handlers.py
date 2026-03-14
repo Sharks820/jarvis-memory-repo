@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS_DB
 from jarvis_engine.commands.harvest_commands import (
@@ -49,7 +49,7 @@ class HarvestTopicHandler:
         result = self._harvester.harvest(harvest_cmd)
         return HarvestTopicResult(
             topic=result.get("topic", cmd.topic),
-            results=result.get("results", []),
+            results=cast("list[dict[Any, Any]]", result.get("results", [])),
             return_code=0,
         )
 
@@ -73,6 +73,7 @@ class IngestSessionHandler:
         )
 
         # Create appropriate ingestor
+        ingestor: Any
         if cmd.source == "claude":
             ingestor = ClaudeCodeIngestor()
         elif cmd.source == "codex":
@@ -186,7 +187,7 @@ class HarvestBudgetHandler:
             provider=cmd.provider,
         )
         return HarvestBudgetResult(
-            summary=summary,
+            summary=cast("dict[Any, Any]", summary),
             return_code=0,
         )
 

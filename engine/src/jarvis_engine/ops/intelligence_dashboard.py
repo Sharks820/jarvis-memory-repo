@@ -5,7 +5,7 @@ import math
 from datetime import datetime
 from jarvis_engine._shared import atomic_write_json, now_iso, parse_iso_timestamp, safe_float
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 from jarvis_engine.memory.brain import brain_regression_report
 from jarvis_engine.learning.growth_tracker import read_history, summarize_history
 
@@ -264,7 +264,7 @@ def _safe_knowledge_snapshot(
     try:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
-        return capture_knowledge_metrics(kg, engine)
+        return cast("dict[str, Any]", capture_knowledge_metrics(kg, engine))
     except (ImportError, AttributeError, OSError, ValueError) as exc:
         logger.debug("Knowledge snapshot capture failed: %s", exc)
         return {}
@@ -388,7 +388,7 @@ def build_intelligence_dashboard(
         },
         "ranking": ranking,
         "etas": etas,
-        "memory_regression": brain_regression_report(root),
+        "memory_regression": cast("dict[str, Any]", brain_regression_report(root)),
         "knowledge_graph": _safe_kg_metrics(root),
         "gateway_audit": _safe_gateway_summary(root),
         "learning": _safe_learning_metrics(
@@ -481,7 +481,7 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
 
         audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
         audit = GatewayAudit(audit_path)
-        return audit.summary(hours=24)
+        return cast("dict[str, Any]", audit.summary(hours=24))
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Failed to collect gateway audit summary: %s", exc)
     return {}
