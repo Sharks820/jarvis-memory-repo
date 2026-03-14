@@ -69,6 +69,44 @@ _COMMAND_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
+# SEC-01: Mission-based prompt injection patterns
+_MISSION_INJECTION_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"ignore\s+(all\s+)?previous\s+instructions",
+        r"disregard\s+(your\s+)?objective",
+        r"new\s+objective\s*:",
+        r"override\s+mission\s+parameters",
+        r"inject\s+(into\s+)?mission",
+        r"(system|admin)\s*:\s*(ignore|override|forget)",
+        r"mission\s+hijack",
+        r"change\s+your\s+(goal|purpose|objective)",
+        r"you\s+are\s+now\s+a\s+different",
+        r"execute\s+(this\s+)?shell\s+command",
+        r"run\s+this\s+code",
+        r"fetch\s+and\s+send\s+to",
+        r"exfiltrate",
+        r"forward\s+(all\s+)?(data|results|findings)\s+to",
+    ]
+]
+
+# SEC-01: Cross-channel data exfiltration patterns
+_CROSS_CHANNEL_EXFIL_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"send\s+(all\s+)?(data|results|memory|findings)\s+to\s+https?://",
+        r"post\s+(to|data\s+to)\s+https?://",
+        r"curl\s+.*-d\s+",
+        r"webhook[.:/]",
+        r"exfil(trate)?",
+        r"(upload|transmit|relay)\s+(data|results|memory)\s+to",
+        r"base64\s+encode\s+and\s+send",
+        r"embed\s+(in|into)\s+(url|image|dns)",
+        r"dns\s+tunnel",
+        r"steganograph",
+    ]
+]
+
 _SUSPICIOUS_USER_AGENTS: list[str] = [
     "sqlmap",
     "nikto",
@@ -161,6 +199,45 @@ class ThreatDetector:
         self._rate_check_counter: int = 0
 
     # Public API
+
+    def check_mission_input(
+        self, topic: str, objective: str,
+    ) -> ThreatAssessment:
+        """Check mission topic and objective for injection and exfiltration attempts.
+
+        SEC-01: Abuse cases for prompt-injection-through-mission and
+        cross-channel data exfiltration.
+        """
+        signals: list[ThreatSignal] = []
+        combined = f"{topic} {objective}"
+
+        for pat in _MISSION_INJECTION_PATTERNS:
+            m = pat.search(combined)
+            if m:
+                signals.append(
+                    ThreatSignal(
+                        severity="HIGH",
+                        category="mission_injection",
+                        confidence=0.90,
+                        evidence={"pattern": pat.pattern, "match": m.group()[:100]},
+                    )
+                )
+                break  # one match is enough to flag
+
+        for pat in _CROSS_CHANNEL_EXFIL_PATTERNS:
+            m = pat.search(combined)
+            if m:
+                signals.append(
+                    ThreatSignal(
+                        severity="HIGH",
+                        category="cross_channel_exfil",
+                        confidence=0.85,
+                        evidence={"pattern": pat.pattern, "match": m.group()[:100]},
+                    )
+                )
+                break
+
+        return self._aggregate(signals)
 
     def assess(self, request_context: dict) -> ThreatAssessment:
         """Run all detection rules and return an aggregated assessment.

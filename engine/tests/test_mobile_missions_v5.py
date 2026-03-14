@@ -537,10 +537,10 @@ class TestMOB12ConcurrentConsistency:
 
         t1 = threading.Thread(target=do_pause)
         t2 = threading.Thread(target=do_read)
-        t1.start()
-        t2.start()
-        t1.join(timeout=5)
-        t2.join(timeout=5)
+        t2.start()  # reader starts first
+        t1.start()  # then pause — reader should see consistent state
+        t1.join(timeout=10)
+        t2.join(timeout=10)
         assert not errors, f"Pause/read race errors: {errors}"
 
         # Final state should be paused

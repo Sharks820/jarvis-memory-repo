@@ -60,6 +60,33 @@ class ForensicLogger:
                     "Failed to write forensic log entry to %s: %s", self._path, exc
                 )
 
+    def log_with_mission_context(
+        self,
+        event: dict,
+        mission_id: str | None = None,
+        provider_chain: list[str] | None = None,
+    ) -> None:
+        """Append *event* with mission correlation and provider-switch chain.
+
+        SEC-06: Forensic traces include mission correlation and
+        provider-switch chain for intelligence routing audits.
+
+        Parameters
+        ----------
+        event:
+            The event dict to log.
+        mission_id:
+            Optional mission ID to correlate this event with.
+        provider_chain:
+            Optional list of providers tried (e.g. ``["ollama", "groq", "anthropic"]``).
+        """
+        enriched = dict(event)
+        if mission_id is not None:
+            enriched["mission_id"] = mission_id
+        if provider_chain is not None:
+            enriched["provider_chain"] = provider_chain
+        self.log_event(enriched)
+
     @staticmethod
     def verify_chain(path: Path) -> tuple[bool, int]:
         """Verify the hash chain of a forensic log file.
