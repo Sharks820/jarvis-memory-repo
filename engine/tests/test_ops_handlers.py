@@ -393,6 +393,7 @@ class TestMissionCreateHandler:
             objective="Learn basics",
             sources=["wikipedia"],
             origin="desktop-manual",
+            delivery_method="notification",
         )
 
     @patch("jarvis_engine.learning.missions.create_learning_mission")
@@ -428,6 +429,7 @@ class TestMissionCreateHandler:
             objective="",
             sources=[],
             origin="desktop-manual",
+            delivery_method="notification",
         )
 
 

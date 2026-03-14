@@ -73,6 +73,14 @@ _stt_metrics_lock = threading.Lock()
 CONFIDENCE_RETRY_THRESHOLD = float(
     os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.72")
 )
+
+# STT-11: Low-confidence confirmation threshold.  When the final
+# transcription confidence falls below this value the result is flagged
+# with ``needs_confirmation=True`` so the voice pipeline can prompt the
+# user for verification instead of silently executing a wrong command.
+CONFIDENCE_CONFIRMATION_THRESHOLD = float(
+    os.environ.get("JARVIS_STT_CONFIRMATION_THRESHOLD", "0.6")
+)
 GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 # Default prompt biases local Whisper toward Jarvis-specific vocabulary
@@ -952,6 +960,8 @@ def transcribe_smart(
     (filler removal, LLM correction, NER entity correction) is applied
     to the final transcription text.
     """
+    pipeline_t0 = time.monotonic()
+
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
     resolved_entities = _build_default_entity_list(entity_list)
     resolved_prompt = _build_stt_prompt(prompt, resolved_entities)
@@ -979,7 +989,23 @@ def transcribe_smart(
             entity_list=resolved_entities,
         )
 
-    return _apply_postprocessing(final, gateway=gateway, entity_list=resolved_entities)
+    result = _apply_postprocessing(final, gateway=gateway, entity_list=resolved_entities)
+
+    # STT-12: Record total pipeline latency (preprocessing + transcription + postprocessing)
+    pipeline_elapsed_ms = (time.monotonic() - pipeline_t0) * 1000
+    result.pipeline_latency_ms = round(pipeline_elapsed_ms, 1)
+
+    # STT-11: Flag low-confidence results for user confirmation
+    if result.text.strip() and result.confidence < CONFIDENCE_CONFIRMATION_THRESHOLD:
+        result.needs_confirmation = True
+        logger.info(
+            "Low-confidence transcription (%.3f < %.3f), flagged for confirmation: %r",
+            result.confidence,
+            CONFIDENCE_CONFIRMATION_THRESHOLD,
+            result.text[:60],
+        )
+
+    return result
 
 
 def warmup_stt_backends() -> None:

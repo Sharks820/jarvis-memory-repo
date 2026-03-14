@@ -22,7 +22,7 @@ import types as _types
 from jarvis_engine.stt import core as _core  # noqa: E402
 
 # Submodule names that should be resolved via normal package import
-_SUBMODULES = frozenset({"core", "backends", "postprocess", "vad"})
+_SUBMODULES = frozenset({"core", "backends", "postprocess", "vad", "benchmark"})
 
 
 class _SttPackageProxy(_types.ModuleType):

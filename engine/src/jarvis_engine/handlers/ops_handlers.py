@@ -222,6 +222,7 @@ class MissionCreateHandler:
                 objective=cmd.objective,
                 sources=cmd.sources,
                 origin=cmd.origin,
+                delivery_method=cmd.delivery_method,
             )
         except ValueError as exc:
             logger.warning("Mission creation failed: %s", exc)

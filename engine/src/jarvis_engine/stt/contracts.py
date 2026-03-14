@@ -26,6 +26,8 @@ class TranscriptionResult:
     backend: str = ""
     retried: bool = False
     segments: list[TranscriptionSegment] | None = None
+    needs_confirmation: bool = False
+    pipeline_latency_ms: float = 0.0
 
 
 class VoiceUtterance(TypedDict):

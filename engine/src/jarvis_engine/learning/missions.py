@@ -105,6 +105,7 @@ class MissionRecord(TypedDict, total=False):
     status_detail: str
     progress_bar: str
     prior_results: list[dict[str, Any]]  # LM-06: preserved results from prior attempts
+    delivery_method: str  # MOB-08: notification|file|none
 
 
 class VerifiedFinding(TypedDict):
@@ -237,10 +238,13 @@ def create_learning_mission(
     objective: str,
     sources: list[str] | None = None,
     origin: str = "desktop-manual",
+    delivery_method: str = "notification",
 ) -> MissionRecord:
     cleaned_topic = topic.strip()
     if not cleaned_topic:
         raise ValueError("topic is required")
+    if delivery_method not in ("notification", "file", "none"):
+        delivery_method = "notification"
     import secrets
     mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{secrets.token_hex(3)}"
     mission: MissionRecord = {
@@ -257,6 +261,7 @@ def create_learning_mission(
         "progress_pct": 0,
         "status_detail": "Queued",
         "progress_bar": _progress_bar(0),
+        "delivery_method": delivery_method,
     }
     with _MISSIONS_LOCK:
         missions = load_missions(root)
@@ -531,11 +536,23 @@ def _finalize_mission(
         target["updated_utc"] = now_iso()
         target["last_report_path"] = str(report_path)
         target["verified_findings"] = len(verified)
+        delivery_method = str(target.get("delivery_method", "notification"))
         final_status = str(target.get("status", "completed"))
         final_progress = int(target.get("progress_pct", 100) or 100)
         final_detail = str(target.get("status_detail", "Completed"))
         final_topic = str(target.get("topic", ""))
         _save_missions(root, missions)
+
+    # MOB-08: Trigger delivery action based on delivery_method
+    if final_status == "completed":
+        _execute_delivery(
+            root,
+            mission_id=mission_id,
+            topic=final_topic,
+            delivery_method=delivery_method,
+            report_path=report_path,
+            verified_count=len(verified),
+        )
 
     _log_mission_activity(
         mission_id=mission_id,
@@ -544,6 +561,110 @@ def _finalize_mission(
         progress_pct=final_progress,
         step=final_detail,
     )
+
+
+def _execute_delivery(
+    root: Path,
+    *,
+    mission_id: str,
+    topic: str,
+    delivery_method: str,
+    report_path: Path,
+    verified_count: int,
+) -> None:
+    """MOB-08: Execute delivery action and log audit trail to activity feed."""
+    delivery_detail = {"mission_id": mission_id, "method": delivery_method}
+    try:
+        if delivery_method == "notification":
+            # Proactive alert already fired in _finalize_mission for notifications
+            delivery_detail["action"] = "proactive_alert_sent"
+        elif delivery_method == "file":
+            # Report already persisted at report_path — record the export location
+            delivery_detail["action"] = "file_exported"
+            delivery_detail["report_path"] = str(report_path)
+        else:
+            delivery_detail["action"] = "none"
+
+        # Audit trail: log delivery to activity feed
+        from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
+
+        log_activity(
+            ActivityCategory.MISSION_STATE_CHANGE,
+            f"Mission delivered ({delivery_method}): {topic}",
+            {
+                "mission_id": mission_id,
+                "delivery_method": delivery_method,
+                "report_path": str(report_path),
+                "verified_count": verified_count,
+                "audit": "delivery_completed",
+            },
+            mission_id=mission_id,
+        )
+    except (OSError, ValueError, RuntimeError, ImportError) as exc:
+        logger.debug("Mission delivery action failed for %s: %s", mission_id, exc)
+
+
+def get_mission_artifacts(root: Path, mission_id: str) -> list[dict[str, Any]]:
+    """MOB-10: Return artifacts for a mission with metadata for mobile retrieval.
+
+    Scans the mission report file and returns a list of artifact descriptors
+    with type, size, created_at, and version-safe paths.
+    """
+    artifacts: list[dict[str, Any]] = []
+    # Find the mission to get report path
+    missions = load_missions(root)
+    target: dict[str, Any] | None = None
+    for m in missions:
+        if str(m.get("mission_id", "")) == mission_id:
+            target = m
+            break
+    if target is None:
+        return artifacts
+
+    report_path_str = str(target.get("last_report_path", ""))
+    if report_path_str:
+        report_path = Path(report_path_str)
+        if report_path.exists():
+            stat = report_path.stat()
+            artifacts.append({
+                "artifact_id": f"{mission_id}-report",
+                "type": "report_json",
+                "filename": report_path.name,
+                "size_bytes": stat.st_size,
+                "created_at": target.get("created_utc", ""),
+                "updated_at": target.get("updated_utc", ""),
+                "mission_id": mission_id,
+                "version": 1,
+            })
+
+    # Also check for any additional files in the missions directory
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
+    missions_dir = _reports_dir(root)
+    if missions_dir.exists():
+        for entry in sorted(missions_dir.iterdir()):
+            if entry.name.startswith(safe_id) and entry.name != f"{safe_id}.report.json":
+                stat = entry.stat()
+                artifacts.append({
+                    "artifact_id": f"{mission_id}-{entry.stem}",
+                    "type": "supplementary",
+                    "filename": entry.name,
+                    "size_bytes": stat.st_size,
+                    "created_at": target.get("created_utc", ""),
+                    "updated_at": target.get("updated_utc", ""),
+                    "mission_id": mission_id,
+                    "version": 1,
+                })
+
+    return artifacts
+
+
+def get_mission_by_id(root: Path, mission_id: str) -> dict[str, Any] | None:
+    """Return a single mission by ID, or None if not found."""
+    missions = load_missions(root)
+    for m in missions:
+        if str(m.get("mission_id", "")) == mission_id:
+            return m
+    return None
 
 
 def run_learning_mission(

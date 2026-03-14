@@ -19,6 +19,8 @@ from typing import Any, Protocol, cast
 
 import numpy as np
 
+from pathlib import Path
+
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 from jarvis_engine.stt.contracts import TranscriptionSegment
 
@@ -586,6 +588,152 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         corrected_words.append(word)
 
     return " ".join(corrected_words)
+
+# Stage 5b: Personal Lexicon (STT-10)
+
+
+def load_personal_lexicon(root: Path) -> list[str]:
+    """Load user-defined terms from a personal lexicon file.
+
+    Reads ``<root>/data/personal_lexicon.txt`` (one term per line).  Falls
+    back to the shared ``personal_vocab.txt`` when the lexicon file does not
+    exist.  Returns a deduplicated list of terms.
+    """
+    lexicon_path = root / "data" / "personal_lexicon.txt"
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    if lexicon_path.is_file():
+        try:
+            for line in lexicon_path.read_text(encoding="utf-8").splitlines():
+                term = line.strip()
+                if term and term.lower() not in seen:
+                    seen.add(term.lower())
+                    terms.append(term)
+        except OSError as exc:
+            logger.warning("Failed to read personal lexicon: %s", exc)
+
+    # Merge with shared personal vocab
+    try:
+        from jarvis_engine._shared import load_personal_vocab_lines
+
+        for term in load_personal_vocab_lines(strip_parens=True):
+            if term.lower() not in seen:
+                seen.add(term.lower())
+                terms.append(term)
+    except (ImportError, OSError) as exc:
+        logger.debug("Shared personal vocab unavailable: %s", exc)
+
+    return terms
+
+
+# Stage 5c: Dictation Punctuation (STT-13)
+
+# Sentence-ending abbreviations that should NOT trigger a period split
+_ABBREVIATIONS: set[str] = {
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "vs", "etc", "inc", "ltd",
+    "st", "ave", "blvd", "dept", "est", "approx", "govt", "int", "natl",
+}
+
+# Patterns that suggest a sentence boundary in unpunctuated dictation
+_BOUNDARY_SIGNALS = re.compile(
+    r"\b(and then|but then|so then|after that|next|also|however|"
+    r"meanwhile|furthermore|therefore|finally|additionally)\b",
+    re.IGNORECASE,
+)
+
+# Comma-worthy conjunctions/transitions within a sentence
+_COMMA_SIGNALS = re.compile(
+    r"\b(but|however|although|though|meanwhile|furthermore|"
+    r"therefore|moreover|nevertheless|additionally|otherwise|"
+    r"specifically|consequently|unfortunately|fortunately)\b",
+    re.IGNORECASE,
+)
+
+
+def add_punctuation(text: str) -> str:
+    """Add basic punctuation and sentence boundaries to unpunctuated dictation.
+
+    Designed for STT output that lacks punctuation (common with some backends).
+    Applies heuristic rules:
+
+    1. Capitalize the first word.
+    2. Insert commas before certain conjunctions/transitions.
+    3. Detect sentence boundaries at transition phrases and split.
+    4. Ensure the text ends with a period.
+
+    Already-punctuated text passes through with minimal changes.
+    """
+    if not text or not text.strip():
+        return text
+
+    stripped = text.strip()
+
+    # If text already has sentence-ending punctuation, do minimal cleanup
+    has_punctuation = any(c in stripped for c in ".!?")
+    if has_punctuation:
+        # Just ensure it ends with punctuation and capitalize first char
+        if stripped and stripped[0].islower():
+            stripped = stripped[0].upper() + stripped[1:]
+        if stripped and stripped[-1] not in ".!?":
+            stripped += "."
+        return stripped
+
+    # Insert commas before transition words (when not at sentence start)
+    words = stripped.split()
+    if not words:
+        return stripped
+
+    result_words: list[str] = []
+    for i, word in enumerate(words):
+        lower_word = word.lower().rstrip(".,;:!?")
+        if i > 0 and _COMMA_SIGNALS.fullmatch(lower_word):
+            # Add comma before this transition word if previous word
+            # doesn't already end with punctuation
+            if result_words and result_words[-1][-1] not in ".,;:!?":
+                result_words[-1] = result_words[-1] + ","
+        result_words.append(word)
+
+    text_with_commas = " ".join(result_words)
+
+    # Split at boundary signals into sentences
+    parts = _BOUNDARY_SIGNALS.split(text_with_commas)
+    sentences: list[str] = []
+    current: list[str] = []
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if _BOUNDARY_SIGNALS.fullmatch(part):
+            if current:
+                sentences.append(" ".join(current))
+            current = [part]
+        else:
+            current.append(part)
+    if current:
+        sentences.append(" ".join(current))
+
+    # If no boundary signals were found, treat as a single sentence
+    if not sentences:
+        sentences = [text_with_commas]
+
+    # Capitalize each sentence and add periods
+    final_sentences: list[str] = []
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        # Capitalize first letter
+        if sent[0].islower():
+            sent = sent[0].upper() + sent[1:]
+        # Add period if missing
+        if sent[-1] not in ".!?":
+            sent += "."
+        final_sentences.append(sent)
+
+    return " ".join(final_sentences)
+
 
 # Stage 6: Full Pipeline Orchestration
 

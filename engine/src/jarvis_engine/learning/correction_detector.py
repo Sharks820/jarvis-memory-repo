@@ -9,14 +9,18 @@ Thread safety: all KG mutations acquire ``KnowledgeGraph._write_lock``.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
+import threading
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvis_engine._constants import STOP_WORDS
-from jarvis_engine._shared import extract_keywords as _extract_keywords_core
+from jarvis_engine._shared import extract_keywords as _extract_keywords_core, now_iso
 from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
 
 if TYPE_CHECKING:
@@ -372,3 +376,125 @@ def _extract_keywords(text: str) -> list[str]:
         pattern=r"[a-zA-Z0-9]+",
         deduplicate=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# STT Error Tracker (STT-14)
+# ---------------------------------------------------------------------------
+
+_stt_error_lock = threading.Lock()
+
+
+class SttErrorTracker:
+    """Tracks STT transcription errors for measurable improvement over time.
+
+    Errors are persisted as JSONL records in
+    ``<root>/.planning/runtime/stt_errors.jsonl``.  Each record contains the
+    expected text, actual (mis-transcribed) text, backend name, and timestamp.
+
+    The :meth:`get_error_trend` method aggregates error rates per backend over
+    a sliding window so operators can verify that error rates decrease as the
+    system improves.
+    """
+
+    def __init__(self, root: Path) -> None:
+        from jarvis_engine._shared import runtime_dir
+
+        self._errors_path = runtime_dir(root) / "stt_errors.jsonl"
+
+    def log_stt_error(
+        self,
+        *,
+        expected: str,
+        actual: str,
+        backend: str,
+    ) -> None:
+        """Log a single STT error for trend tracking."""
+        record = {
+            "ts": now_iso(),
+            "expected": expected[:500],
+            "actual": actual[:500],
+            "backend": backend,
+            "epoch": time.time(),
+        }
+        try:
+            with _stt_error_lock:
+                self._errors_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self._errors_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
+        except OSError as exc:
+            logger.debug("Failed to write STT error record: %s", exc)
+
+    def get_error_trend(self, days: int = 7) -> dict[str, object]:
+        """Return error rate statistics over the last *days* days.
+
+        Returns a dict with:
+        - ``total_errors``: int
+        - ``by_backend``: dict mapping backend name to error count
+        - ``daily_counts``: dict mapping date string to error count
+        - ``trend``: ``"improving"`` | ``"stable"`` | ``"worsening"``
+        """
+        cutoff = time.time() - (days * 86400)
+        by_backend: dict[str, int] = {}
+        daily_counts: dict[str, int] = {}
+        total = 0
+
+        try:
+            if not self._errors_path.is_file():
+                return {
+                    "total_errors": 0,
+                    "by_backend": {},
+                    "daily_counts": {},
+                    "trend": "stable",
+                }
+
+            with open(self._errors_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+
+                    epoch = record.get("epoch", 0)
+                    if not isinstance(epoch, (int, float)) or epoch < cutoff:
+                        continue
+
+                    total += 1
+                    backend = str(record.get("backend", "unknown"))
+                    by_backend[backend] = by_backend.get(backend, 0) + 1
+
+                    # Extract date from ISO timestamp
+                    ts = str(record.get("ts", ""))
+                    date_key = ts[:10] if len(ts) >= 10 else "unknown"
+                    daily_counts[date_key] = daily_counts.get(date_key, 0) + 1
+
+        except OSError as exc:
+            logger.debug("Failed to read STT error log: %s", exc)
+            return {
+                "total_errors": 0,
+                "by_backend": {},
+                "daily_counts": {},
+                "trend": "stable",
+            }
+
+        # Determine trend: compare first half vs second half of the window
+        trend = "stable"
+        if len(daily_counts) >= 2:
+            sorted_dates = sorted(daily_counts.keys())
+            mid = len(sorted_dates) // 2
+            first_half = sum(daily_counts[d] for d in sorted_dates[:mid])
+            second_half = sum(daily_counts[d] for d in sorted_dates[mid:])
+            if second_half < first_half * 0.8:
+                trend = "improving"
+            elif second_half > first_half * 1.2:
+                trend = "worsening"
+
+        return {
+            "total_errors": total,
+            "by_backend": by_backend,
+            "daily_counts": daily_counts,
+            "trend": trend,
+        }

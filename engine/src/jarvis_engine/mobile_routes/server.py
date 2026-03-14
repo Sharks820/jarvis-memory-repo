@@ -1181,6 +1181,8 @@ class MobileIngestHandler(
         "/missions/status": "_handle_get_missions_status",
         "/missions/active": "_handle_get_missions_active",
         "/missions/steps": "_handle_get_missions_steps",
+        "/missions/detail": "_handle_get_missions_detail",
+        "/missions/artifacts": "_handle_get_missions_artifacts",
         "/alerts/pending": "_handle_get_alerts_pending",
         "/digest": "_handle_get_digest",
         "/meeting-prep": "_handle_get_meeting_prep",

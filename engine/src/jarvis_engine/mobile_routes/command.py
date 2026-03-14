@@ -272,6 +272,9 @@ class CommandRoutesMixin:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Topic is required."})
             return
         objective = str(payload.get("objective", "")).strip()[:400]
+        delivery_method = str(payload.get("delivery_method", "notification")).strip().lower()
+        if delivery_method not in ("notification", "file", "none"):
+            delivery_method = "notification"
         sources = payload.get("sources")
         if sources is not None:
             if not isinstance(sources, list):
@@ -283,12 +286,16 @@ class CommandRoutesMixin:
             from jarvis_engine.commands.ops_commands import MissionCreateCommand
 
             bus = get_bus()
-            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [], origin="phone")
+            cmd = MissionCreateCommand(
+                topic=topic, objective=objective, sources=sources or [],
+                origin="phone", delivery_method=delivery_method,
+            )
             result = bus.dispatch(cmd)
             if result.return_code != 0:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Mission creation failed — invalid parameters."})
                 return
             mission = result.mission if hasattr(result, "mission") else {}
+            # MOB-06: Return acceptance contract with mission details
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
                 "mission_id": mission.get("mission_id", ""),
@@ -296,6 +303,13 @@ class CommandRoutesMixin:
                 "status": mission.get("status", "pending"),
                 "origin": mission.get("origin", "phone"),
                 "sources": mission.get("sources", []),
+                "delivery_method": mission.get("delivery_method", "notification"),
+                "acceptance_contract": {
+                    "will_do": f"Research '{mission.get('topic', '')}' using web sources",
+                    "sources": mission.get("sources", []),
+                    "delivery": mission.get("delivery_method", "notification"),
+                    "estimated_steps": 6,
+                },
             })
         except ValueError as exc:
             logger.warning("Mission create validation failed: %s", exc)
@@ -464,6 +478,87 @@ class CommandRoutesMixin:
         except SUBSYSTEM_ERRORS as exc:
             logger.warning("Mission restart failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
+
+    def _handle_get_missions_artifacts(self: _CommandRoutesHandlerProtocol) -> None:
+        """MOB-10: Return artifacts for a specific mission with version-safe metadata."""
+        if not self._validate_auth(b""):
+            return
+        qs = _parse_query_params(self.path)
+        mission_id = str(qs.get("id", [""])[0]).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Query parameter 'id' is required."})
+            return
+        try:
+            from jarvis_engine.learning.missions import get_mission_artifacts
+
+            artifacts = get_mission_artifacts(self._root, mission_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission_id,
+                "artifacts": artifacts,
+                "count": len(artifacts),
+            })
+        except _COMMAND_ROUTE_ERRORS as exc:
+            logger.warning("Mission artifacts retrieval failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission artifacts unavailable."})
+
+    def _handle_get_missions_detail(self: _CommandRoutesHandlerProtocol) -> None:
+        """MOB-07: Return detailed status for a single mission including progress and activity."""
+        if not self._validate_auth(b""):
+            return
+        qs = _parse_query_params(self.path)
+        mission_id = str(qs.get("id", [""])[0]).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Query parameter 'id' is required."})
+            return
+        try:
+            from jarvis_engine.learning.missions import get_mission_by_id, get_mission_steps
+
+            mission = get_mission_by_id(self._root, mission_id)
+            if mission is None:
+                self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Mission not found."})
+                return
+            steps = get_mission_steps(self._root, mission_id)
+            # Fetch recent activity events for this mission
+            recent_activity: list[dict[str, str]] = []
+            try:
+                from jarvis_engine.memory.activity_feed import get_activity_feed
+
+                feed = get_activity_feed()
+                events = feed.query(limit=10, correlation_id=f"mission-{mission_id}")
+                if not events:
+                    events = feed.query(limit=10)
+                    events = [e for e in events if e.mission_id == mission_id]
+                for ev in events[:5]:
+                    recent_activity.append({
+                        "timestamp": ev.timestamp,
+                        "summary": ev.summary,
+                        "category": ev.category,
+                    })
+            except (OSError, ValueError, RuntimeError, ImportError):
+                pass
+
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission_id,
+                "topic": mission.get("topic", ""),
+                "objective": mission.get("objective", ""),
+                "status": mission.get("status", ""),
+                "progress_pct": int(mission.get("progress_pct", 0) or 0),
+                "progress_bar": mission.get("progress_bar", ""),
+                "status_detail": mission.get("status_detail", ""),
+                "delivery_method": mission.get("delivery_method", "notification"),
+                "origin": mission.get("origin", ""),
+                "sources": mission.get("sources", []),
+                "verified_findings": mission.get("verified_findings", 0),
+                "created_utc": mission.get("created_utc", ""),
+                "updated_utc": mission.get("updated_utc", ""),
+                "steps": steps,
+                "recent_activity": recent_activity,
+            })
+        except _COMMAND_ROUTE_ERRORS as exc:
+            logger.warning("Mission detail failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission detail unavailable."})
 
     def _handle_get_digest(self: _CommandRoutesHandlerProtocol) -> None:
         """Return a context-aware digest of what happened while user was busy."""

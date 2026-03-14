@@ -80,6 +80,7 @@ class MissionCreateCommand:
     objective: str = ""
     sources: list[str] = field(default_factory=list)
     origin: str = "desktop-manual"
+    delivery_method: str = "notification"
 
 
 @dataclass
