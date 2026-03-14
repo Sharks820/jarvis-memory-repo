@@ -22,6 +22,7 @@ import math
 import os
 import threading
 import time
+from collections.abc import Callable
 from typing import Any, Protocol, cast
 from pathlib import Path
 
@@ -687,12 +688,18 @@ FALLBACK_CHAIN: list[str] = [
     "local",  # Emergency: faster-whisper large-v3
 ]
 
-_BACKEND_FN_MAP: dict[str, str] = {
+_BACKEND_FN_NAMES: dict[str, str] = {
     "parakeet": "_try_parakeet",
     "deepgram": "_try_deepgram",
     "groq": "_try_groq",
     "local": "_try_local_emergency",
 }
+
+# Resolved at call time so mock.patch works correctly.
+def _get_backend_fn(name: str) -> Callable[..., TranscriptionResult | None]:
+    """Look up the backend function by name from the current module scope."""
+    import sys
+    return getattr(sys.modules[__name__], _BACKEND_FN_NAMES[name])
 
 
 def _preprocess_audio_if_needed(
@@ -815,13 +822,10 @@ def _transcribe_auto(
     entity_list: list[str] | None = None,
 ) -> TranscriptionResult:
     """Walk the 4-tier fallback chain and return the best result."""
-    import sys
-
-    _this_module = sys.modules[__name__]
     best_so_far: TranscriptionResult | None = None
 
     for name in FALLBACK_CHAIN:
-        try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
+        try_fn = _get_backend_fn(name)
         if name == "deepgram":
             result = try_fn(
                 audio, language=language, prompt=prompt, keyterms=_load_keyterms()

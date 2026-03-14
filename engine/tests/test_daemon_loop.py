@@ -384,12 +384,11 @@ class TestCycleManagement:
         assert reason is not None
         assert "daemon_paused" in reason
 
-    def test_should_skip_cycle_gaming(self) -> None:
-        """Cycle should be skipped when gaming mode is enabled."""
+    def test_should_not_skip_cycle_gaming(self) -> None:
+        """Gaming mode no longer skips the entire cycle — only heavy tasks."""
         state = _make_cycle_state(gaming_mode_enabled=True)
         reason = _should_skip_cycle(state, 120)
-        assert reason is not None
-        assert "gaming_mode" in reason
+        assert reason is None
 
     def test_should_not_skip_normal(self) -> None:
         """Cycle should proceed normally when not paused and not gaming."""

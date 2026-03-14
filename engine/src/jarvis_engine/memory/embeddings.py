@@ -73,7 +73,7 @@ class EmbeddingService:
     def embed(self, text: str, prefix: str = "search_document") -> list[float]:
         """Embed a single text with the given prefix.
 
-        Results are cached (LRU, 1024 entries) so repeated calls with the
+        Results are cached (LRU, 4096 entries) so repeated calls with the
         same *text* and *prefix* skip the model entirely.
         """
         key = (text, prefix)

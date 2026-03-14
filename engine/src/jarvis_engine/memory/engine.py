@@ -17,6 +17,7 @@ import sqlite3
 import struct
 import threading
 from pathlib import Path
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._db_pragmas import placeholder_csv as _placeholder_csv, sanitize_fts_query
@@ -538,13 +539,46 @@ class MemoryEngine:
         return results
 
     def get_all_records_for_tier_maintenance(self) -> list[dict]:
-        """Fetch all records with only the columns needed for tier classification."""
+        """Fetch all records with only the columns needed for tier classification.
+
+        To avoid loading all records into memory at once (which can cause
+        memory spikes with 50k+ records), this method delegates to
+        :meth:`iter_records_for_tier_maintenance` and collects the results.
+        Callers that can process records incrementally should prefer the
+        iterator variant directly.
+        """
+        return list(self.iter_records_for_tier_maintenance())
+
+    def iter_records_for_tier_maintenance(
+        self,
+        batch_size: int = 1000,
+    ) -> Iterator[dict]:
+        """Yield records in batches for tier classification.
+
+        Uses LIMIT/OFFSET pagination to keep memory usage bounded.
+        Each batch fetches at most *batch_size* rows before yielding them
+        one at a time.
+
+        Args:
+            batch_size: Number of rows to fetch per database round-trip.
+        """
         self._check_open()
-        with self._db_lock:
-            cur = self._db.execute(
-                "SELECT record_id, ts, access_count, confidence, tier FROM records"
-            )
-            return [dict(row) for row in cur.fetchall()]
+        offset = 0
+        while True:
+            with self._db_lock:
+                cur = self._db.execute(
+                    "SELECT record_id, ts, access_count, confidence, tier "
+                    "FROM records ORDER BY rowid LIMIT ? OFFSET ?",
+                    (batch_size, offset),
+                )
+                rows = cur.fetchall()
+            if not rows:
+                break
+            for row in rows:
+                yield dict(row)
+            if len(rows) < batch_size:
+                break
+            offset += batch_size
 
     def get_all_record_ids(self) -> list[str]:
         """List all record IDs (for tier management)."""

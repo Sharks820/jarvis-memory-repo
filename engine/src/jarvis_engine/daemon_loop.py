@@ -768,12 +768,18 @@ def _run_periodic_subsystems(
     cfg: DaemonConfig,
     cmd_mobile_desktop_sync,
     cmd_self_heal,
+    *,
+    gaming_mode: bool = False,
 ) -> None:
     """Run all non-core periodic subsystems for the current cycle.
 
     Subsystems are declared as ``_SubsystemEntry`` descriptors so adding or
     reordering them is a one-line change.  Failures are logged but never
     affect the circuit breaker.
+
+    When *gaming_mode* is True, only essential health-check subsystems
+    (listed in ``_GAMING_MODE_ESSENTIAL_SUBSYSTEMS``) are executed; heavy
+    tasks like missions, consolidation, and harvesting are skipped.
     """
     schedule: list[_SubsystemEntry] = [
         _SubsystemEntry(
@@ -834,6 +840,10 @@ def _run_periodic_subsystems(
 
     for entry in schedule:
         if not entry.is_due(cycles):
+            continue
+        if gaming_mode and entry.name not in _GAMING_MODE_ESSENTIAL_SUBSYSTEMS:
+            logger.debug("Skipping subsystem %s due to gaming mode", entry.name)
+            _emit(f"{entry.name}_skipped=gaming_mode")
             continue
         if entry.heavy and skip_heavy_tasks:
             logger.debug("Skipping heavy subsystem %s due to resource pressure", entry.name)
@@ -932,17 +942,30 @@ def _emit_cycle_status(
 
 
 def _should_skip_cycle(state: CycleState, idle_interval: int) -> str | None:
-    """Check if the cycle should be skipped.
+    """Check if the cycle should be skipped entirely.
 
     Returns a skip-reason string to print, or ``None`` when the cycle
     should proceed normally.  When skipped the caller should sleep for
     ``max(idle_interval, 600)`` seconds.
+
+    Note: gaming mode no longer skips the entire cycle.  Instead it is
+    handled by :func:`cmd_daemon_run_impl` which runs only essential
+    health-check subsystems (watchdog, self_heal, PID registration) while
+    skipping heavy tasks like missions, consolidation, and harvesting.
     """
     if state.daemon_paused:
         return "cycle_skipped=runtime_control_daemon_paused"
-    if state.gaming_mode_enabled:
-        return "cycle_skipped=gaming_mode_enabled"
     return None
+
+
+# Subsystems that must run even during gaming mode (health checks).
+_GAMING_MODE_ESSENTIAL_SUBSYSTEMS: frozenset[str] = frozenset({
+    "watchdog",
+    "sync",
+    "kg_regression",
+    "usage_prediction",
+    "diagnostic_scan",
+})
 
 
 def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
@@ -1005,13 +1028,19 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             _run_periodic_subsystems(
                 root, cycles, state.skip_heavy_tasks, cfg,
                 cmd_mobile_desktop_sync, cmd_self_heal,
+                gaming_mode=state.gaming_mode_enabled,
             )
 
-            rc = _run_core_autopilot(
-                cfg.snapshot_path, cfg.actions_path, cfg.execute,
-                cfg.approve_privileged, cfg.auto_open_connectors,
-                state.safe_mode, cmd_ops_autopilot,
-            )
+            # Skip heavy autopilot cycle during gaming mode
+            if state.gaming_mode_enabled:
+                _emit("core_autopilot_skipped=gaming_mode")
+                rc = 0
+            else:
+                rc = _run_core_autopilot(
+                    cfg.snapshot_path, cfg.actions_path, cfg.execute,
+                    cfg.approve_privileged, cfg.auto_open_connectors,
+                    state.safe_mode, cmd_ops_autopilot,
+                )
             _emit(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
             consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)

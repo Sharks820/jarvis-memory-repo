@@ -579,29 +579,51 @@ class ModelGateway:
                     )
                     return messages, candidate
 
-        # No larger model available — truncate system messages to fit
+        # No larger model available — truncate user/assistant messages
+        # (oldest first) to fit.  System prompts define model behavior and
+        # must NEVER be truncated.
+        system_tokens = sum(
+            len(m.get("content", "")) for m in messages if m.get("role") == "system"
+        ) // _CHARS_PER_TOKEN_ESTIMATE
+        if system_tokens >= threshold:
+            logger.warning(
+                "Context guard: system prompt alone (~%d tokens) exceeds "
+                "%d%% of %s context (%d). Cannot truncate system prompt.",
+                system_tokens,
+                int(_CONTEXT_GUARD_THRESHOLD * 100),
+                model,
+                limit,
+            )
+            return messages, model
+
         excess_tokens = estimated - threshold
         excess_chars = excess_tokens * _CHARS_PER_TOKEN_ESTIMATE  # reverse the estimate
-        truncated = []
+
+        # Separate system messages (preserved) from conversation messages
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        conversation_msgs = [m for m in messages if m.get("role") != "system"]
+
+        # Trim oldest conversation messages first
         chars_trimmed = 0
-        for msg in messages:
-            if msg.get("role") == "system" and chars_trimmed < excess_chars:
+        trimmed_conversation: list[dict[str, str]] = []
+        for msg in conversation_msgs:
+            if chars_trimmed < excess_chars:
                 content = msg.get("content", "")
                 trim_amount = min(len(content), excess_chars - chars_trimmed)
-                new_content = content[: len(content) - trim_amount]
+                new_content = content[trim_amount:]  # trim from the start (oldest text)
                 chars_trimmed += trim_amount
                 if new_content:
-                    truncated.append({"role": "system", "content": new_content})
-                # else: drop empty system message entirely
+                    trimmed_conversation.append({"role": msg["role"], "content": new_content})
+                # else: drop fully trimmed message
             else:
-                truncated.append(msg)
+                trimmed_conversation.append(msg)
 
         logger.info(
-            "Context guard: truncated system prompt by ~%d chars for %s",
+            "Context guard: trimmed conversation messages by ~%d chars for %s",
             chars_trimmed,
             model,
         )
-        return truncated, model
+        return system_msgs + trimmed_conversation, model
 
     def _check_feedback_quality(self, route_reason: str) -> None:
         """Log a warning if feedback satisfaction is low for the current route.

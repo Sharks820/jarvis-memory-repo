@@ -89,18 +89,23 @@ class TierManager:
         # Default: WARM
         return Tier.WARM
 
+    # Batch size for tier maintenance updates (flush to DB every N changes)
+    _TIER_BATCH_SIZE: int = 1000
+
     def run_tier_maintenance(self, engine: "MemoryEngine") -> TierMaintenanceResult:
         """Classify all records and batch-update changed tiers.
 
-        Uses a single bulk query to fetch all records, classifies in-memory,
-        and batch-updates only the changed tiers in one transaction.
+        Iterates records in batches (via ``iter_records_for_tier_maintenance``)
+        to keep memory usage bounded for large stores (50k+ records).  Tier
+        updates are flushed to the database every ``_TIER_BATCH_SIZE`` changes
+        rather than accumulated in a single giant list.
         """
-        records = engine.get_all_records_for_tier_maintenance()
-        changes: TierMaintenanceResult = {"total": len(records), "promoted": 0, "demoted": 0, "unchanged": 0}
+        changes: TierMaintenanceResult = {"total": 0, "promoted": 0, "demoted": 0, "unchanged": 0}
         tier_order = {"archive": -1, "cold": 0, "warm": 1, "hot": 2}
         updates: list[tuple[str, str]] = []
 
-        for record in records:
+        for record in engine.iter_records_for_tier_maintenance():
+            changes["total"] += 1
             new_tier = self.classify(record)
             current_tier_str = str(record.get("tier", "warm"))
 
@@ -118,7 +123,12 @@ class TierManager:
             else:
                 changes["unchanged"] += 1
 
-        # Single batch update for all tier changes
+            # Flush updates in batches to avoid unbounded memory growth
+            if len(updates) >= self._TIER_BATCH_SIZE:
+                engine.update_tiers_batch(updates)
+                updates = []
+
+        # Flush remaining updates
         if updates:
             engine.update_tiers_batch(updates)
 

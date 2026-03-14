@@ -271,12 +271,11 @@ class TestContextWindowGuard:
             gw.close()
 
     @patch.dict("os.environ", _CLEAN_ENV)
-    def test_context_guard_truncates_system_prompt(self) -> None:
-        """When exceeding context limit with no larger model, system prompt is truncated."""
+    def test_context_guard_never_truncates_system_prompt(self) -> None:
+        """System prompt must never be truncated, even when it exceeds context."""
         gw = _make_gateway()
         try:
-            # Create messages that exceed 90% of gemma3:4b's 8192 context
-            # 90% of 8192 = 7372 tokens ~ 29,488 chars
+            # System prompt alone exceeds 90% of gemma3:4b's 8192 context
             big_system = "x" * 40_000  # ~10,000 tokens
             msgs = [
                 {"role": "system", "content": big_system},
@@ -284,9 +283,41 @@ class TestContextWindowGuard:
             ]
             result_msgs, result_model = gw._apply_context_guard(msgs, "gemma3:4b")
 
-            # Should have truncated the system message
-            total_chars = sum(len(m.get("content", "")) for m in result_msgs)
-            assert total_chars <= 40_005  # less than or equal to original
+            # System prompt must be preserved intact (warning logged instead)
+            system_msgs = [m for m in result_msgs if m["role"] == "system"]
+            assert len(system_msgs) == 1
+            assert len(system_msgs[0]["content"]) == 40_000
+        finally:
+            gw.close()
+
+    @patch.dict("os.environ", _CLEAN_ENV)
+    def test_context_guard_truncates_conversation_not_system(self) -> None:
+        """When over limit, user/assistant messages are trimmed, not system."""
+        gw = _make_gateway()
+        try:
+            # Use qwen3.5:latest (32768 ctx) so no larger model exists to switch to,
+            # forcing the guard to trim conversation messages instead.
+            # 90% of 32768 = 29,491 tokens ~ 117,964 chars
+            system = "s" * 80_000   # ~20,000 tokens (under threshold)
+            user_big = "u" * 60_000  # ~15,000 tokens (total ~35,000 > 29,491)
+            msgs = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_big},
+            ]
+            with patch.object(gw, "_resolve_provider", return_value="ollama"):
+                result_msgs, result_model = gw._apply_context_guard(msgs, "qwen3.5:latest")
+
+            assert result_model == "qwen3.5:latest"
+
+            # System prompt must be fully preserved
+            sys_content = [m for m in result_msgs if m["role"] == "system"]
+            assert len(sys_content) == 1
+            assert len(sys_content[0]["content"]) == 80_000
+
+            # User message should have been trimmed
+            user_content = [m for m in result_msgs if m["role"] == "user"]
+            if user_content:
+                assert len(user_content[0]["content"]) < 60_000
         finally:
             gw.close()
 

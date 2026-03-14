@@ -109,10 +109,13 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
     )
     assert rc == 0
     assert calls["ops"] == 0
-    # _interruptible_sleep breaks long sleeps into 1s chunks
+    # Gaming mode now runs cycles normally (essential subsystems only).
+    # Sleep total depends on cycle count and interval but should NOT be
+    # the old long-sleep pattern (max(idle,600)=900s per skip).
     sleeps = calls["sleep"]
     assert isinstance(sleeps, list)
-    assert abs(sum(sleeps) - 900) < 2, f"Expected ~900s total sleep, got {sum(sleeps)}"
+    total_sleep = sum(sleeps)
+    assert total_sleep < 500, f"Expected gaming mode to run cycles, not long-sleep; got {total_sleep}s"
 
 
 def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Path, monkeypatch) -> None:
@@ -153,9 +156,11 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
     )
     assert rc == 0
     assert calls["ops"] == 0
+    # Gaming mode (via auto-detect) runs cycles normally, not long-sleep pattern.
     sleeps = calls["sleep"]
     assert isinstance(sleeps, list)
-    assert abs(sum(sleeps) - 900) < 2, f"Expected ~900s total sleep, got {sum(sleeps)}"
+    total_sleep = sum(sleeps)
+    assert total_sleep < 500, f"Expected gaming mode to run cycles, not long-sleep; got {total_sleep}s"
 
 
 def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monkeypatch) -> None:
