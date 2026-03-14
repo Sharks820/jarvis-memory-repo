@@ -184,7 +184,7 @@ class TestRunTierMaintenance:
     def test_no_records(self):
         """Maintenance on empty set returns zeros."""
         engine = MagicMock(spec=MemoryEngine)
-        engine.get_all_records_for_tier_maintenance.return_value = []
+        engine.iter_records_for_tier_maintenance.return_value = []
         result = self.mgr.run_tier_maintenance(engine)
         assert result["total"] == 0
         assert result["promoted"] == 0
@@ -194,7 +194,7 @@ class TestRunTierMaintenance:
     def test_all_unchanged(self):
         """Records already in correct tier are unchanged."""
         engine = MagicMock(spec=MemoryEngine)
-        engine.get_all_records_for_tier_maintenance.return_value = [
+        engine.iter_records_for_tier_maintenance.return_value = [
             _make_record(record_id="r1", ts=_ts_hours_ago(1), tier="hot"),
         ]
         result = self.mgr.run_tier_maintenance(engine)
@@ -206,7 +206,7 @@ class TestRunTierMaintenance:
     def test_promotion_cold_to_hot(self):
         """A recent record currently marked cold should be promoted to hot."""
         engine = MagicMock(spec=MemoryEngine)
-        engine.get_all_records_for_tier_maintenance.return_value = [
+        engine.iter_records_for_tier_maintenance.return_value = [
             _make_record(record_id="r1", ts=_ts_hours_ago(1), tier="cold"),
         ]
         result = self.mgr.run_tier_maintenance(engine)
@@ -218,7 +218,7 @@ class TestRunTierMaintenance:
     def test_demotion_hot_to_cold(self):
         """An old low-use record marked hot should be demoted to cold."""
         engine = MagicMock(spec=MemoryEngine)
-        engine.get_all_records_for_tier_maintenance.return_value = [
+        engine.iter_records_for_tier_maintenance.return_value = [
             _make_record(
                 record_id="r2",
                 ts=_ts_hours_ago(100 * 24),
@@ -236,7 +236,7 @@ class TestRunTierMaintenance:
     def test_skips_records_without_record_id(self):
         """Records missing record_id are silently skipped."""
         engine = MagicMock(spec=MemoryEngine)
-        engine.get_all_records_for_tier_maintenance.return_value = [
+        engine.iter_records_for_tier_maintenance.return_value = [
             {"ts": _ts_hours_ago(1), "access_count": 0, "confidence": 0.5, "tier": "cold"},
         ]
         result = self.mgr.run_tier_maintenance(engine)
