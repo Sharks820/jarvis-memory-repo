@@ -12,6 +12,7 @@ from typing import Any  # used for WeatherHandler.current dict (external API sha
 from urllib.parse import quote
 from urllib.request import urlopen
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,
     DaemonRunResult,
@@ -269,7 +270,7 @@ class WeatherHandler:
         try:
             with urlopen(url, timeout=12) as resp:  # nosec B310
                 raw = json.loads(resp.read().decode("utf-8"))
-        except (OSError, ValueError, TimeoutError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.debug("Weather fetch failed for %s: %s", target, type(exc).__name__)
             return WeatherResult(return_code=2, location=target)
 

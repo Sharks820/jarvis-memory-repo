@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.proactive import ProactiveEngine
 
-from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
+from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME, SUBSYSTEM_ERRORS
 
 from jarvis_engine.commands.proactive_commands import (
     CostReductionCommand,
@@ -223,7 +223,7 @@ class WakeWordStartHandler:
                         voice_threshold=0.82,
                         master_password="",
                     )
-                except (RuntimeError, OSError, ValueError) as exc:
+                except SUBSYSTEM_ERRORS as exc:
                     logger.error("Voice command dispatch failed: %s", exc)
                 # Enter conversation mode for 20 seconds
                 self._conversation_until = _time_mod.time() + 20.0

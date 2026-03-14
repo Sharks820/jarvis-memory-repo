@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
+from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine._shared import make_task_id
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -74,7 +74,7 @@ class RunTaskHandler:
                     f"prompt={cmd.prompt[:400]}"
                 ),
             )
-        except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
+        except SUBSYSTEM_ERRORS_DB as exc:
             logger.warning("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
         return RunTaskResult(
             allowed=result.allowed,
@@ -157,7 +157,7 @@ class WebResearchHandler:
         except ValueError as exc:
             logger.warning("Web research ValueError for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
-        except (OSError, RuntimeError, TimeoutError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Web research failed for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
 
@@ -190,13 +190,7 @@ class WebResearchHandler:
                             f"Findings:\n" + "\n".join(lines)
                         ),
                     )
-            except (
-                sqlite3.Error,
-                OSError,
-                ValueError,
-                ImportError,
-                RuntimeError,
-            ) as exc:
+            except SUBSYSTEM_ERRORS_DB as exc:
                 logger.warning("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(
             return_code=0, report=report, auto_ingest_record_id=auto_id

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
     from jarvis_engine.memory.store import MemoryStore
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS, SUBSYSTEM_ERRORS_DB
 from jarvis_engine._shared import check_path_within_root
 
 from jarvis_engine.commands.ops_commands import (
@@ -90,7 +90,7 @@ class OpsBriefHandler:
         if self._gateway is not None:
             try:
                 brief = build_narrative_brief(snapshot, gateway=self._gateway)
-            except (ConnectionError, TimeoutError, ValueError) as exc:
+            except SUBSYSTEM_ERRORS as exc:
                 logger.warning("Narrative brief generation failed in handler: %s", exc)
                 brief = ""
         if not brief:
@@ -318,7 +318,7 @@ class MissionRunHandler:
                         ingested_ids.extend(result)
                     elif hasattr(result, "record_id"):
                         ingested_ids.append(result.record_id)
-                except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
+                except SUBSYSTEM_ERRORS_DB as exc:
                     logger.warning("Mission auto-ingest failed for finding: %s", exc)
         return MissionRunResult(
             report=report,
@@ -346,7 +346,7 @@ class GrowthEvalHandler:
             return GrowthEvalResult(message=str(exc))
         try:
             tasks = load_golden_tasks(cmd.tasks_path)
-        except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Growth eval task loading failed: %s", exc)
             return GrowthEvalResult(message=str(exc))
 
@@ -362,7 +362,7 @@ class GrowthEvalHandler:
                 timeout_s=cmd.timeout_s,
             )
             append_history(cmd.history_path, run)
-        except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Growth eval execution failed: %s", exc)
             return GrowthEvalResult(message=str(exc))
         return GrowthEvalResult(run=run)
@@ -499,7 +499,7 @@ class MemoryHygieneHandler:
                 errors=report.errors,
                 return_code=0,
             )
-        except (RuntimeError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Memory hygiene failed: %s", exc)
             return MemoryHygieneResult(return_code=2, message=str(exc))
 
@@ -556,6 +556,6 @@ class DiagnosticRunHandler:
                 score=score,
                 return_code=0,
             )
-        except (RuntimeError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.warning("Diagnostic run failed: %s", exc)
             return DiagnosticRunResult(return_code=2, issues=[], healthy=False, score=0)

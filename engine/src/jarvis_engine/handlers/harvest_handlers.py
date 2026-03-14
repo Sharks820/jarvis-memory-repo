@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from jarvis_engine._constants import SUBSYSTEM_ERRORS_DB
 from jarvis_engine.commands.harvest_commands import (
     HarvestBudgetCommand,
     HarvestBudgetResult,
@@ -128,7 +128,7 @@ class IngestSessionHandler:
                         tags=["session", cmd.source],
                     )
                     total_records += len(inserted)
-                except (sqlite3.Error, OSError, ValueError) as exc:
+                except SUBSYSTEM_ERRORS_DB as exc:
                     logger.warning(
                         "Failed to ingest session chunk from %s: %s",
                         session_path.name,

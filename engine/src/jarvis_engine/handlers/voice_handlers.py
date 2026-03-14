@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from jarvis_engine.voice.auth import VoiceEnrollResult as _VoiceEnrollResultAuth
     from jarvis_engine.voice.auth import VoiceVerifyResult as _VoiceVerifyResultAuth
 
-from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, SUBSYSTEM_ERRORS
 
 from jarvis_engine.commands.voice_commands import (
     PersonaComposeCommand,
@@ -98,7 +98,7 @@ class VoiceSayHandler:
                 output_wav=cmd.output_wav,
                 rate=cmd.rate,
             )
-        except (RuntimeError, OSError, ValueError) as exc:
+        except SUBSYSTEM_ERRORS as exc:
             logger.error("TTS speak_text failed: %s", exc, exc_info=True)
             return VoiceSayResult(message="error: TTS failed.")
         return VoiceSayResult(
