@@ -32,12 +32,14 @@ from jarvis_engine import _bus as bus_mod
 def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
     from unittest.mock import MagicMock
     import jarvis_engine.auto_ingest as _auto_ingest_mod
+    import jarvis_engine.memory.auto_ingest as _mem_auto_ingest_mod
 
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(_auto_ingest_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(_mem_auto_ingest_mod, "repo_root", lambda: tmp_path)
 
     # Mock EmbeddingService to avoid loading real nomic-bert model
     fake_embed = MagicMock()

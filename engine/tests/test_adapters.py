@@ -303,7 +303,7 @@ class TestImageAdapter:
         assert "OPENAI_API_KEY" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_success(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "fake_script.py"
@@ -318,7 +318,7 @@ class TestImageAdapter:
         mock_run.assert_called_once()
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_process_failure(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "fake_script.py"
@@ -332,7 +332,7 @@ class TestImageAdapter:
         assert "boom" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=300))
+    @patch("jarvis_engine.media.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=300))
     def test_execute_timeout(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "fake_script.py"
@@ -344,7 +344,7 @@ class TestImageAdapter:
         assert "timed out" in result.reason.lower()
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_max_quality_timeout(self, mock_run, tmp_path):
         """max_quality uses 600s timeout instead of 300s."""
         adapter = self._make(tmp_path)
@@ -358,7 +358,7 @@ class TestImageAdapter:
         assert kwargs["timeout"] == 600
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_default_output_path(self, mock_run, tmp_path):
         """When output_path is None, a default is generated under repo_root/output/imagegen/."""
         adapter = self._make(tmp_path)
@@ -409,7 +409,7 @@ class TestVideoAdapter:
         assert "OPENAI_API_KEY" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_success(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -421,7 +421,7 @@ class TestVideoAdapter:
         assert "completed" in result.reason.lower()
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_failure(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -433,7 +433,7 @@ class TestVideoAdapter:
         assert "sora error" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1200))
+    @patch("jarvis_engine.media.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1200))
     def test_execute_timeout(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -444,7 +444,7 @@ class TestVideoAdapter:
         assert "timed out" in result.reason.lower()
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_max_quality_timeout(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -456,7 +456,7 @@ class TestVideoAdapter:
         assert kwargs["timeout"] == 2100
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run")
+    @patch("jarvis_engine.media.adapters.subprocess.run")
     def test_execute_default_output_path(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -544,7 +544,7 @@ class TestModel3DAdapter:
     def test_execute_oserror_write(self, tmp_path):
         adapter = self._make(tmp_path)
         out = str(tmp_path / "out.obj")
-        with patch("jarvis_engine.adapters.tempfile.mkstemp", side_effect=OSError("disk full")):
+        with patch("jarvis_engine.media.adapters.tempfile.mkstemp", side_effect=OSError("disk full")):
             result = adapter.execute("a house", out, "balanced")
         assert result.ok is False
         assert "write" in result.reason.lower() or "disk" in result.reason.lower()
