@@ -469,9 +469,12 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         self._build_command_area(body)
         self._build_status_bar(body)
+        self._build_chat_area(body)
+
+        # Info panels below the chat — collapsed by default so they don't
+        # steal vertical space from the conversation output.
         self._build_continuity_rail(body)
         self._build_diagnostics_section(body)
-        self._build_chat_area(body)
 
         # Tooltips on key controls
         _Tooltip(self.command_text, "Type a command or question")
