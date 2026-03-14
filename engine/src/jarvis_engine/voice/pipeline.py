@@ -20,7 +20,7 @@ from typing import Any, Callable
 from jarvis_engine._bus import get_bus
 from jarvis_engine._constants import ENV_MODEL_PRIORITY
 from jarvis_engine._shared import env_int, get_local_model, is_privacy_sensitive, make_task_id
-from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
+from jarvis_engine.memory.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
@@ -164,7 +164,7 @@ class ConversationState:
             self._dirty = True
         if dropped_messages:
             try:
-                from jarvis_engine.conversation_state import get_conversation_state
+                from jarvis_engine.memory.conversation_state import get_conversation_state
 
                 csm = get_conversation_state()
                 csm.create_checkpoint(dropped_messages=dropped_messages)
@@ -198,7 +198,7 @@ class ConversationState:
 
         if previous and previous != normalized_model:
             try:
-                from jarvis_engine.activity_feed import ActivityCategory, log_activity
+                from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
                 log_activity(
                     ActivityCategory.LLM_ROUTING,
@@ -215,7 +215,7 @@ class ConversationState:
 
             # Update conversation state manager for cross-LLM continuity
             try:
-                from jarvis_engine.conversation_state import get_conversation_state
+                from jarvis_engine.memory.conversation_state import get_conversation_state
 
                 csm = get_conversation_state()
                 csm.mark_model_switch(previous, normalized_model, reason=provider)
@@ -256,7 +256,7 @@ def _flush_history_atexit() -> None:
 
     # Also save cross-LLM conversation state
     try:
-        from jarvis_engine.conversation_state import get_conversation_state
+        from jarvis_engine.memory.conversation_state import get_conversation_state
 
         csm = get_conversation_state()
         csm.save()
@@ -605,7 +605,7 @@ def _perform_web_search(
         return False, False, web_result
 
     try:
-        from jarvis_engine.web_research import run_web_research
+        from jarvis_engine.web.research import run_web_research
 
         web_result = run_web_research(
             text, max_results=5, max_pages=3, max_summary_lines=4
@@ -757,7 +757,7 @@ def _dispatch_and_handle_response(
 
             # Track assistant turn in conversation state for cross-LLM continuity
             try:
-                from jarvis_engine.conversation_state import get_conversation_state
+                from jarvis_engine.memory.conversation_state import get_conversation_state
 
                 csm = get_conversation_state()
                 csm.update_turn("assistant", response, result.model or "unknown")
@@ -854,7 +854,7 @@ def _prepare_history(
 
     # Inject cross-LLM context continuity state into prompt
     try:
-        from jarvis_engine.conversation_state import get_conversation_state
+        from jarvis_engine.memory.conversation_state import get_conversation_state
 
         csm = get_conversation_state()
         injection = csm.get_prompt_injection()
@@ -890,7 +890,7 @@ def _prepare_history(
 
     # Track user turn in conversation state for cross-LLM continuity
     try:
-        from jarvis_engine.conversation_state import get_conversation_state
+        from jarvis_engine.memory.conversation_state import get_conversation_state
 
         csm = get_conversation_state()
         csm.update_turn("user", text, llm_model or "unknown")

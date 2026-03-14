@@ -116,7 +116,7 @@ class ConversationLearningEngine:
             if correction:
                 applied = detector.apply_correction(correction)
                 try:
-                    from jarvis_engine.activity_feed import log_activity
+                    from jarvis_engine.memory.activity_feed import log_activity
 
                     log_activity(
                         "correction_applied",
@@ -144,7 +144,7 @@ class ConversationLearningEngine:
             preferences = self._preference_tracker.observe(user_message)
             if preferences:
                 try:
-                    from jarvis_engine.activity_feed import (
+                    from jarvis_engine.memory.activity_feed import (
                         ActivityCategory,
                         log_activity,
                     )

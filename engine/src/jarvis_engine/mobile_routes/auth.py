@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
 from jarvis_engine._shared import now_iso, runtime_dir
-from jarvis_engine.gaming_mode import read_gaming_mode_state, write_gaming_mode_state
+from jarvis_engine.ops.gaming_mode import read_gaming_mode_state, write_gaming_mode_state
 from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
-from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
+from jarvis_engine.security.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.ops.runtime_control import (
     read_control_state,
     reset_control_state,

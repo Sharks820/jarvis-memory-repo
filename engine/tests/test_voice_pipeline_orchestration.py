@@ -57,7 +57,7 @@ class TestConversationState:
         csm = MagicMock()
 
         monkeypatch.setattr(
-            "jarvis_engine.conversation_state.get_conversation_state",
+            "jarvis_engine.memory.conversation_state.get_conversation_state",
             lambda: csm,
         )
 
@@ -336,7 +336,7 @@ class TestPerformWebSearch:
         assert result == {}
         assert parts == ["existing"]  # Unchanged
 
-    @patch("jarvis_engine.web_research.run_web_research")
+    @patch("jarvis_engine.web.research.run_web_research")
     def test_force_triggers_search(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
@@ -353,7 +353,7 @@ class TestPerformWebSearch:
         assert "summary_lines" in result
         assert any("Web search results" in p for p in parts)
 
-    @patch("jarvis_engine.web_research.run_web_research")
+    @patch("jarvis_engine.web.research.run_web_research")
     def test_web_research_route_triggers(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
@@ -368,7 +368,7 @@ class TestPerformWebSearch:
         assert searched is True
         assert attempted is True
 
-    @patch("jarvis_engine.web_research.run_web_research")
+    @patch("jarvis_engine.web.research.run_web_research")
     def test_empty_summary_lines(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {"summary_lines": [], "scanned_urls": []}
@@ -379,7 +379,7 @@ class TestPerformWebSearch:
         assert searched is False
         assert attempted is True
 
-    @patch("jarvis_engine.web_research.run_web_research", side_effect=RuntimeError("network down"))
+    @patch("jarvis_engine.web.research.run_web_research", side_effect=RuntimeError("network down"))
     def test_error_handling(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         parts = []
@@ -390,7 +390,7 @@ class TestPerformWebSearch:
         assert attempted is True
         assert result == {}
 
-    @patch("jarvis_engine.web_research.run_web_research", side_effect=ImportError("web_research not installed"))
+    @patch("jarvis_engine.web.research.run_web_research", side_effect=ImportError("web_research not installed"))
     def test_import_error_handling(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         parts = []
@@ -400,7 +400,7 @@ class TestPerformWebSearch:
         assert searched is False
         assert attempted is True
 
-    @patch("jarvis_engine.web_research.run_web_research")
+    @patch("jarvis_engine.web.research.run_web_research")
     def test_sources_appended_to_context(self, mock_research) -> None:
         from jarvis_engine.voice.pipeline import _perform_web_search
         mock_research.return_value = {
@@ -654,7 +654,7 @@ class TestPrepareHistory:
         csm = MagicMock()
         csm.get_prompt_injection.return_value = {}
         monkeypatch.setattr(
-            "jarvis_engine.conversation_state.get_conversation_state",
+            "jarvis_engine.memory.conversation_state.get_conversation_state",
             lambda: csm,
         )
 
@@ -685,7 +685,7 @@ class TestPrepareHistory:
         csm = MagicMock()
         csm.get_prompt_injection.return_value = {}
         monkeypatch.setattr(
-            "jarvis_engine.conversation_state.get_conversation_state",
+            "jarvis_engine.memory.conversation_state.get_conversation_state",
             lambda: csm,
         )
 

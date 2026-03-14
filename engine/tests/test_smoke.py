@@ -32,51 +32,51 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 # All public top-level module dotted paths (no leading-underscore sub-names)
 _PUBLIC_MODULES = [
     # ── top-level modules ──────────────────────────────────────────────────
-    "jarvis_engine.activity_feed",
-    "jarvis_engine.adapters",
+    "jarvis_engine.memory.activity_feed",
+    "jarvis_engine.media.adapters",
     "jarvis_engine.api_contracts",
     "jarvis_engine.app",
-    "jarvis_engine.auto_ingest",
-    "jarvis_engine.automation",
+    "jarvis_engine.memory.auto_ingest",
+    "jarvis_engine.ops.automation",
     "jarvis_engine.memory.brain",
-    "jarvis_engine.capability",
+    "jarvis_engine.ops.capability",
     "jarvis_engine.command_bus",
     "jarvis_engine.config",
-    "jarvis_engine.connectors",
+    "jarvis_engine.ops.connectors",
     "jarvis_engine.daemon_loop",
     "jarvis_engine.desktop.widget",
-    "jarvis_engine.growth_tracker",
-    "jarvis_engine.ingest",
-    "jarvis_engine.intelligence_dashboard",
+    "jarvis_engine.learning.growth_tracker",
+    "jarvis_engine.memory.basic_ingest",
+    "jarvis_engine.ops.intelligence_dashboard",
     "jarvis_engine.learning.missions",
     "jarvis_engine.learning_missions",
-    "jarvis_engine.life_ops",
+    "jarvis_engine.ops.life_ops",
     "jarvis_engine.main",
     "jarvis_engine.memory.snapshots",
     "jarvis_engine.memory.store",
-    "jarvis_engine.mobile_api",
+    "jarvis_engine.mobile_routes.server",
     "jarvis_engine.ops.autopilot",
     "jarvis_engine.ops.sync",
-    "jarvis_engine.owner_guard",
-    "jarvis_engine.persona",
-    "jarvis_engine.phone_guard",
-    "jarvis_engine.policy",
+    "jarvis_engine.security.owner_guard",
+    "jarvis_engine.memory.persona",
+    "jarvis_engine.phone.guard",
+    "jarvis_engine.ops.policy",
     "jarvis_engine.ops.process_manager",
     "jarvis_engine.ops.resilience",
     "jarvis_engine.router",
     "jarvis_engine.ops.runtime_control",
-    "jarvis_engine.scam_hunter",
+    "jarvis_engine.phone.scam_hunter",
     "jarvis_engine.stt",
     "jarvis_engine.stt.postprocess",
     "jarvis_engine.stt.vad",
-    "jarvis_engine.task_orchestrator",
-    "jarvis_engine.temporal",
+    "jarvis_engine.ops.task_orchestrator",
+    "jarvis_engine.ops.temporal",
     "jarvis_engine.voice",
     "jarvis_engine.voice.auth",
     "jarvis_engine.voice.pipeline",
     "jarvis_engine.voice.wakeword",
-    "jarvis_engine.web_fetch",
-    "jarvis_engine.web_research",
+    "jarvis_engine.web.fetch",
+    "jarvis_engine.web.research",
     # ── commands ───────────────────────────────────────────────────────────
     "jarvis_engine.commands.defense_commands",
     "jarvis_engine.commands.harvest_commands",
@@ -226,7 +226,7 @@ class TestNewModulesSmoke:
     def test_auto_ingest_sanitize_memory_content_redacts_credentials(self) -> None:
         """sanitize_memory_content must redact secrets before they hit the store."""
         auto_ingest = pytest.importorskip(
-            "jarvis_engine.auto_ingest",
+            "jarvis_engine.memory.auto_ingest",
             reason="auto_ingest module not present on this branch yet",
         )
         sanitize_memory_content = auto_ingest.sanitize_memory_content
@@ -240,7 +240,7 @@ class TestNewModulesSmoke:
     def test_auto_ingest_sanitize_preserves_safe_content(self) -> None:
         """sanitize_memory_content must not alter safe content."""
         auto_ingest = pytest.importorskip(
-            "jarvis_engine.auto_ingest",
+            "jarvis_engine.memory.auto_ingest",
             reason="auto_ingest module not present on this branch yet",
         )
         sanitize_memory_content = auto_ingest.sanitize_memory_content
@@ -250,7 +250,7 @@ class TestNewModulesSmoke:
     def test_auto_ingest_valid_sources_and_kinds(self) -> None:
         """auto_ingest module must expose VALID_SOURCES and VALID_KINDS constants."""
         auto_ingest = pytest.importorskip(
-            "jarvis_engine.auto_ingest",
+            "jarvis_engine.memory.auto_ingest",
             reason="auto_ingest module not present on this branch yet",
         )
         assert "user" in auto_ingest.VALID_SOURCES
@@ -866,7 +866,7 @@ class TestIntegrationSmoke:
 
     def test_activity_feed_and_memory_store_coexist(self, tmp_path):
         from jarvis_engine.memory.store import MemoryStore
-        from jarvis_engine.activity_feed import ActivityFeed
+        from jarvis_engine.memory.activity_feed import ActivityFeed
 
         store = MemoryStore(tmp_path)
         feed = ActivityFeed(db_path=tmp_path / "feed.db")
@@ -891,7 +891,7 @@ class TestIntegrationSmoke:
         assert any("Aspirin" in a.get("title", "") for a in alerts)
 
     def test_policy_blocks_before_task_orchestrator(self):
-        from jarvis_engine.policy import PolicyEngine
+        from jarvis_engine.ops.policy import PolicyEngine
 
         assert not PolicyEngine().is_allowed("rm -rf /")
         assert not PolicyEngine().is_allowed("format c:")
@@ -907,7 +907,7 @@ class TestPerformanceSmoke:
 
     def test_policy_100_checks_under_500ms(self):
         import time
-        from jarvis_engine.policy import PolicyEngine
+        from jarvis_engine.ops.policy import PolicyEngine
 
         p = PolicyEngine()
         start = time.perf_counter()
@@ -1019,7 +1019,7 @@ class TestPropertyBasedSmoke:
         pytest.importorskip("hypothesis", reason="hypothesis not installed")
         from hypothesis import given, settings
         from hypothesis.strategies import text
-        from jarvis_engine.policy import PolicyEngine
+        from jarvis_engine.ops.policy import PolicyEngine
 
         p = PolicyEngine()
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from jarvis_engine.capability import CapabilityGate, CapabilityDecision
+from jarvis_engine.ops.capability import CapabilityGate, CapabilityDecision
 
 
 def test_read_action_always_allowed() -> None:

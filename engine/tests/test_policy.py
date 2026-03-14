@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from jarvis_engine.policy import PolicyEngine, ALLOWED_COMMANDS
+from jarvis_engine.ops.policy import PolicyEngine, ALLOWED_COMMANDS
 
 
 def test_allowed_commands_exist() -> None:

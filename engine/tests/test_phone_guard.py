@@ -1,4 +1,4 @@
-"""Comprehensive tests for jarvis_engine.phone_guard module.
+"""Comprehensive tests for jarvis_engine.phone.guard module.
 
 Covers spam detection, phone action building, call log loading, number
 normalization, timestamp parsing, and report generation.
@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 from jarvis_engine._compat import UTC
 
-from jarvis_engine.phone_guard import (
+from jarvis_engine.phone.guard import (
     PhoneAction,
     SpamCandidate,
     area_key,

@@ -188,7 +188,7 @@ class ConsolidateMemoryHandler:
 
         # Log to activity feed
         try:
-            from jarvis_engine.activity_feed import log_activity, ActivityCategory
+            from jarvis_engine.memory.activity_feed import log_activity, ActivityCategory
 
             log_activity(
                 ActivityCategory.CONSOLIDATION,

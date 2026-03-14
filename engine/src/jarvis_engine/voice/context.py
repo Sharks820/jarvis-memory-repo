@@ -9,7 +9,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine.persona import load_persona_config
+from jarvis_engine.memory.persona import load_persona_config
 
 from jarvis_engine._constants import (
     STOP_WORDS as _HARVEST_STOP_WORDS,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def _current_datetime_prompt_line() -> str:
     """Provide deterministic current date/time context for model grounding."""
-    from jarvis_engine.temporal import get_datetime_prompt
+    from jarvis_engine.ops.temporal import get_datetime_prompt
 
     return get_datetime_prompt()
 
@@ -308,7 +308,7 @@ def _build_system_parts(
     Called from ``_web_augmented_llm_conversation`` to assemble
     the LLM system prompt.
     """
-    from jarvis_engine.persona import get_persona_prompt
+    from jarvis_engine.memory.persona import get_persona_prompt
     from jarvis_engine.config import repo_root
 
     persona = load_persona_config(repo_root())

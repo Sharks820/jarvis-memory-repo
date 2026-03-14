@@ -31,7 +31,7 @@ from jarvis_engine.memory.engine import MemoryEngine
 
 
 def test_sanitize_memory_content_redacts_credentials() -> None:
-    from jarvis_engine import auto_ingest as auto_ingest_mod
+    from jarvis_engine.memory import auto_ingest as auto_ingest_mod
 
     content = "master password: ExamplePass123! token=abc123"
     cleaned = auto_ingest_mod.sanitize_memory_content(content)
@@ -82,7 +82,7 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
 
     import types
     fake_mod = types.SimpleNamespace(ActivityCategory=_Cat, log_activity=_fake_log_activity)
-    monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.activity_feed", fake_mod)
+    monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.memory.activity_feed", fake_mod)
 
     monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model",None)
     voice_pipeline_mod._mark_routed_model("kimi-k2", "groq")

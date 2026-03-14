@@ -68,7 +68,7 @@ class AdversarialSelfTest:
         If tasks is None, uses DEFAULT_MEMORY_TASKS from growth_tracker.
         Sends alert via notifier if average score drops below threshold.
         """
-        from jarvis_engine.growth_tracker import (
+        from jarvis_engine.learning.growth_tracker import (
             DEFAULT_MEMORY_TASKS,
             run_memory_eval,
         )

@@ -541,7 +541,7 @@ class TestConversationStateMasterPassword:
             path="/conversation/state?full=1&master_pwd=wrongpassword"
         )
         with patch(
-            "jarvis_engine.owner_guard.verify_master_password",
+            "jarvis_engine.security.owner_guard.verify_master_password",
             return_value=False,
         ):
             IntelligenceRoutesMixin._handle_get_conversation_state(handler)
@@ -562,11 +562,11 @@ class TestConversationStateMasterPassword:
         mock_csm.get_state_snapshot.return_value = {"full": True, "data": "unredacted"}
 
         with patch(
-            "jarvis_engine.owner_guard.verify_master_password",
+            "jarvis_engine.security.owner_guard.verify_master_password",
             return_value=True,
         ):
             with patch(
-                "jarvis_engine.conversation_state.get_conversation_state",
+                "jarvis_engine.memory.conversation_state.get_conversation_state",
                 return_value=mock_csm,
             ):
                 IntelligenceRoutesMixin._handle_get_conversation_state(handler)
@@ -586,7 +586,7 @@ class TestConversationStateMasterPassword:
         mock_csm.get_state_snapshot.return_value = {"redacted": True}
 
         with patch(
-            "jarvis_engine.conversation_state.get_conversation_state",
+            "jarvis_engine.memory.conversation_state.get_conversation_state",
             return_value=mock_csm,
         ):
             IntelligenceRoutesMixin._handle_get_conversation_state(handler)
@@ -606,7 +606,7 @@ class TestConversationStateMasterPassword:
         mock_csm.get_state_snapshot.return_value = {"redacted": True}
 
         with patch(
-            "jarvis_engine.conversation_state.get_conversation_state",
+            "jarvis_engine.memory.conversation_state.get_conversation_state",
             return_value=mock_csm,
         ):
             IntelligenceRoutesMixin._handle_get_conversation_state(handler)

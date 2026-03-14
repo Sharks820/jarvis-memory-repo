@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jarvis_engine.growth_tracker import (
+from jarvis_engine.learning.growth_tracker import (
     DEFAULT_MEMORY_TASKS,
     MemoryRecallResult,
     MemoryRecallTask,

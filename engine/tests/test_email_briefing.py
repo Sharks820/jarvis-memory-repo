@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from jarvis_engine.gateway.models import ModelGateway
 
-from jarvis_engine.life_ops import (
+from jarvis_engine.ops.life_ops import (
     OpsSnapshot,
     _assemble_data_summary,
     build_daily_brief,

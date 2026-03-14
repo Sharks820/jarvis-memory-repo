@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
-    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.memory.basic_ingest import IngestionPipeline
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.learning.feedback import ResponseFeedbackTracker
     from jarvis_engine.learning.preferences import PreferenceTracker
@@ -74,7 +74,7 @@ class OpsBriefHandler:
         self._gateway = gateway
 
     def handle(self, cmd: OpsBriefCommand) -> OpsBriefResult:
-        from jarvis_engine.life_ops import (
+        from jarvis_engine.ops.life_ops import (
             build_daily_brief,
             build_narrative_brief,
             load_snapshot,
@@ -115,7 +115,7 @@ class OpsExportActionsHandler:
         self._root = root
 
     def handle(self, cmd: OpsExportActionsCommand) -> OpsExportActionsResult:
-        from jarvis_engine.life_ops import (
+        from jarvis_engine.ops.life_ops import (
             export_actions_json,
             load_snapshot,
             suggest_actions,
@@ -191,7 +191,7 @@ class AutomationRunHandler:
         return self._store
 
     def handle(self, cmd: AutomationRunCommand) -> AutomationRunResult:
-        from jarvis_engine.automation import AutomationExecutor, load_actions
+        from jarvis_engine.ops.automation import AutomationExecutor, load_actions
 
         try:
             check_path_within_root(cmd.actions_path, self._root, "actions_path")
@@ -273,7 +273,7 @@ class MissionRunHandler:
         if self._enriched_pipeline is not None:
             return self._enriched_pipeline
         if self._pipeline is None:
-            from jarvis_engine.ingest import IngestionPipeline
+            from jarvis_engine.memory.basic_ingest import IngestionPipeline
             from jarvis_engine.memory.store import MemoryStore
 
             self._store = MemoryStore(self._root)
@@ -332,7 +332,7 @@ class GrowthEvalHandler:
         self._root = root
 
     def handle(self, cmd: GrowthEvalCommand) -> GrowthEvalResult:
-        from jarvis_engine.growth_tracker import (
+        from jarvis_engine.learning.growth_tracker import (
             append_history,
             load_golden_tasks,
             run_eval,
@@ -373,7 +373,7 @@ class GrowthReportHandler:
         self._root = root
 
     def handle(self, cmd: GrowthReportCommand) -> GrowthReportResult:
-        from jarvis_engine.growth_tracker import read_history, summarize_history
+        from jarvis_engine.learning.growth_tracker import read_history, summarize_history
 
         try:
             check_path_within_root(cmd.history_path, self._root, "history_path")
@@ -390,7 +390,7 @@ class GrowthAuditHandler:
         self._root = root
 
     def handle(self, cmd: GrowthAuditCommand) -> GrowthAuditResult:
-        from jarvis_engine.growth_tracker import audit_run, read_history
+        from jarvis_engine.learning.growth_tracker import audit_run, read_history
 
         try:
             check_path_within_root(cmd.history_path, self._root, "history_path")
@@ -522,7 +522,7 @@ class IntelligenceDashboardHandler:
         self._engine = engine
 
     def handle(self, cmd: IntelligenceDashboardCommand) -> IntelligenceDashboardResult:
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         dashboard = build_intelligence_dashboard(
             self._root,
@@ -541,7 +541,7 @@ class DiagnosticRunHandler:
         self._root = root
 
     def handle(self, cmd: DiagnosticRunCommand) -> DiagnosticRunResult:
-        from jarvis_engine.self_diagnosis import DiagnosticEngine
+        from jarvis_engine.ops.self_diagnosis import DiagnosticEngine
 
         try:
             diag = DiagnosticEngine(self._root)

@@ -26,12 +26,12 @@ from jarvis_engine._shared import memory_db_path, now_iso, runtime_dir, set_proc
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.ops_commands import MissionRunCommand
 from jarvis_engine.config import repo_root
-from jarvis_engine.gaming_mode import (
+from jarvis_engine.ops.gaming_mode import (
     _windows_idle_seconds,
     detect_active_game_process,
     read_gaming_mode_state,
 )
-from jarvis_engine.harvest_discovery import discover_harvest_topics
+from jarvis_engine.harvesting.discovery import discover_harvest_topics
 from jarvis_engine.learning.missions import load_missions
 from jarvis_engine.ops.runtime_control import (
     capture_runtime_resource_snapshot,
@@ -262,7 +262,7 @@ def _register_daemon_pid(root: Path) -> bool:
 
 def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
     try:
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+        from jarvis_engine.memory.activity_feed import log_activity, ActivityCategory
 
         cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
         log_activity(cat, message, metadata)
@@ -844,7 +844,7 @@ def _run_periodic_subsystems(
 
 def _run_diagnostic_scan_cycle(root: Path) -> None:
     try:
-        from jarvis_engine.self_diagnosis import DiagnosticEngine
+        from jarvis_engine.ops.self_diagnosis import DiagnosticEngine
 
         diag = DiagnosticEngine(root)
         issues = diag.run_quick_scan()
@@ -965,7 +965,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     # Initialize conversation state singleton for cross-LLM continuity.
     # get_conversation_state() creates the manager which auto-loads from disk.
     try:
-        from jarvis_engine.conversation_state import get_conversation_state
+        from jarvis_engine.memory.conversation_state import get_conversation_state
 
         get_conversation_state()
         logger.debug("Conversation state initialized on daemon startup")
@@ -1034,7 +1034,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     finally:
         # Persist conversation state before shutdown
         try:
-            from jarvis_engine.conversation_state import get_conversation_state
+            from jarvis_engine.memory.conversation_state import get_conversation_state
 
             _csm_shutdown = get_conversation_state()
             _csm_shutdown.save()

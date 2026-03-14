@@ -211,7 +211,7 @@ class BudgetEnforcer:
                     )
                 # Emit activity event
                 try:
-                    from jarvis_engine.activity_feed import log_activity
+                    from jarvis_engine.memory.activity_feed import log_activity
 
                     log_activity(
                         "cost_alert",

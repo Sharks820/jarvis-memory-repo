@@ -1090,7 +1090,7 @@ class ConversationStateManager:
 
         # Emit telemetry (outside lock to avoid blocking)
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             log_activity(
                 ActivityCategory.CONVERSATION_STATE,
@@ -1405,7 +1405,7 @@ class ConversationStateManager:
 
         # Emit telemetry
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             log_activity(
                 ActivityCategory.CONVERSATION_STATE,
@@ -1449,7 +1449,7 @@ class ConversationStateManager:
         if not entities:
             return
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             # Classify entity types for telemetry
             types: dict[str, int] = {}

@@ -256,7 +256,7 @@ class PersonaComposeHandler:
             return PersonaComposeResult(message="error: gateway not available")
 
         try:
-            from jarvis_engine.persona import (
+            from jarvis_engine.memory.persona import (
                 _resolve_tone,
                 compose_persona_system_prompt,
                 load_persona_config,
@@ -266,7 +266,7 @@ class PersonaComposeHandler:
             logger.warning("persona/gateway modules not available: %s", exc)
             return PersonaComposeResult(message="error: persona modules not available.")
 
-        from jarvis_engine.temporal import get_datetime_prompt
+        from jarvis_engine.ops.temporal import get_datetime_prompt
 
         gateway: ModelGateway = self._gateway  # type: ignore[assignment]
         cfg = load_persona_config(self._root)

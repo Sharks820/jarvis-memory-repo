@@ -96,7 +96,7 @@ def _get_recently_harvested_topics(root: Path) -> set[str]:
     """
     recent: set[str] = set()
     try:
-        from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityFeed, ActivityCategory
 
         feed_db = root / ".planning" / "brain" / "activity_feed.db"
         if not feed_db.exists():
@@ -276,7 +276,7 @@ def _collect_from_activity_feed(
 ) -> None:
     """Source 4: Activity feed fact-extraction summaries."""
     try:
-        from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityFeed, ActivityCategory
 
         feed_db = root / ".planning" / "brain" / "activity_feed.db"
         if feed_db.exists():

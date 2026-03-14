@@ -1,4 +1,4 @@
-"""Comprehensive tests for jarvis_engine.life_ops module.
+"""Comprehensive tests for jarvis_engine.ops.life_ops module.
 
 Covers OpsSnapshot loading, daily brief generation, action suggestions,
 narrative brief with gateway, export, and edge cases.
@@ -9,7 +9,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
-from jarvis_engine.life_ops import (
+from jarvis_engine.ops.life_ops import (
     OpsSnapshot,
     _assemble_data_summary,
     _is_due_item,

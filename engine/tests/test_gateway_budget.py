@@ -237,7 +237,7 @@ class TestCostAlerts:
             assert 0.50 in e._fired_alerts["monthly"]
 
     def test_activity_event_emitted(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.activity_feed.log_activity") as mock_activity:
+        with patch("jarvis_engine.memory.activity_feed.log_activity") as mock_activity:
             with BudgetEnforcer(tmp_path / "budget.db", daily_cap=2.0) as e:
                 e.record_cost(1.10, "m", "p")
                 mock_activity.assert_called()

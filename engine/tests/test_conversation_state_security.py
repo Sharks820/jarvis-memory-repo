@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jarvis_engine.conversation_state import (
+from jarvis_engine.memory.conversation_state import (
     ConversationStateManager,
     ConversationTimeline,
     TimelineEntry,
@@ -396,7 +396,7 @@ class TestS4TimelineRetention:
 
     def test_periodic_prune_on_save(self, tmp_state_dir: Path) -> None:
         """Prune is triggered every _TIMELINE_PRUNE_INTERVAL saves."""
-        from jarvis_engine.conversation_state import _TIMELINE_PRUNE_INTERVAL
+        from jarvis_engine.memory.conversation_state import _TIMELINE_PRUNE_INTERVAL
 
         mgr = ConversationStateManager(state_dir=tmp_state_dir, encryption_key=None)
 
@@ -409,7 +409,7 @@ class TestS4TimelineRetention:
 
     def test_vacuum_after_large_prune(self, tmp_state_dir: Path) -> None:
         """VACUUM is called when prune deletes >= threshold rows."""
-        from jarvis_engine.conversation_state import (
+        from jarvis_engine.memory.conversation_state import (
             _TIMELINE_PRUNE_INTERVAL,
             _TIMELINE_VACUUM_THRESHOLD,
         )

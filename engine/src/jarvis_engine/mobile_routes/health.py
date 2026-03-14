@@ -147,7 +147,7 @@ class HealthRoutesMixin:
     def _handle_get_dashboard(self: _HealthRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         dashboard_payload = dict(build_intelligence_dashboard(self._root))
         dashboard_payload["reliability_panel"] = self._build_reliability_panel(self._root)
@@ -181,7 +181,7 @@ class HealthRoutesMixin:
     def _handle_get_widget_status(self: _HealthRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability, _serialize_activity_event
 
         reliability_cache = dict(_compute_command_reliability())
@@ -203,7 +203,7 @@ class HealthRoutesMixin:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+            from jarvis_engine.memory.activity_feed import ActivityCategory, get_activity_feed
 
             feed = get_activity_feed()
             events = feed.query(limit=10)
@@ -282,7 +282,7 @@ class HealthRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.self_diagnosis import DiagnosticEngine
+            from jarvis_engine.ops.self_diagnosis import DiagnosticEngine
 
             diag = DiagnosticEngine(self._root)
             issues = diag.run_quick_scan()

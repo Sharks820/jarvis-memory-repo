@@ -555,7 +555,7 @@ class TestConfigFileArg:
         from jarvis_engine import main as main_mod
 
         # Mock run_mobile_server so it doesn't actually start a server
-        with patch("jarvis_engine.mobile_api_lifecycle.run_mobile_server") as mock_server, \
+        with patch("jarvis_engine.mobile_routes.lifecycle.run_mobile_server") as mock_server, \
              patch("jarvis_engine.ops.process_manager.is_service_running", return_value=False), \
              patch("jarvis_engine.ops.process_manager.write_pid_file"), \
              patch("jarvis_engine.ops.process_manager.remove_pid_file"):
@@ -591,7 +591,7 @@ class TestConfigFileArg:
 
         from jarvis_engine import main as main_mod
 
-        with patch("jarvis_engine.mobile_api_lifecycle.run_mobile_server") as mock_server, \
+        with patch("jarvis_engine.mobile_routes.lifecycle.run_mobile_server") as mock_server, \
              patch("jarvis_engine.ops.process_manager.is_service_running", return_value=False), \
              patch("jarvis_engine.ops.process_manager.write_pid_file"), \
              patch("jarvis_engine.ops.process_manager.remove_pid_file"):

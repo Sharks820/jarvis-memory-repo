@@ -156,7 +156,7 @@ class LLMFactExtractor:
 
         model, privacy_routed = self._pick_model(text)
 
-        from jarvis_engine.temporal import get_datetime_prompt
+        from jarvis_engine.ops.temporal import get_datetime_prompt
 
         system_with_time = f"{get_datetime_prompt()}\n\n{_SYSTEM_PROMPT}"
         messages = [

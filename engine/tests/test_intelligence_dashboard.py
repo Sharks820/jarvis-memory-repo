@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jarvis_engine.intelligence_dashboard import (
+from jarvis_engine.ops.intelligence_dashboard import (
     _estimate_eta,
     _load_achievements,
     _load_targets,

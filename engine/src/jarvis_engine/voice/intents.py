@@ -16,13 +16,13 @@ from typing import Callable
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
-from jarvis_engine.owner_guard import read_owner_guard, verify_master_password
-from jarvis_engine.persona import compose_persona_reply, load_persona_config
+from jarvis_engine.security.owner_guard import read_owner_guard, verify_master_password
+from jarvis_engine.memory.persona import compose_persona_reply, load_persona_config
 
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME
 from jarvis_engine._shared import make_task_id
 
-from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
+from jarvis_engine.memory.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 
 from jarvis_engine.voice.extractors import (
     escape_response,

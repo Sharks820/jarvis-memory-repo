@@ -504,14 +504,14 @@ class TestMissionHandlers:
 
 class TestDashboardMissionMetrics:
     def test_dashboard_includes_missions_key(self, mission_root: Path) -> None:
-        from jarvis_engine.intelligence_dashboard import _safe_mission_metrics
+        from jarvis_engine.ops.intelligence_dashboard import _safe_mission_metrics
 
         metrics = _safe_mission_metrics(mission_root)
         assert isinstance(metrics, dict)
         assert "total_missions" in metrics
 
     def test_dashboard_missions_graceful_on_error(self, tmp_path: Path) -> None:
-        from jarvis_engine.intelligence_dashboard import _safe_mission_metrics
+        from jarvis_engine.ops.intelligence_dashboard import _safe_mission_metrics
 
         # Non-existent root should not raise, returns empty
         metrics = _safe_mission_metrics(tmp_path / "nonexistent")

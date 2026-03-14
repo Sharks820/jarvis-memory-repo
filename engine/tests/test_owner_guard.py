@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from jarvis_engine._constants import PBKDF2_ITERATIONS
-from jarvis_engine.owner_guard import (
+from jarvis_engine.security.owner_guard import (
     DEFAULT_OWNER_GUARD,
     clear_master_password,
     owner_guard_path,

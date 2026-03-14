@@ -88,7 +88,7 @@ from jarvis_engine.cli.proactive import (  # noqa: E402
 )
 
 # Backward-compat: run_mobile_server used by tests via main_mod.run_mobile_server
-from jarvis_engine.mobile_api_lifecycle import run_mobile_server  # noqa: F401, E402
+from jarvis_engine.mobile_routes.lifecycle import run_mobile_server  # noqa: F401, E402
 
 # Imports from _constants (used by argparse registrations)
 from jarvis_engine._constants import ACTIONS_FILENAME, DEFAULT_API_PORT, OPS_SNAPSHOT_FILENAME  # noqa: E402

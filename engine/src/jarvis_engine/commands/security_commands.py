@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 from jarvis_engine.commands.base import ResultBase
 
 if TYPE_CHECKING:
-    from jarvis_engine.connectors import ConnectorStatus
-    from jarvis_engine.persona import PersonaConfig
-    from jarvis_engine.phone_guard import PhoneAction
+    from jarvis_engine.ops.connectors import ConnectorStatus
+    from jarvis_engine.memory.persona import PersonaConfig
+    from jarvis_engine.phone.guard import PhoneAction
 
 
 @dataclass(frozen=True)

@@ -666,7 +666,7 @@ class TestEndpointResponse:
 class TestStageTransitionEvents:
     """Tests for stage transition activity feed events."""
 
-    @patch("jarvis_engine.activity_feed.log_activity", autospec=True)
+    @patch("jarvis_engine.memory.activity_feed.log_activity", autospec=True)
     def test_emit_stage_transition_calls_log_activity(self, mock_log, telemetry: VoiceTelemetry):
         telemetry.emit_stage_transition(STAGE_VAD_SPEECH_ONSET)
         mock_log.assert_called_once()
@@ -676,7 +676,7 @@ class TestStageTransitionEvents:
 
     def test_emit_stage_transition_no_crash_on_import_error(self, telemetry: VoiceTelemetry):
         """Should not crash if activity feed is unavailable."""
-        with patch.dict("sys.modules", {"jarvis_engine.activity_feed": None}):
+        with patch.dict("sys.modules", {"jarvis_engine.memory.activity_feed": None}):
             # Should not raise — graceful degradation
             telemetry.emit_stage_transition(STAGE_VAD_SPEECH_ONSET)
 
@@ -690,7 +690,7 @@ class TestActivityCategory:
     """Tests for VOICE_PIPELINE category in activity feed."""
 
     def test_voice_pipeline_category_exists(self):
-        from jarvis_engine.activity_feed import ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityCategory
         assert hasattr(ActivityCategory, "VOICE_PIPELINE")
         assert ActivityCategory.VOICE_PIPELINE == "voice_pipeline"
 

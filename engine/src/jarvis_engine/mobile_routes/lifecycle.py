@@ -296,7 +296,7 @@ def run_mobile_server(
     - ``True``:  require TLS; generate certs if needed, raise on failure.
     - ``False``: explicitly disable TLS (plain HTTP).
     """
-    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.memory.basic_ingest import IngestionPipeline
     from jarvis_engine.memory.store import MemoryStore
     from jarvis_engine.mobile_routes.server import MobileIngestHandler, MobileIngestServer
 

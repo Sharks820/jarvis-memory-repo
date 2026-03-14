@@ -305,7 +305,7 @@ def build_narrative_brief(
     if gateway is None:
         return build_daily_brief(snapshot)
 
-    from jarvis_engine.temporal import get_datetime_prompt
+    from jarvis_engine.ops.temporal import get_datetime_prompt
 
     from jarvis_engine._shared import get_local_model
 

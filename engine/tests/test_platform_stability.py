@@ -345,7 +345,7 @@ class TestConsolidateMemoryCommand:
         mock_result.errors = []
 
         with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls, \
-             patch("jarvis_engine.activity_feed.log_activity") as mock_log:
+             patch("jarvis_engine.memory.activity_feed.log_activity") as mock_log:
             mock_cls.return_value.consolidate.return_value = mock_result
             handler.handle(ConsolidateMemoryCommand())
             mock_log.assert_called_once()

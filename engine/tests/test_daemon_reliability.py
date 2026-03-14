@@ -196,7 +196,7 @@ class TestDaemonResourceGuardrails:
         )
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_self_test, \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=1, self_test_every_cycles=1)
 
         assert rc == 0
@@ -495,7 +495,7 @@ class TestDaemonActivityLogging:
             return "mock-event-id"
 
         with patch(
-            "jarvis_engine.activity_feed.log_activity", mock_log_activity
+            "jarvis_engine.memory.activity_feed.log_activity", mock_log_activity
         ):
             rc = _run_daemon_impl(tmp_path, max_cycles=2)
 
@@ -521,7 +521,7 @@ class TestDaemonActivityLogging:
             raise RuntimeError("Activity feed DB corrupt")
 
         with patch(
-            "jarvis_engine.activity_feed.log_activity", exploding_log
+            "jarvis_engine.memory.activity_feed.log_activity", exploding_log
         ):
             rc = _run_daemon_impl(tmp_path, max_cycles=3)
 
@@ -567,7 +567,7 @@ class TestDaemonRegressionCheck:
                  "jarvis_engine.knowledge.regression.RegressionChecker",
                  return_value=mock_checker,
              ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=25)
 
         assert rc == 0
@@ -623,7 +623,7 @@ class TestDaemonRegressionCheck:
                      "jarvis_engine.knowledge.regression.RegressionChecker",
                      return_value=mock_checker,
                  ), \
-                 patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+                 patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
                 rc = _run_daemon_impl(tmp_path, max_cycles=20)
 
             assert rc == 0
@@ -652,7 +652,7 @@ class TestDaemonRegressionCheck:
                  "jarvis_engine.knowledge.regression.RegressionChecker",
                  side_effect=RuntimeError("RegressionChecker init failed"),
              ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=10)
 
         assert rc == 0  # Daemon survives the error
@@ -696,7 +696,7 @@ class TestDaemonConsolidation:
         mock_bus.dispatch.side_effect = _dispatch_side_effect
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -711,7 +711,7 @@ class TestDaemonConsolidation:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus down")), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -739,7 +739,7 @@ class TestDaemonConsolidation:
         mock_bus.dispatch.return_value = consolidation_result
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -780,7 +780,7 @@ class TestDaemonEntityResolution:
                  "jarvis_engine.knowledge.regression.RegressionChecker",
                  return_value=mock_rc_checker,
              ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
@@ -801,7 +801,7 @@ class TestDaemonEntityResolution:
         with patch.object(
             daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus broken")
         ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             # Should not raise
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
@@ -817,7 +817,7 @@ class TestDaemonEntityResolution:
         mock_bus.ctx = AppContext(kg=None)
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=100, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
@@ -842,7 +842,7 @@ class TestDaemonSubsystemIsolation:
             raise RuntimeError("Subsystem exploded")
 
         with patch(
-            "jarvis_engine.activity_feed.log_activity", side_effect=bomb
+            "jarvis_engine.memory.activity_feed.log_activity", side_effect=bomb
         ), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=bomb):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
@@ -1013,7 +1013,7 @@ class TestDaemonAutoHarvest:
                  "jarvis_engine.memory.ingest.EnrichedIngestPipeline",
                  return_value=MagicMock(spec=EnrichedIngestPipeline),
              ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
@@ -1029,7 +1029,7 @@ class TestDaemonAutoHarvest:
         """Auto-harvest should NOT trigger before cycle 200."""
         # Cycle 199 — auto_harvest fires at % 200 == 0, so 199 should skip it
         with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=199, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
@@ -1049,7 +1049,7 @@ class TestDaemonAutoHarvest:
             side_effect=RuntimeError("Discovery exploded"),
         ), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             # Should not raise
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
@@ -1063,7 +1063,7 @@ class TestDaemonAutoHarvest:
         """When no topics are discovered, auto-harvest should be skipped gracefully."""
         with patch.object(daemon_loop_mod, "discover_harvest_topics", return_value=[]), \
              patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),
@@ -1104,7 +1104,7 @@ class TestDaemonAutoHarvest:
                  "jarvis_engine.harvesting.providers.GeminiProvider",
                  return_value=mock_provider,
              ), \
-             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+             patch("jarvis_engine.memory.activity_feed.log_activity", return_value="id"):
             _real_run_periodic_subsystems(
                 tmp_path, cycles=200, skip_heavy_tasks=False,
                 cfg=daemon_loop_mod.DaemonConfig(run_missions=False, sync_every_cycles=0, self_heal_every_cycles=0, self_test_every_cycles=0, watchdog_every_cycles=0),

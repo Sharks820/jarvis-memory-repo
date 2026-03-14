@@ -174,7 +174,7 @@ class CommandRoutesMixin:
             return
         try:
             import jarvis_engine.voice.pipeline as _vp_mod
-            from jarvis_engine.conversation_state import get_conversation_state
+            from jarvis_engine.memory.conversation_state import get_conversation_state
 
             _vp_mod._state.clear_history()
             _vp_mod._state._conversation_history_loaded = True

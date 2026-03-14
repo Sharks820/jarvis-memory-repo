@@ -87,7 +87,7 @@ class RuntimeControlHandler(_SecurityHandlerBase):
 
 class OwnerGuardHandler(_SecurityHandlerBase):
     def handle(self, cmd: OwnerGuardCommand) -> OwnerGuardResult:
-        from jarvis_engine.owner_guard import (
+        from jarvis_engine.security.owner_guard import (
             clear_master_password,
             read_owner_guard,
             revoke_mobile_device,
@@ -129,7 +129,7 @@ class OwnerGuardHandler(_SecurityHandlerBase):
 
 class ConnectStatusHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectStatusCommand) -> ConnectStatusResult:
-        from jarvis_engine.connectors import (
+        from jarvis_engine.ops.connectors import (
             build_connector_prompts,
             evaluate_connector_statuses,
         )
@@ -147,7 +147,7 @@ class ConnectStatusHandler(_SecurityHandlerBase):
 
 class ConnectGrantHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectGrantCommand) -> ConnectGrantResult:
-        from jarvis_engine.connectors import grant_connector_permission
+        from jarvis_engine.ops.connectors import grant_connector_permission
 
         try:
             granted = grant_connector_permission(
@@ -165,7 +165,7 @@ class ConnectBootstrapHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectBootstrapCommand) -> ConnectBootstrapResult:
         import webbrowser
 
-        from jarvis_engine.connectors import (
+        from jarvis_engine.ops.connectors import (
             build_connector_prompts,
             evaluate_connector_statuses,
         )
@@ -184,7 +184,7 @@ class ConnectBootstrapHandler(_SecurityHandlerBase):
 
 class PhoneActionHandler(_SecurityHandlerBase):
     def handle(self, cmd: PhoneActionCommand) -> PhoneActionResult:
-        from jarvis_engine.phone_guard import append_phone_actions, build_phone_action
+        from jarvis_engine.phone.guard import append_phone_actions, build_phone_action
 
         try:
             record = build_phone_action(
@@ -208,7 +208,7 @@ class PhoneActionHandler(_SecurityHandlerBase):
 
 class PhoneSpamGuardHandler(_SecurityHandlerBase):
     def handle(self, cmd: PhoneSpamGuardCommand) -> PhoneSpamGuardResult:
-        from jarvis_engine.phone_guard import (
+        from jarvis_engine.phone.guard import (
             append_phone_actions,
             build_spam_block_actions,
             detect_spam_candidates,
@@ -246,7 +246,7 @@ class PhoneSpamGuardHandler(_SecurityHandlerBase):
 
 class PersonaConfigHandler(_SecurityHandlerBase):
     def handle(self, cmd: PersonaConfigCommand) -> PersonaConfigResult:
-        from jarvis_engine.persona import load_persona_config, save_persona_config
+        from jarvis_engine.memory.persona import load_persona_config, save_persona_config
 
         # Reject conflicting flags
         if cmd.enable and cmd.disable:

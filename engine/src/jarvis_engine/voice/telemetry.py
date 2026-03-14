@@ -402,7 +402,7 @@ class VoiceTelemetry:
         Called **outside** the lock to avoid deadlocks with ActivityFeed.
         """
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             log_activity(
                 ActivityCategory.VOICE_PIPELINE,
@@ -444,7 +444,7 @@ class VoiceTelemetry:
     def _emit_health_event(self, health: HealthEventDict) -> None:
         """Emit a structured voice_pipeline_health event via activity feed."""
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             log_activity(
                 ActivityCategory.VOICE_PIPELINE,
@@ -605,7 +605,7 @@ class VoiceTelemetry:
             The pipeline stage that was just entered.
         """
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             log_activity(
                 ActivityCategory.VOICE_PIPELINE,

@@ -19,7 +19,7 @@ from typing import IO, TYPE_CHECKING, Any, Protocol, TypedDict, cast
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
 
 if TYPE_CHECKING:
-    from jarvis_engine.activity_feed import ActivityEvent
+    from jarvis_engine.memory.activity_feed import ActivityEvent
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +282,7 @@ def _compute_command_reliability() -> CommandReliability:
         "last_pressure_level": "none",
     }
     try:
-        from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+        from jarvis_engine.memory.activity_feed import ActivityCategory, get_activity_feed
 
         feed = get_activity_feed()
         events = feed.query(limit=200, category=ActivityCategory.COMMAND_LIFECYCLE)

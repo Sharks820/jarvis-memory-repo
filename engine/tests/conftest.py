@@ -59,7 +59,7 @@ def _isolate_activity_feed():
     repo_root() to the real project directory.
     """
     try:
-        import jarvis_engine.activity_feed as _af
+        import jarvis_engine.memory.activity_feed as _af
         _af._reset_feed()
         # Pre-seed the singleton with an in-memory feed so any test that
         # calls log_activity() / get_activity_feed() writes to RAM, not disk.
@@ -68,7 +68,7 @@ def _isolate_activity_feed():
         pass
     yield
     try:
-        from jarvis_engine.activity_feed import _reset_feed
+        from jarvis_engine.memory.activity_feed import _reset_feed
         _reset_feed()
     except (ImportError, OSError, AttributeError):
         pass
@@ -102,9 +102,9 @@ def make_test_db(
     return conn
 
 
-from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.memory.basic_ingest import IngestionPipeline
 from jarvis_engine.memory.store import MemoryStore
-from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
+from jarvis_engine.mobile_routes.server import MobileIngestHandler, MobileIngestServer
 
 
 class MockEmbeddingService:

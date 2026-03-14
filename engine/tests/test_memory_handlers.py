@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
-from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.memory.basic_ingest import IngestionPipeline
 from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -357,7 +357,7 @@ class TestIngestHandler:
         fake_pipeline.ingest.return_value = FakeRecord()
 
         with patch("jarvis_engine.memory.store.MemoryStore") as MockStore, \
-             patch("jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline):
+             patch("jarvis_engine.memory.basic_ingest.IngestionPipeline", return_value=fake_pipeline):
             handler = IngestHandler(root=tmp_path, pipeline=None)
             cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Some content")
             result = handler.handle(cmd)
@@ -379,7 +379,7 @@ class TestIngestHandler:
         fake_pipeline.ingest.return_value = FakeRecord()
 
         with patch("jarvis_engine.memory.store.MemoryStore"), \
-             patch("jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline) as MockPipeline:
+             patch("jarvis_engine.memory.basic_ingest.IngestionPipeline", return_value=fake_pipeline) as MockPipeline:
             handler = IngestHandler(root=tmp_path, pipeline=None)
             handler.handle(IngestCommand(source="user", kind="ep", task_id="t", content="Content A"))
             handler.handle(IngestCommand(source="user", kind="ep", task_id="t", content="Content B"))

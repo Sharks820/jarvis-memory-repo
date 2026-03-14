@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.conversation_state import (
+from jarvis_engine.memory.conversation_state import (
     ConversationSnapshot,
     ConversationStateManager,
     detect_goal_completion,
@@ -43,7 +43,7 @@ def manager(tmp_path: Path) -> ConversationStateManager:
 @pytest.fixture()
 def _reset_singleton():
     """Reset the module-level singleton before and after the test."""
-    import jarvis_engine.conversation_state as _cs
+    import jarvis_engine.memory.conversation_state as _cs
 
     old = _cs._state_holder.get("instance")
     _cs._state_holder["instance"] = None
@@ -635,7 +635,7 @@ class TestGetConversationState:
 class TestTelemetry:
     """Verify that telemetry events are emitted at key lifecycle points."""
 
-    @patch("jarvis_engine.activity_feed.log_activity", return_value="mock-id")
+    @patch("jarvis_engine.memory.activity_feed.log_activity", return_value="mock-id")
     def test_checkpoint_emits_telemetry(
         self, mock_log: MagicMock, tmp_path: Path,
     ) -> None:
@@ -655,7 +655,7 @@ class TestTelemetry:
         # Once wired, uncomment:
         # assert mock_log.called
 
-    @patch("jarvis_engine.activity_feed.log_activity", return_value="mock-id")
+    @patch("jarvis_engine.memory.activity_feed.log_activity", return_value="mock-id")
     def test_model_switch_emits_telemetry(
         self, mock_log: MagicMock, tmp_path: Path,
     ) -> None:

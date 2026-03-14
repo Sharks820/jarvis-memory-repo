@@ -228,8 +228,8 @@ class _FakeRecallResult:
 class TestSelfTestRunMemoryQuiz:
     """run_memory_quiz with mocked growth_tracker."""
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
-    @patch("jarvis_engine.growth_tracker.DEFAULT_MEMORY_TASKS", ["t1", "t2"])
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.DEFAULT_MEMORY_TASKS", ["t1", "t2"])
     def test_uses_default_tasks_when_none(self, mock_eval):
         mock_eval.return_value = [
             _FakeRecallResult("t1", 0.8),
@@ -244,7 +244,7 @@ class TestSelfTestRunMemoryQuiz:
         assert result["tasks_run"] == 2
         assert result["average_score"] == 0.85
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_custom_tasks(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("custom", 0.7)]
         st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
@@ -254,7 +254,7 @@ class TestSelfTestRunMemoryQuiz:
         assert result["tasks_run"] == 1
         assert result["average_score"] == 0.7
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_below_threshold_sends_alert(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.2)]
         notifier = MagicMock(spec=Notifier)
@@ -270,7 +270,7 @@ class TestSelfTestRunMemoryQuiz:
         call_args = notifier.send.call_args
         assert "Memory Quality Alert" in call_args[0][0]
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_above_threshold_no_alert(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.9)]
         notifier = MagicMock(spec=Notifier)
@@ -284,7 +284,7 @@ class TestSelfTestRunMemoryQuiz:
         assert result["below_threshold"] is False
         notifier.send.assert_not_called()
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_empty_results(self, mock_eval):
         mock_eval.return_value = []
         st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
@@ -293,7 +293,7 @@ class TestSelfTestRunMemoryQuiz:
         assert result["average_score"] == 0.0
         assert result["below_threshold"] is True
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_notifier_exception_caught(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.1)]
         notifier = MagicMock(spec=Notifier)
@@ -308,7 +308,7 @@ class TestSelfTestRunMemoryQuiz:
         result = st.run_memory_quiz()
         assert result["below_threshold"] is True
 
-    @patch("jarvis_engine.growth_tracker.run_memory_eval")
+    @patch("jarvis_engine.learning.growth_tracker.run_memory_eval")
     def test_per_task_scores_in_result(self, mock_eval):
         mock_eval.return_value = [
             _FakeRecallResult("a", 0.6),

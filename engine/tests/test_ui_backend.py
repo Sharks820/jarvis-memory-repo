@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.activity_feed import ActivityFeed
+from jarvis_engine.memory.activity_feed import ActivityFeed
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 from jarvis_engine.learning.preferences import PreferenceTracker
@@ -46,7 +46,7 @@ class TestMissionCancel:
              "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
         ])
 
-        with patch("jarvis_engine.activity_feed.log_activity"):
+        with patch("jarvis_engine.memory.activity_feed.log_activity"):
             result = cancel_mission(root, mission_id="m-001")
 
         assert result["status"] == "cancelled"
@@ -102,7 +102,7 @@ class TestMissionCancel:
              "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
         ])
 
-        with patch("jarvis_engine.activity_feed.log_activity") as mock_log:
+        with patch("jarvis_engine.memory.activity_feed.log_activity") as mock_log:
             cancel_mission(root, mission_id="m-002")
             mock_log.assert_called_once()
             call_args = mock_log.call_args
@@ -169,7 +169,7 @@ class TestLearningActivityEvents:
             usage_tracker=mock_usage,
         )
 
-        with patch("jarvis_engine.activity_feed.log_activity") as mock_log:
+        with patch("jarvis_engine.memory.activity_feed.log_activity") as mock_log:
             result = engine.learn_from_interaction(
                 user_message="I prefer concise responses from now on please",
                 assistant_response="Got it, I'll keep responses concise.",
@@ -202,7 +202,7 @@ class TestLearningActivityEvents:
             usage_tracker=mock_usage,
         )
 
-        with patch("jarvis_engine.activity_feed.log_activity") as mock_log:
+        with patch("jarvis_engine.memory.activity_feed.log_activity") as mock_log:
             engine.learn_from_interaction(
                 user_message="What is the weather today?",
                 assistant_response="It is sunny.",
@@ -223,7 +223,7 @@ class TestWidgetStatusEvents:
 
     def test_widget_status_includes_recent_events(self):
         """Widget status response includes recent_events from activity feed."""
-        from jarvis_engine.activity_feed import ActivityEvent
+        from jarvis_engine.memory.activity_feed import ActivityEvent
 
         mock_feed = MagicMock(spec=ActivityFeed)
         mock_events = [
@@ -249,7 +249,7 @@ class TestWidgetStatusEvents:
         mock_feed.query.return_value = mock_events
 
         # Simulate the filtering logic from _handle_get_widget_status
-        from jarvis_engine.activity_feed import ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityCategory
         events = mock_feed.query(limit=10)
         recent_events = [
             {
@@ -366,13 +366,13 @@ class TestActivityCategoryConstants:
     """Verify new activity categories exist."""
 
     def test_preference_learned_constant(self):
-        from jarvis_engine.activity_feed import ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityCategory
         assert ActivityCategory.PREFERENCE_LEARNED == "preference_learned"
 
     def test_mission_state_change_constant(self):
-        from jarvis_engine.activity_feed import ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityCategory
         assert ActivityCategory.MISSION_STATE_CHANGE == "mission_state_change"
 
     def test_resource_pressure_constant(self):
-        from jarvis_engine.activity_feed import ActivityCategory
+        from jarvis_engine.memory.activity_feed import ActivityCategory
         assert ActivityCategory.RESOURCE_PRESSURE == "resource_pressure"

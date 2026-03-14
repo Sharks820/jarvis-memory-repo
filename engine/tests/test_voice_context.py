@@ -244,7 +244,7 @@ class TestBuildSystemParts:
     def test_returns_list_of_strings(self, tmp_path: Path) -> None:
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="Be helpful."):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="Be helpful."):
             result = _build_system_parts([], [], [], [])
 
         assert isinstance(result, list)
@@ -254,7 +254,7 @@ class TestBuildSystemParts:
         """System parts always include datetime and persona prompt."""
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="I am Jarvis."):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="I am Jarvis."):
             result = _build_system_parts([], [], [], [])
 
         # At minimum: datetime line + persona prompt
@@ -263,7 +263,7 @@ class TestBuildSystemParts:
     def test_includes_facts_section(self, tmp_path: Path) -> None:
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], ["User likes coffee"], [], [])
 
         facts_part = [p for p in result if "Known facts" in p]
@@ -273,7 +273,7 @@ class TestBuildSystemParts:
     def test_includes_memories_section(self, tmp_path: Path) -> None:
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts(["Recent coding session"], [], [], [])
 
         mem_part = [p for p in result if "Relevant memories" in p]
@@ -283,7 +283,7 @@ class TestBuildSystemParts:
     def test_includes_cross_domain_section(self, tmp_path: Path) -> None:
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], ["work -> hobby connection"], [])
 
         cb_part = [p for p in result if "Cross-domain" in p]
@@ -292,7 +292,7 @@ class TestBuildSystemParts:
     def test_includes_preferences_section(self, tmp_path: Path) -> None:
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="Persona"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="Persona"):
             result = _build_system_parts([], [], [], ["tone: casual"])
 
         pref_part = [p for p in result if "User preferences" in p]
@@ -303,7 +303,7 @@ class TestBuildSystemParts:
         """Empty lists produce no extra sections beyond datetime+persona."""
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], [], [], [])
 
         # Only datetime + persona
@@ -314,7 +314,7 @@ class TestBuildSystemParts:
         facts = [f"Fact {i}" for i in range(10)]
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], facts, [], [])
 
         facts_part = [p for p in result if "Known facts" in p][0]
@@ -326,7 +326,7 @@ class TestBuildSystemParts:
         memories = [f"Memory {i}" for i in range(12)]
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
-             patch("jarvis_engine.persona.get_persona_prompt", return_value="P"):
+             patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts(memories, [], [], [])
 
         mem_part = [p for p in result if "Relevant memories" in p][0]

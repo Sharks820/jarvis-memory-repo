@@ -31,7 +31,7 @@ from jarvis_engine.api_contracts import (
     get_contract_schema,
     validate_contract,
 )
-from jarvis_engine.mobile_api import (
+from jarvis_engine.mobile_routes.server import (
     _build_san_string,
     _detect_lan_ips,
     _ensure_tls_cert,

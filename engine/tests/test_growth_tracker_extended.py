@@ -15,7 +15,7 @@ import pytest
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint as _is_safe_ollama_endpoint
-from jarvis_engine.growth_tracker import (
+from jarvis_engine.learning.growth_tracker import (
     BRANCH_TASK_MAP,
     DEFAULT_MEMORY_TASKS,
     EvalRun,

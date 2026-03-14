@@ -82,7 +82,7 @@ class ServeMobileHandler:
         self._root = root
 
     def handle(self, cmd: ServeMobileCommand) -> ServeMobileResult:
-        from jarvis_engine.mobile_api import run_mobile_server
+        from jarvis_engine.mobile_routes.server import run_mobile_server
 
         effective_token = cmd.token or os.getenv("JARVIS_MOBILE_TOKEN", "").strip()
         effective_signing_key = (
@@ -190,7 +190,7 @@ class GamingModeHandler:
         self._root = root
 
     def handle(self, cmd: GamingModeCommand) -> GamingModeResult:
-        from jarvis_engine.gaming_mode import (
+        from jarvis_engine.ops.gaming_mode import (
             detect_active_game_process,
             read_gaming_mode_state,
             write_gaming_mode_state,

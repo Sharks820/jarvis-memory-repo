@@ -526,7 +526,7 @@ class TestPersonaComposeHandler:
 
     def test_import_error_returns_error(self, tmp_path: Path) -> None:
         handler = PersonaComposeHandler(root=tmp_path, gateway=MagicMock(spec=ModelGateway))
-        with patch.dict("sys.modules", {"jarvis_engine.persona": None}):
+        with patch.dict("sys.modules", {"jarvis_engine.memory.persona": None}):
             result = handler.handle(PersonaComposeCommand(query="hello"))
         assert "not available" in result.message.lower()
 
@@ -548,7 +548,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -576,7 +576,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -602,7 +602,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -627,7 +627,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -652,7 +652,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -676,7 +676,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):
@@ -707,7 +707,7 @@ class TestPersonaComposeHandler:
         with patch.dict(
             "sys.modules",
             {
-                "jarvis_engine.persona": mock_persona,
+                "jarvis_engine.memory.persona": mock_persona,
                 "jarvis_engine.gateway.models": mock_gw_models,
             },
         ):

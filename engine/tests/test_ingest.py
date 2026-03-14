@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine.memory.store import MemoryStore
-from jarvis_engine.ingest import (
+from jarvis_engine.memory.basic_ingest import (
     IngestRecord,
     IngestionPipeline,
     _VALID_KINDS,

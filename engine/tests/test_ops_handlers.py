@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.automation import AutomationExecutor
+from jarvis_engine.ops.automation import AutomationExecutor
 from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
@@ -118,8 +118,8 @@ class TestOpsAutopilotHandler:
 class TestAutomationRunHandler:
     """Tests for AutomationRunHandler."""
 
-    @patch("jarvis_engine.automation.load_actions", return_value=[])
-    @patch("jarvis_engine.automation.AutomationExecutor")
+    @patch("jarvis_engine.ops.automation.load_actions", return_value=[])
+    @patch("jarvis_engine.ops.automation.AutomationExecutor")
     @patch("jarvis_engine.memory.store.MemoryStore")
     def test_handle_successful_run(
         self,
@@ -158,7 +158,7 @@ class TestAutomationRunHandler:
         result = handler.handle(cmd)
         assert result.outcomes == []
 
-    @patch("jarvis_engine.automation.load_actions")
+    @patch("jarvis_engine.ops.automation.load_actions")
     @patch("jarvis_engine.memory.store.MemoryStore")
     def test_handle_load_actions_called_with_correct_path(
         self,
@@ -174,7 +174,7 @@ class TestAutomationRunHandler:
         mock_executor = MagicMock(spec=AutomationExecutor)
         mock_executor.run.return_value = []
         with patch(
-            "jarvis_engine.automation.AutomationExecutor", return_value=mock_executor
+            "jarvis_engine.ops.automation.AutomationExecutor", return_value=mock_executor
         ):
             handler = AutomationRunHandler(root=tmp_path)
             cmd = AutomationRunCommand(actions_path=actions_path)
@@ -220,13 +220,13 @@ class TestGrowthEvalHandler:
         )
 
         with patch(
-            "jarvis_engine.growth_tracker.load_golden_tasks",
+            "jarvis_engine.learning.growth_tracker.load_golden_tasks",
             return_value=[{"task_id": "t1"}],
         ) as mock_load, patch(
-            "jarvis_engine.growth_tracker.run_eval",
+            "jarvis_engine.learning.growth_tracker.run_eval",
             return_value=fake_run,
         ) as mock_run_eval, patch(
-            "jarvis_engine.growth_tracker.append_history"
+            "jarvis_engine.learning.growth_tracker.append_history"
         ) as mock_append:
             result = handler.handle(cmd)
 
@@ -259,7 +259,7 @@ class TestGrowthEvalHandler:
         )
 
         with patch(
-            "jarvis_engine.growth_tracker.load_golden_tasks",
+            "jarvis_engine.learning.growth_tracker.load_golden_tasks",
             side_effect=FileNotFoundError("not found"),
         ):
             result = handler.handle(cmd)
@@ -280,9 +280,9 @@ class TestGrowthEvalHandler:
         )
 
         with patch(
-            "jarvis_engine.growth_tracker.load_golden_tasks", return_value=[]
+            "jarvis_engine.learning.growth_tracker.load_golden_tasks", return_value=[]
         ), patch(
-            "jarvis_engine.growth_tracker.run_eval",
+            "jarvis_engine.learning.growth_tracker.run_eval",
             side_effect=RuntimeError("connection refused"),
         ):
             result = handler.handle(cmd)
@@ -298,7 +298,7 @@ class TestGrowthEvalHandler:
 class TestIntelligenceDashboardHandler:
     """Tests for IntelligenceDashboardHandler."""
 
-    @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
+    @patch("jarvis_engine.ops.intelligence_dashboard.build_intelligence_dashboard")
     def test_handle_returns_dashboard_dict(
         self, mock_build: MagicMock, tmp_path: Path
     ) -> None:
@@ -322,7 +322,7 @@ class TestIntelligenceDashboardHandler:
             kg=None, engine=None,
         )
 
-    @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
+    @patch("jarvis_engine.ops.intelligence_dashboard.build_intelligence_dashboard")
     def test_handle_default_last_runs(
         self, mock_build: MagicMock, tmp_path: Path
     ) -> None:
@@ -339,7 +339,7 @@ class TestIntelligenceDashboardHandler:
             kg=None, engine=None,
         )
 
-    @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
+    @patch("jarvis_engine.ops.intelligence_dashboard.build_intelligence_dashboard")
     def test_handle_result_is_intelligence_dashboard_result(
         self, mock_build: MagicMock, tmp_path: Path
     ) -> None:
@@ -499,7 +499,7 @@ class TestMissionRunHandler:
         with patch(
             "jarvis_engine.memory.store.MemoryStore"
         ), patch(
-            "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
+            "jarvis_engine.memory.basic_ingest.IngestionPipeline", return_value=mock_pipeline
         ):
             result = handler.handle(cmd)
 
@@ -552,7 +552,7 @@ class TestMissionRunHandler:
         with patch(
             "jarvis_engine.memory.store.MemoryStore"
         ), patch(
-            "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
+            "jarvis_engine.memory.basic_ingest.IngestionPipeline", return_value=mock_pipeline
         ):
             result = handler.handle(cmd)
 

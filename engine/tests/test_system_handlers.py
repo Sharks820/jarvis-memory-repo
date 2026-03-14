@@ -109,7 +109,7 @@ def test_serve_mobile_no_signing_key() -> None:
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.mobile_api.run_mobile_server")
+@patch("jarvis_engine.mobile_routes.server.run_mobile_server")
 @patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "", "JARVIS_MOBILE_SIGNING_KEY": ""}, clear=False)
 def test_serve_mobile_explicit_args(mock_run: MagicMock) -> None:
     """Explicit token/signing_key args override env."""
@@ -126,7 +126,7 @@ def test_serve_mobile_explicit_args(mock_run: MagicMock) -> None:
     )
 
 
-@patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=KeyboardInterrupt)
+@patch("jarvis_engine.mobile_routes.server.run_mobile_server", side_effect=KeyboardInterrupt)
 @patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
 def test_serve_mobile_keyboard_interrupt(mock_run: MagicMock) -> None:
     """KeyboardInterrupt is caught cleanly, returns rc=0."""
@@ -135,7 +135,7 @@ def test_serve_mobile_keyboard_interrupt(mock_run: MagicMock) -> None:
     assert result.return_code == 0
 
 
-@patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=RuntimeError("bind failed"))
+@patch("jarvis_engine.mobile_routes.server.run_mobile_server", side_effect=RuntimeError("bind failed"))
 @patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
 def test_serve_mobile_runtime_error(mock_run: MagicMock) -> None:
     handler = ServeMobileHandler(ROOT)
@@ -143,7 +143,7 @@ def test_serve_mobile_runtime_error(mock_run: MagicMock) -> None:
     assert result.return_code == 3
 
 
-@patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=OSError("addr in use"))
+@patch("jarvis_engine.mobile_routes.server.run_mobile_server", side_effect=OSError("addr in use"))
 @patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
 def test_serve_mobile_os_error(mock_run: MagicMock) -> None:
     handler = ServeMobileHandler(ROOT)
@@ -298,8 +298,8 @@ def test_desktop_widget_import_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.ops.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.ops.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand())
@@ -307,9 +307,9 @@ def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> 
     assert result.detected is False
 
 
-@patch("jarvis_engine.gaming_mode.write_gaming_mode_state", return_value={"enabled": True})
-@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.ops.gaming_mode.write_gaming_mode_state", return_value={"enabled": True})
+@patch("jarvis_engine.ops.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.ops.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(enable=True))
@@ -318,9 +318,9 @@ def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_w
     assert result.effective_enabled is True
 
 
-@patch("jarvis_engine.gaming_mode.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
-@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(True, "steam.exe"))
-@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.ops.gaming_mode.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
+@patch("jarvis_engine.ops.gaming_mode.detect_active_game_process", return_value=(True, "steam.exe"))
+@patch("jarvis_engine.ops.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(auto_detect="on"))
@@ -329,8 +329,8 @@ def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock
     assert result.effective_enabled is True  # detected overrides enabled=False
 
 
-@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.ops.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.ops.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_no_change_no_write(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     """When no flags change state, _write is NOT called."""
     handler = GamingModeHandler(ROOT)

@@ -292,7 +292,7 @@ class MemoryConsolidator:
 
     def _llm_summarise(self, summaries: list[str]) -> str | None:
         """Call the LLM gateway to produce a consolidated fact."""
-        from jarvis_engine.temporal import get_datetime_prompt
+        from jarvis_engine.ops.temporal import get_datetime_prompt
 
         snippets = "\n".join(f"- {s}" for s in summaries)
         prompt = _CONSOLIDATION_PROMPT.format(snippets=snippets)

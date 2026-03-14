@@ -185,7 +185,7 @@ class TestDashboardLearningMetrics:
 
     def test_dashboard_includes_learning_section(self):
         """Dashboard includes 'learning' key with tracker data."""
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.get_all_route_quality.return_value = {
@@ -217,7 +217,7 @@ class TestDashboardLearningMetrics:
 
     def test_dashboard_includes_knowledge_snapshot(self):
         """Dashboard includes 'knowledge_snapshot' with KG/engine data."""
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.count_nodes.return_value = 100
@@ -248,7 +248,7 @@ class TestDashboardLearningMetrics:
 
     def test_dashboard_no_trackers_graceful(self):
         """Dashboard works with no trackers (all None)."""
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         root = self._make_tmp_root()
         dashboard = build_intelligence_dashboard(root)
@@ -260,7 +260,7 @@ class TestDashboardLearningMetrics:
 
     def test_dashboard_tracker_error_graceful(self):
         """Dashboard handles tracker exceptions gracefully."""
-        from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.ops.intelligence_dashboard import build_intelligence_dashboard
 
         mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.get_all_route_quality.side_effect = RuntimeError("db error")

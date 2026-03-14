@@ -13,7 +13,7 @@ import socket
 from unittest.mock import MagicMock, patch
 from urllib.request import Request
 
-from jarvis_engine.web_fetch import (
+from jarvis_engine.web.fetch import (
     SafeRedirectHandler,
     fetch_page_text,
     is_safe_public_url,
@@ -45,11 +45,11 @@ class TestIsSafePublicUrl:
     # ---- scheme checks ----
 
     def test_http_allowed(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             assert is_safe_public_url("http://example.com/page") is True
 
     def test_https_allowed(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             assert is_safe_public_url("https://example.com/page") is True
 
     def test_ftp_rejected(self):
@@ -129,25 +129,25 @@ class TestIsSafePublicUrl:
     # ---- hostname resolves to private IP (DNS attack) ----
 
     def test_hostname_resolving_to_private_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("10.0.0.1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("10.0.0.1")):
             assert is_safe_public_url("http://evil.example.com/") is False
 
     def test_hostname_resolving_to_loopback_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             assert is_safe_public_url("http://evil.example.com/") is False
 
     def test_hostname_resolving_to_public_accepted(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             assert is_safe_public_url("http://example.com/") is True
 
     def test_hostname_dns_failure_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", side_effect=socket.gaierror("nope")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", side_effect=socket.gaierror("nope")):
             assert is_safe_public_url("http://nonexistent.invalid/") is False
 
     def test_mixed_dns_results_one_private_rejected(self):
         """If any resolved IP is private, the entire URL is rejected."""
         results = _addrinfo("93.184.216.34") + _addrinfo("10.0.0.1")
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=results):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=results):
             assert is_safe_public_url("http://mixed.example.com/") is False
 
     def test_reserved_ip_240_rejected(self):
@@ -161,45 +161,45 @@ class TestResolveAndCheckIp:
     """Security-critical: DNS rebinding prevention (TOCTOU mitigation)."""
 
     def test_public_ip_passes(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             assert resolve_and_check_ip("https://example.com/page") is True
 
     def test_private_ip_fails(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("192.168.1.1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("192.168.1.1")):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_loopback_fails(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_dns_failure_returns_false(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", side_effect=socket.gaierror):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", side_effect=socket.gaierror):
             assert resolve_and_check_ip("https://fail.example.com/") is False
 
     def test_empty_host_returns_false(self):
         assert resolve_and_check_ip("https:///path") is False
 
     def test_uses_correct_default_port_https(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
             resolve_and_check_ip("https://example.com/page")
             m.assert_called_once_with("example.com", 443, proto=socket.IPPROTO_TCP)
 
     def test_uses_correct_default_port_http(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
             resolve_and_check_ip("http://example.com/page")
             m.assert_called_once_with("example.com", 80, proto=socket.IPPROTO_TCP)
 
     def test_explicit_port_used(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
             resolve_and_check_ip("http://example.com:8080/page")
             m.assert_called_once_with("example.com", 8080, proto=socket.IPPROTO_TCP)
 
     def test_ipv6_loopback_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo_v6("::1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo_v6("::1")):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_link_local_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("169.254.0.1")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("169.254.0.1")):
             assert resolve_and_check_ip("https://evil.com/") is False
 
 
@@ -219,7 +219,7 @@ class TestSafeRedirectHandler:
         req.headers = {}
         req.origin_req_host = "original.example.com"
         req.unverifiable = False
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch("jarvis_engine.web.fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             result = handler.redirect_request(
                 req, None, 302, "Found", {}, "https://safe.example.com/page"
             )
@@ -265,9 +265,9 @@ class TestSafeRedirectHandler:
 class TestFetchPageText:
     """Full HTTP fetch with SSRF checks, HTML stripping, DNS rebinding prevention."""
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_returns_stripped_text(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><body><p>Hello World</p></body></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
@@ -280,9 +280,9 @@ class TestFetchPageText:
         result = fetch_page_text("https://example.com/")
         assert "Hello World" in result
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_strips_script_tags(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><script>alert('xss')</script><p>Clean</p></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
@@ -296,9 +296,9 @@ class TestFetchPageText:
         assert "alert" not in result
         assert "Clean" in result
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_strips_style_tags(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><style>.hide{display:none}</style><p>Visible</p></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
@@ -312,9 +312,9 @@ class TestFetchPageText:
         assert "display:none" not in result
         assert "Visible" in result
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_unescapes_html_entities(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<p>A &amp; B &lt; C</p>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
@@ -336,23 +336,23 @@ class TestFetchPageText:
         result = fetch_page_text("http://localhost/secrets")
         assert result == ""
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=False)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=False)
     def test_dns_rebinding_returns_empty(self, mock_resolve, mock_safe):
         result = fetch_page_text("https://rebind.example.com/")
         assert result == ""
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_network_error_returns_empty(self, mock_opener_fn, mock_safe, mock_resolve):
         mock_opener_fn.return_value.open.side_effect = OSError("connection refused")
         result = fetch_page_text("https://down.example.com/")
         assert result == ""
 
-    @patch("jarvis_engine.web_fetch.resolve_and_check_ip", return_value=True)
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_collapses_whitespace(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<p>  lots   of    spaces  </p>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
@@ -381,8 +381,8 @@ class TestSearchDuckduckgo:
         mock_opener.open.return_value = mock_resp
         return mock_opener
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_extracts_urls_from_results(self, mock_build_opener, mock_safe):
         html = b'''
         <div>
@@ -396,8 +396,8 @@ class TestSearchDuckduckgo:
         assert "https://example.com/result1" in urls
         assert "https://example.org/result2" in urls
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_respects_limit(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://a.com/1">1</a>
@@ -409,8 +409,8 @@ class TestSearchDuckduckgo:
         urls = search_duckduckgo("test", limit=2)
         assert len(urls) <= 2
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_filters_duckduckgo_urls(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://duckduckgo.com/internal">DDG</a>
@@ -421,7 +421,7 @@ class TestSearchDuckduckgo:
         for url in urls:
             assert "duckduckgo.com" not in url
 
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_filters_unsafe_urls(self, mock_build_opener):
         html = b'''
         <a href="http://192.168.1.1/admin">Private</a>
@@ -433,18 +433,18 @@ class TestSearchDuckduckgo:
         def _safe_check(url):
             return "192.168" not in url
 
-        with patch("jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check):
+        with patch("jarvis_engine.web.fetch.is_safe_public_url", side_effect=_safe_check):
             urls = search_duckduckgo("test", limit=5)
         assert all("192.168" not in u for u in urls)
 
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_network_error_returns_empty_list(self, mock_build_opener):
         mock_build_opener.return_value.open.side_effect = OSError("network down")
         urls = search_duckduckgo("test query", limit=5)
         assert urls == []
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_deduplicates_urls(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://example.com/page">First</a>
@@ -455,8 +455,8 @@ class TestSearchDuckduckgo:
         urls = search_duckduckgo("test", limit=10)
         assert len(urls) == len(set(urls))  # no duplicates
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_unescapes_html_entities_in_urls(self, mock_build_opener, mock_safe):
         html = b'<a href="https://example.com/page?a=1&amp;b=2">Link</a>'
         mock_build_opener.return_value = self._mock_opener(html)
@@ -466,8 +466,8 @@ class TestSearchDuckduckgo:
             assert "&amp;" not in urls[0]
             assert "&" in urls[0]
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.build_opener")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.build_opener")
     def test_no_results_returns_empty_list(self, mock_build_opener, mock_safe):
         html = b"<html><body><p>No results found</p></body></html>"
         mock_build_opener.return_value = self._mock_opener(html)
@@ -500,8 +500,8 @@ class TestSearchBrave:
         urls = search_brave("test query", limit=5)
         assert urls == []
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_extracts_urls_from_json(self, mock_urlopen, mock_safe):
         payload = _brave_json_response([
@@ -515,8 +515,8 @@ class TestSearchBrave:
         assert "https://example.org/page2" in urls
         assert len(urls) == 2
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_respects_limit(self, mock_urlopen, mock_safe):
         payload = _brave_json_response([
@@ -528,8 +528,8 @@ class TestSearchBrave:
         urls = search_brave("test", limit=3)
         assert len(urls) <= 3
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_sends_auth_header(self, mock_urlopen, mock_safe):
         payload = _brave_json_response([])
@@ -540,7 +540,7 @@ class TestSearchBrave:
         req = call_args[0][0]
         assert req.get_header("X-subscription-token") == "test-key-123"
 
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_filters_unsafe_urls(self, mock_urlopen):
         payload = _brave_json_response([
@@ -552,26 +552,26 @@ class TestSearchBrave:
         def _safe_check(url):
             return "192.168" not in url
 
-        with patch("jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check):
+        with patch("jarvis_engine.web.fetch.is_safe_public_url", side_effect=_safe_check):
             urls = search_brave("test", limit=5)
         assert all("192.168" not in u for u in urls)
         assert "https://safe.example.com/page" in urls
 
-    @patch("jarvis_engine.web_fetch.urlopen", side_effect=OSError("connection refused"))
+    @patch("jarvis_engine.web.fetch.urlopen", side_effect=OSError("connection refused"))
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_network_error_returns_empty(self, mock_urlopen):
         urls = search_brave("test", limit=5)
         assert urls == []
 
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_invalid_json_returns_empty(self, mock_urlopen):
         mock_urlopen.return_value = _mock_urlopen_cm(b"not json at all")
         urls = search_brave("test", limit=5)
         assert urls == []
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_deduplicates_urls(self, mock_urlopen, mock_safe):
         payload = _brave_json_response([
@@ -584,8 +584,8 @@ class TestSearchBrave:
         urls = search_brave("test", limit=10)
         assert len(urls) == len(set(urls))
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_skips_results_without_url(self, mock_urlopen, mock_safe):
         payload = _brave_json_response([
@@ -597,8 +597,8 @@ class TestSearchBrave:
         urls = search_brave("test", limit=5)
         assert urls == ["https://example.com/real"]
 
-    @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_missing_web_key_returns_empty(self, mock_urlopen, mock_safe):
         """API returns valid JSON but no 'web' key."""
@@ -615,7 +615,7 @@ class TestSearchBrave:
 class TestSearchWeb:
     """Unified search with Brave-first, DuckDuckGo-fallback behavior."""
 
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": ""})
     def test_no_brave_key_uses_duckduckgo(self, mock_ddg):
         mock_ddg.return_value = ["https://ddg-result.com/"]
@@ -623,7 +623,7 @@ class TestSearchWeb:
         assert urls == ["https://ddg-result.com/"]
         mock_ddg.assert_called_once_with("test", limit=5)
 
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {}, clear=False)
     def test_no_brave_key_env_missing_uses_duckduckgo(self, mock_ddg):
         """BRAVE_SEARCH_API_KEY not in env at all."""
@@ -635,8 +635,8 @@ class TestSearchWeb:
             urls = search_web("test", limit=3)
             assert urls == ["https://ddg.example.com/"]
 
-    @patch("jarvis_engine.web_fetch.search_brave")
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_brave")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "key123"})
     def test_brave_success_skips_duckduckgo(self, mock_ddg, mock_brave):
         mock_brave.return_value = ["https://brave-result.com/"]
@@ -645,8 +645,8 @@ class TestSearchWeb:
         mock_brave.assert_called_once_with("test query", limit=5)
         mock_ddg.assert_not_called()
 
-    @patch("jarvis_engine.web_fetch.search_brave")
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_brave")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "key123"})
     def test_brave_empty_falls_back_to_duckduckgo(self, mock_ddg, mock_brave):
         mock_brave.return_value = []
@@ -656,8 +656,8 @@ class TestSearchWeb:
         mock_brave.assert_called_once()
         mock_ddg.assert_called_once_with("test", limit=5)
 
-    @patch("jarvis_engine.web_fetch.search_brave")
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_brave")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "key123"})
     def test_brave_exception_falls_back_to_duckduckgo(self, mock_ddg, mock_brave):
         """Even if search_brave raises unexpectedly, search_web shouldn't crash."""
@@ -672,8 +672,8 @@ class TestSearchWeb:
         urls = search_web("test", limit=5)
         assert urls == ["https://ddg-rescue.com/"]
 
-    @patch("jarvis_engine.web_fetch.search_brave")
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_brave")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "key123"})
     def test_passes_limit_to_both_engines(self, mock_ddg, mock_brave):
         mock_brave.return_value = []
@@ -682,7 +682,7 @@ class TestSearchWeb:
         mock_brave.assert_called_once_with("test", limit=7)
         mock_ddg.assert_called_once_with("test", limit=7)
 
-    @patch("jarvis_engine.web_fetch.search_duckduckgo")
+    @patch("jarvis_engine.web.fetch.search_duckduckgo")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": ""})
     def test_returns_list_of_strings(self, mock_ddg):
         mock_ddg.return_value = ["https://a.com/", "https://b.com/"]

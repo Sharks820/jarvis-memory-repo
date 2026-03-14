@@ -3097,7 +3097,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _refresh_continuity_snapshot(self) -> None:
         """Pull continuity state into the controller for desktop rendering."""
         try:
-            from jarvis_engine.conversation_state import get_conversation_state
+            from jarvis_engine.memory.conversation_state import get_conversation_state
 
             csm = get_conversation_state()
             injection = csm.get_prompt_injection()

@@ -11,13 +11,13 @@ import pytest
 from pathlib import Path
 
 from conftest import http_request, signed_headers
-from jarvis_engine import mobile_api
-from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.mobile_routes import server as mobile_api
+from jarvis_engine.memory.basic_ingest import IngestionPipeline
 from jarvis_engine.mobile_routes._helpers import _parse_bool
 from jarvis_engine.memory.store import MemoryStore
-from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
+from jarvis_engine.mobile_routes.server import MobileIngestHandler, MobileIngestServer
 from jarvis_engine.command_bus import CommandBus
-from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
+from jarvis_engine.security.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
 
 
 def test_health_endpoint(mobile_server) -> None:
@@ -461,7 +461,7 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice):
+    with patch("jarvis_engine.mobile_routes.server.MobileIngestHandler._run_voice_command", _mock_run_voice):
         code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
@@ -478,7 +478,7 @@ def test_conversation_clear_resets_cross_llm_state(mobile_server, monkeypatch) -
             reset_calls.append("reset")
 
     monkeypatch.setattr(
-        "jarvis_engine.conversation_state.get_conversation_state",
+        "jarvis_engine.memory.conversation_state.get_conversation_state",
         lambda: _StubConversationState(),
     )
 
@@ -513,7 +513,7 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice_fail):
+    with patch("jarvis_engine.mobile_routes.server.MobileIngestHandler._run_voice_command", _mock_run_voice_fail):
         req = Request(
             url=f"{mobile_server.base_url}/command",
             method="POST",
@@ -1167,7 +1167,7 @@ def test_write_gaming_state_roundtrip(mobile_server) -> None:
 
 def test_gaming_state_path_returns_expected_path() -> None:
     """gaming_mode_state_path returns correct path under repo root."""
-    from jarvis_engine.gaming_mode import gaming_mode_state_path
+    from jarvis_engine.ops.gaming_mode import gaming_mode_state_path
 
     path = gaming_mode_state_path()
     assert path.name == "gaming_mode.json"
@@ -1666,7 +1666,7 @@ def test_voice_command_subprocess_does_not_leak_master_password(mobile_server) -
         return result
 
     # Force the subprocess path by making the in-process import fail
-    with patch("jarvis_engine.mobile_api.subprocess.run", fake_run), \
+    with patch("jarvis_engine.mobile_routes.server.subprocess.run", fake_run), \
          patch.dict("sys.modules", {"jarvis_engine.main": None}):
         handler = MobileIngestHandler.__new__(MobileIngestHandler)
         handler.server = mobile_server.server
@@ -2313,16 +2313,16 @@ def test_scam_report_call_returns_enhanced_score(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.create_call_intel_report") as mock_create, \
-         patch("jarvis_engine.scam_hunter.save_call_intel"), \
-         patch("jarvis_engine.scam_hunter.load_call_intel", return_value=[]), \
-         patch("jarvis_engine.scam_hunter.detect_campaigns", return_value=[]), \
-         patch("jarvis_engine.scam_hunter.save_campaigns"), \
-         patch("jarvis_engine.scam_hunter.compute_enhanced_spam_score", return_value=0.75), \
-         patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=None), \
-         patch("jarvis_engine.scam_hunter.score_time_of_day", return_value=0.3), \
-         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"), \
-         patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[]):
+    with patch("jarvis_engine.phone.scam_hunter.create_call_intel_report") as mock_create, \
+         patch("jarvis_engine.phone.scam_hunter.save_call_intel"), \
+         patch("jarvis_engine.phone.scam_hunter.load_call_intel", return_value=[]), \
+         patch("jarvis_engine.phone.scam_hunter.detect_campaigns", return_value=[]), \
+         patch("jarvis_engine.phone.scam_hunter.save_campaigns"), \
+         patch("jarvis_engine.phone.scam_hunter.compute_enhanced_spam_score", return_value=0.75), \
+         patch("jarvis_engine.phone.scam_hunter.lookup_carrier_cached", return_value=None), \
+         patch("jarvis_engine.phone.scam_hunter.score_time_of_day", return_value=0.3), \
+         patch("jarvis_engine.phone.guard.normalize_number", return_value="+15551234567"), \
+         patch("jarvis_engine.phone.guard.detect_spam_candidates", return_value=[]):
         mock_create.return_value = MagicMock(normalized="+15551234567")
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
 
@@ -2343,7 +2343,7 @@ def test_scam_report_call_handles_internal_error(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.create_call_intel_report", side_effect=OSError("boom")):
+    with patch("jarvis_engine.phone.scam_hunter.create_call_intel_report", side_effect=OSError("boom")):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
 
     assert code == 500
@@ -2379,9 +2379,9 @@ def test_scam_lookup_returns_carrier_info(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=mock_carrier), \
-         patch("jarvis_engine.scam_hunter.load_campaigns", return_value=[]), \
-         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"):
+    with patch("jarvis_engine.phone.scam_hunter.lookup_carrier_cached", return_value=mock_carrier), \
+         patch("jarvis_engine.phone.scam_hunter.load_campaigns", return_value=[]), \
+         patch("jarvis_engine.phone.guard.normalize_number", return_value="+15551234567"):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
 
     assert code == 200
@@ -2402,8 +2402,8 @@ def test_scam_lookup_handles_internal_error(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", side_effect=OSError("boom")), \
-         patch("jarvis_engine.phone_guard.normalize_number", return_value="+15551234567"):
+    with patch("jarvis_engine.phone.scam_hunter.lookup_carrier_cached", side_effect=OSError("boom")), \
+         patch("jarvis_engine.phone.guard.normalize_number", return_value="+15551234567"):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
 
     assert code == 500

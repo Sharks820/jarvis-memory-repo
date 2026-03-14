@@ -19,7 +19,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 from jarvis_engine._shared import atomic_write_json
 
-from jarvis_engine.connectors import (
+from jarvis_engine.ops.connectors import (
     build_connector_prompts,
     evaluate_connector_statuses,
     serialize_statuses,

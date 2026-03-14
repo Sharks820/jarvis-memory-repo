@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine.ops import sync as ops_sync
-from jarvis_engine.connectors import ConnectorStatus
+from jarvis_engine.ops.connectors import ConnectorStatus
 from jarvis_engine.ops.sync import (
     SyncSummary,
     _decode_email_header,

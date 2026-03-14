@@ -19,9 +19,9 @@ from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import make_task_id, memory_db_path, set_process_title
-from jarvis_engine.auto_ingest import auto_ingest_memory as _auto_ingest_memory
+from jarvis_engine.memory.auto_ingest import auto_ingest_memory as _auto_ingest_memory
 from jarvis_engine.config import repo_root
-from jarvis_engine.gaming_mode import gaming_processes_path
+from jarvis_engine.ops.gaming_mode import gaming_processes_path
 
 from jarvis_engine.commands.memory_commands import (
     IngestCommand,
@@ -101,7 +101,7 @@ def cmd_ingest(source: str, kind: str, task_id: str, content: str) -> int:
 
 def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False, config_file: str | None = None, tls: bool | None = None) -> int:
     from jarvis_engine._shared import load_json_file
-    from jarvis_engine.mobile_api_lifecycle import run_mobile_server
+    from jarvis_engine.mobile_routes.lifecycle import run_mobile_server
 
     # Load credentials from config file if provided
     if config_file:
@@ -371,7 +371,7 @@ def cmd_self_heal(*, force_maintenance: bool, keep_recent: int, snapshot_note: s
 
 
 def cmd_memory_eval() -> int:
-    from jarvis_engine.growth_tracker import (
+    from jarvis_engine.learning.growth_tracker import (
         DEFAULT_MEMORY_TASKS,
         run_memory_eval,
     )

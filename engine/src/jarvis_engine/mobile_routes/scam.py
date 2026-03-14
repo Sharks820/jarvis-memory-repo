@@ -63,7 +63,7 @@ class ScamRoutesMixin:
 
         Returns (report, all_reports, campaigns, line_type, carrier_risk).
         """
-        from jarvis_engine.scam_hunter import (
+        from jarvis_engine.phone.scam_hunter import (
             create_call_intel_report,
             save_call_intel,
             load_call_intel,
@@ -110,11 +110,11 @@ class ScamRoutesMixin:
         Returns dict with enhanced_score, action, campaign_id,
         campaign_confidence, and campaign_signals.
         """
-        from jarvis_engine.scam_hunter import (
+        from jarvis_engine.phone.scam_hunter import (
             compute_enhanced_spam_score,
             score_time_of_day,
         )
-        from jarvis_engine.phone_guard import normalize_number, detect_spam_candidates
+        from jarvis_engine.phone.guard import normalize_number, detect_spam_candidates
 
         normalized = normalize_number(fields["number"])
 
@@ -219,11 +219,11 @@ class ScamRoutesMixin:
         if body is None:
             return
         try:
-            from jarvis_engine.scam_hunter import (
+            from jarvis_engine.phone.scam_hunter import (
                 lookup_carrier_cached,
                 load_campaigns,
             )
-            from jarvis_engine.phone_guard import normalize_number
+            from jarvis_engine.phone.guard import normalize_number
 
             number = str(body.get("number", ""))
             normalized = normalize_number(number)
@@ -276,7 +276,7 @@ class ScamRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
+            from jarvis_engine.phone.scam_hunter import load_campaigns, build_prefix_block_actions
             from dataclasses import asdict
 
             campaign_path = runtime_dir(self._root) / "scam_campaigns.json"
@@ -302,7 +302,7 @@ class ScamRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
+            from jarvis_engine.phone.scam_hunter import load_campaigns, load_call_intel
 
             campaign_path = runtime_dir(self._root) / "scam_campaigns.json"
             intel_path = runtime_dir(self._root) / "call_intel.jsonl"

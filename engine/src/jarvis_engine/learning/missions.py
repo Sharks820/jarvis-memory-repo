@@ -13,11 +13,11 @@ from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import urlparse
 
-from jarvis_engine.web_fetch import (
+from jarvis_engine.web.fetch import (
     fetch_page_text as _fetch_page_text,
     search_web as _search_web,
 )
-from jarvis_engine.web_research import STOPWORDS
+from jarvis_engine.web.research import STOPWORDS
 
 # File-level lock for missions.json to prevent TOCTOU race conditions
 # between concurrent daemon auto-generation, mobile API creates, and mission runs.
@@ -174,7 +174,7 @@ def _log_mission_activity(
     step: str,
 ) -> None:
     try:
-        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+        from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
         log_activity(
             ActivityCategory.MISSION_STATE_CHANGE,

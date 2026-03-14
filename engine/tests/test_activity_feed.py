@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.activity_feed import (
+from jarvis_engine.memory.activity_feed import (
     ActivityCategory,
     ActivityFeed,
 )

@@ -78,7 +78,7 @@ def _gather_kg_metrics(root: Any, metrics: dict[str, Any]) -> None:
 def _gather_activity_corrections(metrics: dict[str, Any]) -> None:
     """Populate correction and consolidation counts from the activity feed."""
     try:
-        from jarvis_engine.activity_feed import get_activity_feed
+        from jarvis_engine.memory.activity_feed import get_activity_feed
 
         feed = get_activity_feed()
         stats = feed.stats()
@@ -113,7 +113,7 @@ def _gather_self_test_score(root: Any, metrics: dict[str, Any]) -> None:
 def _gather_capability_trend(root: Any, metrics: dict[str, Any]) -> None:
     """Override growth_trend based on capability history score progression."""
     try:
-        from jarvis_engine.growth_tracker import read_history
+        from jarvis_engine.learning.growth_tracker import read_history
 
         cap_path = root / ".planning" / "capability_history.jsonl"
         cap_rows = read_history(cap_path)
@@ -225,7 +225,7 @@ class IntelligenceRoutesMixin:
         try:
             from urllib.parse import parse_qs, urlparse
 
-            from jarvis_engine.conversation_state import get_conversation_state
+            from jarvis_engine.memory.conversation_state import get_conversation_state
 
             csm = get_conversation_state()
             # S3: Use query param ?full=1 for unredacted data (dashboard only),
@@ -243,7 +243,7 @@ class IntelligenceRoutesMixin:
                         "error": "Master password required for full conversation state.",
                     })
                     return
-                from jarvis_engine.owner_guard import verify_master_password
+                from jarvis_engine.security.owner_guard import verify_master_password
                 if not verify_master_password(self._root, master_pwd):
                     self._write_json(HTTPStatus.FORBIDDEN, {
                         "ok": False,

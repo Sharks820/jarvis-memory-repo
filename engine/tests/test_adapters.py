@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.adapters import (
+from jarvis_engine.media.adapters import (
     AdapterBase,
     AdapterResult,
     ImageAdapter,

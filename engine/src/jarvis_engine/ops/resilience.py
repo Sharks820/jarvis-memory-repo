@@ -11,7 +11,7 @@ from jarvis_engine._shared import atomic_write_json, now_iso, runtime_dir, safe_
 from jarvis_engine.memory.brain import RegressionReport, brain_regression_report, brain_status
 from jarvis_engine.memory.snapshots import run_memory_maintenance
 from jarvis_engine.ops.runtime_control import read_control_state
-from jarvis_engine.owner_guard import read_owner_guard
+from jarvis_engine.security.owner_guard import read_owner_guard
 
 logger = logging.getLogger(__name__)
 

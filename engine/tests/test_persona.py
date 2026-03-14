@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
-from jarvis_engine.persona import (
+from jarvis_engine.memory.persona import (
     PersonaConfig,
     _resolve_tone,
     compose_persona_reply,

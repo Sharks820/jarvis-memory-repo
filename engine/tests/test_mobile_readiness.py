@@ -815,7 +815,7 @@ class TestFeedbackRateLimiting:
 
     def test_feedback_in_expensive_paths(self):
         """POST /feedback is rate-limited as an expensive endpoint."""
-        from jarvis_engine.mobile_api import _EXPENSIVE_PATHS
+        from jarvis_engine.mobile_routes.server import _EXPENSIVE_PATHS
         assert "/feedback" in _EXPENSIVE_PATHS
 
 

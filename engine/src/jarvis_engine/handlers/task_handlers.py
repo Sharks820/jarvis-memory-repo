@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
     from jarvis_engine.gateway.classifier import IntentClassifier
     from jarvis_engine.memory.store import MemoryStore
-    from jarvis_engine.task_orchestrator import TaskOrchestrator
+    from jarvis_engine.ops.task_orchestrator import TaskOrchestrator
 
 from jarvis_engine.commands.task_commands import (
     QueryCommand,
@@ -38,14 +38,14 @@ class RunTaskHandler:
         """Lazily create and cache MemoryStore + TaskOrchestrator."""
         if self._orchestrator is None:
             from jarvis_engine.memory.store import MemoryStore
-            from jarvis_engine.task_orchestrator import TaskOrchestrator
+            from jarvis_engine.ops.task_orchestrator import TaskOrchestrator
 
             self._store = MemoryStore(self._root)
             self._orchestrator = TaskOrchestrator(self._store, self._root)
         return self._orchestrator
 
     def handle(self, cmd: RunTaskCommand) -> RunTaskResult:
-        from jarvis_engine.task_orchestrator import TaskRequest
+        from jarvis_engine.ops.task_orchestrator import TaskRequest
 
         orchestrator = self._get_orchestrator()
         result = orchestrator.run(
@@ -62,7 +62,7 @@ class RunTaskHandler:
         )
         auto_id = ""
         try:
-            from jarvis_engine.auto_ingest import auto_ingest_memory
+            from jarvis_engine.memory.auto_ingest import auto_ingest_memory
 
             auto_id = auto_ingest_memory(
                 source="task_outcome",
@@ -142,7 +142,7 @@ class WebResearchHandler:
         self._root = root
 
     def handle(self, cmd: WebResearchCommand) -> WebResearchResult:
-        from jarvis_engine.web_research import run_web_research
+        from jarvis_engine.web.research import run_web_research
 
         cleaned = cmd.query.strip()
         if not cleaned:
@@ -166,7 +166,7 @@ class WebResearchHandler:
         findings = report.get("findings", [])
         if cmd.auto_ingest and summary_lines:
             try:
-                from jarvis_engine.auto_ingest import auto_ingest_memory
+                from jarvis_engine.memory.auto_ingest import auto_ingest_memory
 
                 lines = []
                 for line in summary_lines[:6]:
@@ -232,7 +232,7 @@ class QueryHandler:
             route_reason = "Default: no classifier available"
 
         # Build messages with optional conversation history
-        from jarvis_engine.temporal import get_datetime_prompt
+        from jarvis_engine.ops.temporal import get_datetime_prompt
 
         messages: list[dict[str, str]] = []
         if cmd.system_prompt:

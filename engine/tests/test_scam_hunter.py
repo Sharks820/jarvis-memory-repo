@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, timedelta
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.scam_hunter import (
+from jarvis_engine.phone.scam_hunter import (
     CarrierIntel,
     ScamCampaign,
     build_prefix_block_actions,

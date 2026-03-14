@@ -99,7 +99,7 @@ class DataRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.activity_feed import get_activity_feed
+            from jarvis_engine.memory.activity_feed import get_activity_feed
         except ImportError as exc:
             logger.debug("Activity feed module not available: %s", exc)
             self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})

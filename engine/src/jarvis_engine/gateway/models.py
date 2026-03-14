@@ -47,7 +47,7 @@ except ImportError:
 
 _log_activity: Callable[[str, str, dict[Any, Any] | None], str] | None
 try:
-    from jarvis_engine.activity_feed import log_activity as _activity_log
+    from jarvis_engine.memory.activity_feed import log_activity as _activity_log
 except ImportError:
     _log_activity = None
 else:

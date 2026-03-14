@@ -310,7 +310,7 @@ class TestRunTaskHandler:
         )
         # Even if _auto_ingest_memory fails, result should still be returned
         with patch(
-            "jarvis_engine.auto_ingest.auto_ingest_memory",
+            "jarvis_engine.memory.auto_ingest.auto_ingest_memory",
             side_effect=RuntimeError("ingest failed"),
         ):
             result = handler.handle(cmd)
@@ -461,7 +461,7 @@ class TestWebResearchHandlerExtended:
             "findings": [{"domain": "example.com", "title": "Test"}],
         }
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             return_value=mock_report,
         ):
             result = handler.handle(cmd)
@@ -472,7 +472,7 @@ class TestWebResearchHandlerExtended:
         handler = WebResearchHandler(root=Path("."))
         cmd = WebResearchCommand(query="test query")
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             side_effect=ValueError("bad query"),
         ):
             result = handler.handle(cmd)
@@ -482,7 +482,7 @@ class TestWebResearchHandlerExtended:
         handler = WebResearchHandler(root=Path("."))
         cmd = WebResearchCommand(query="test query")
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             side_effect=RuntimeError("network error"),
         ):
             result = handler.handle(cmd)
@@ -492,7 +492,7 @@ class TestWebResearchHandlerExtended:
         handler = WebResearchHandler(root=Path("."))
         cmd = WebResearchCommand(query="test", max_results=100, max_pages=100)
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             return_value={"summary_lines": [], "findings": []},
         ) as mock_fn:
             handler.handle(cmd)
@@ -513,11 +513,11 @@ class TestWebResearchHandlerExtended:
             "findings": [{"domain": "example.com"}],
         }
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             return_value=mock_report,
         ):
             with patch(
-                "jarvis_engine.auto_ingest.auto_ingest_memory",
+                "jarvis_engine.memory.auto_ingest.auto_ingest_memory",
                 return_value="rec-123",
             ):
                 result = handler.handle(cmd)
@@ -532,11 +532,11 @@ class TestWebResearchHandlerExtended:
             "findings": [],
         }
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             return_value=mock_report,
         ):
             with patch(
-                "jarvis_engine.auto_ingest.auto_ingest_memory",
+                "jarvis_engine.memory.auto_ingest.auto_ingest_memory",
                 side_effect=RuntimeError("ingest failed"),
             ):
                 result = handler.handle(cmd)
@@ -551,7 +551,7 @@ class TestWebResearchHandlerExtended:
             "findings": [],
         }
         with patch(
-            "jarvis_engine.web_research.run_web_research",
+            "jarvis_engine.web.research.run_web_research",
             return_value=mock_report,
         ):
             result = handler.handle(cmd)

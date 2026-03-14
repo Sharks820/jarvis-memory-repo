@@ -102,7 +102,7 @@ def test_runtime_control_conflicting_safe() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.owner_guard.read_owner_guard", return_value={"enabled": True})
+@patch("jarvis_engine.security.owner_guard.read_owner_guard", return_value={"enabled": True})
 def test_owner_guard_read(mock_read: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand())
@@ -110,7 +110,7 @@ def test_owner_guard_read(mock_read: MagicMock) -> None:
     assert result.return_code == 0
 
 
-@patch("jarvis_engine.owner_guard.set_master_password", return_value={"pw_set": True})
+@patch("jarvis_engine.security.owner_guard.set_master_password", return_value={"pw_set": True})
 def test_owner_guard_set_master_password(mock_set: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(set_master_password_value="hunter2"))
@@ -118,7 +118,7 @@ def test_owner_guard_set_master_password(mock_set: MagicMock) -> None:
     mock_set.assert_called_once_with(ROOT, "hunter2")
 
 
-@patch("jarvis_engine.owner_guard.clear_master_password", return_value={"pw_set": False})
+@patch("jarvis_engine.security.owner_guard.clear_master_password", return_value={"pw_set": False})
 def test_owner_guard_clear_master_password(mock_clear: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(clear_master_password_value=True))
@@ -126,7 +126,7 @@ def test_owner_guard_clear_master_password(mock_clear: MagicMock) -> None:
     mock_clear.assert_called_once_with(ROOT)
 
 
-@patch("jarvis_engine.owner_guard.trust_mobile_device", return_value={"devices": ["phone"]})
+@patch("jarvis_engine.security.owner_guard.trust_mobile_device", return_value={"devices": ["phone"]})
 def test_owner_guard_trust_device(mock_trust: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(trust_device="phone"))
@@ -134,7 +134,7 @@ def test_owner_guard_trust_device(mock_trust: MagicMock) -> None:
     mock_trust.assert_called_once_with(ROOT, "phone")
 
 
-@patch("jarvis_engine.owner_guard.revoke_mobile_device", return_value={"devices": []})
+@patch("jarvis_engine.security.owner_guard.revoke_mobile_device", return_value={"devices": []})
 def test_owner_guard_revoke_device(mock_revoke: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(revoke_device="phone"))
@@ -142,7 +142,7 @@ def test_owner_guard_revoke_device(mock_revoke: MagicMock) -> None:
     mock_revoke.assert_called_once_with(ROOT, "phone")
 
 
-@patch("jarvis_engine.owner_guard.write_owner_guard", return_value={"enabled": True})
+@patch("jarvis_engine.security.owner_guard.write_owner_guard", return_value={"enabled": True})
 def test_owner_guard_enable(mock_write: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(enable=True, owner_user="conner"))
@@ -157,7 +157,7 @@ def test_owner_guard_enable_no_user() -> None:
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.owner_guard.write_owner_guard", return_value={"enabled": False})
+@patch("jarvis_engine.security.owner_guard.write_owner_guard", return_value={"enabled": False})
 def test_owner_guard_disable(mock_write: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(disable=True))
@@ -165,7 +165,7 @@ def test_owner_guard_disable(mock_write: MagicMock) -> None:
     mock_write.assert_called_once_with(ROOT, enabled=False)
 
 
-@patch("jarvis_engine.owner_guard.set_master_password", side_effect=ValueError("weak"))
+@patch("jarvis_engine.security.owner_guard.set_master_password", side_effect=ValueError("weak"))
 def test_owner_guard_value_error(mock_set: MagicMock) -> None:
     """ValueError from any guard function returns rc=2."""
     handler = OwnerGuardHandler(ROOT)
@@ -173,7 +173,7 @@ def test_owner_guard_value_error(mock_set: MagicMock) -> None:
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.owner_guard.write_owner_guard", return_value={"owner": "bob"})
+@patch("jarvis_engine.security.owner_guard.write_owner_guard", return_value={"owner": "bob"})
 def test_owner_guard_set_owner_user_only(mock_write: MagicMock) -> None:
     """Setting owner_user alone (no enable/disable) updates the config."""
     handler = OwnerGuardHandler(ROOT)
@@ -187,8 +187,8 @@ def test_owner_guard_set_owner_user_only(mock_write: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.connectors.build_connector_prompts", return_value=[])
-@patch("jarvis_engine.connectors.evaluate_connector_statuses")
+@patch("jarvis_engine.ops.connectors.build_connector_prompts", return_value=[])
+@patch("jarvis_engine.ops.connectors.evaluate_connector_statuses")
 def test_connect_status(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
     s1 = SimpleNamespace(ready=True)
     s2 = SimpleNamespace(ready=False)
@@ -204,7 +204,7 @@ def test_connect_status(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.connectors.grant_connector_permission", return_value={"ok": True})
+@patch("jarvis_engine.ops.connectors.grant_connector_permission", return_value={"ok": True})
 def test_connect_grant_success(mock_grant: MagicMock) -> None:
     handler = ConnectGrantHandler(ROOT)
     result = handler.handle(ConnectGrantCommand(connector_id="spotify", scopes=["read"]))
@@ -212,7 +212,7 @@ def test_connect_grant_success(mock_grant: MagicMock) -> None:
     assert result.granted == {"ok": True}
 
 
-@patch("jarvis_engine.connectors.grant_connector_permission", side_effect=ValueError("bad id"))
+@patch("jarvis_engine.ops.connectors.grant_connector_permission", side_effect=ValueError("bad id"))
 def test_connect_grant_value_error(mock_grant: MagicMock) -> None:
     handler = ConnectGrantHandler(ROOT)
     result = handler.handle(ConnectGrantCommand(connector_id="nope"))
@@ -224,8 +224,8 @@ def test_connect_grant_value_error(mock_grant: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.connectors.build_connector_prompts", return_value=[])
-@patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
+@patch("jarvis_engine.ops.connectors.build_connector_prompts", return_value=[])
+@patch("jarvis_engine.ops.connectors.evaluate_connector_statuses", return_value=[])
 def test_connect_bootstrap_all_ready(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
     handler = ConnectBootstrapHandler(ROOT)
     result = handler.handle(ConnectBootstrapCommand())
@@ -233,8 +233,8 @@ def test_connect_bootstrap_all_ready(mock_eval: MagicMock, mock_prompts: MagicMo
     assert result.prompts == []
 
 
-@patch("jarvis_engine.connectors.build_connector_prompts")
-@patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
+@patch("jarvis_engine.ops.connectors.build_connector_prompts")
+@patch("jarvis_engine.ops.connectors.evaluate_connector_statuses", return_value=[])
 def test_connect_bootstrap_with_prompts_no_auto(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
     mock_prompts.return_value = [{"option_tap_url": "https://example.com/auth"}]
     handler = ConnectBootstrapHandler(ROOT)
@@ -244,8 +244,8 @@ def test_connect_bootstrap_with_prompts_no_auto(mock_eval: MagicMock, mock_promp
 
 
 @patch("webbrowser.open")
-@patch("jarvis_engine.connectors.build_connector_prompts")
-@patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
+@patch("jarvis_engine.ops.connectors.build_connector_prompts")
+@patch("jarvis_engine.ops.connectors.evaluate_connector_statuses", return_value=[])
 def test_connect_bootstrap_auto_open(mock_eval: MagicMock, mock_prompts: MagicMock, mock_browser: MagicMock) -> None:
     mock_prompts.return_value = [
         {"option_tap_url": "https://example.com/auth"},
@@ -264,8 +264,8 @@ def test_connect_bootstrap_auto_open(mock_eval: MagicMock, mock_prompts: MagicMo
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.phone_guard.append_phone_actions")
-@patch("jarvis_engine.phone_guard.build_phone_action", return_value={"action": "block", "number": "555"})
+@patch("jarvis_engine.phone.guard.append_phone_actions")
+@patch("jarvis_engine.phone.guard.build_phone_action", return_value={"action": "block", "number": "555"})
 def test_phone_action_queue(mock_build: MagicMock, mock_append: MagicMock) -> None:
     queue_path = ROOT / "phone_actions.jsonl"
     handler = PhoneActionHandler(ROOT)
@@ -276,7 +276,7 @@ def test_phone_action_queue(mock_build: MagicMock, mock_append: MagicMock) -> No
     mock_append.assert_called_once()
 
 
-@patch("jarvis_engine.phone_guard.build_phone_action", return_value={"action": "sms"})
+@patch("jarvis_engine.phone.guard.build_phone_action", return_value={"action": "sms"})
 def test_phone_action_no_queue(mock_build: MagicMock) -> None:
     handler = PhoneActionHandler(ROOT)
     cmd = PhoneActionCommand(action="sms", queue_action=False)
@@ -284,7 +284,7 @@ def test_phone_action_no_queue(mock_build: MagicMock) -> None:
     assert result.return_code == 0
 
 
-@patch("jarvis_engine.phone_guard.build_phone_action", side_effect=ValueError("bad action"))
+@patch("jarvis_engine.phone.guard.build_phone_action", side_effect=ValueError("bad action"))
 def test_phone_action_build_error(mock_build: MagicMock) -> None:
     handler = PhoneActionHandler(ROOT)
     cmd = PhoneActionCommand(action="invalid")
@@ -292,7 +292,7 @@ def test_phone_action_build_error(mock_build: MagicMock) -> None:
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.phone_guard.build_phone_action", return_value={"action": "block"})
+@patch("jarvis_engine.phone.guard.build_phone_action", return_value={"action": "block"})
 @patch("jarvis_engine._shared.check_path_within_root", side_effect=ValueError("outside root"))
 def test_phone_action_path_escape(mock_check: MagicMock, mock_build: MagicMock) -> None:
     """Queue path outside root is rejected."""
@@ -332,11 +332,11 @@ def test_spam_guard_missing_call_log(mock_check: MagicMock, tmp_path: Path) -> N
     assert result.return_code == 2
 
 
-@patch("jarvis_engine.phone_guard.append_phone_actions")
-@patch("jarvis_engine.phone_guard.write_spam_report")
-@patch("jarvis_engine.phone_guard.build_spam_block_actions", return_value=[{"action": "block"}])
-@patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[{"number": "555"}])
-@patch("jarvis_engine.phone_guard.load_call_log", return_value=[{"num": "555"}])
+@patch("jarvis_engine.phone.guard.append_phone_actions")
+@patch("jarvis_engine.phone.guard.write_spam_report")
+@patch("jarvis_engine.phone.guard.build_spam_block_actions", return_value=[{"action": "block"}])
+@patch("jarvis_engine.phone.guard.detect_spam_candidates", return_value=[{"number": "555"}])
+@patch("jarvis_engine.phone.guard.load_call_log", return_value=[{"num": "555"}])
 @patch("jarvis_engine._shared.check_path_within_root")
 def test_spam_guard_success_queue(
     mock_check: MagicMock,
@@ -364,10 +364,10 @@ def test_spam_guard_success_queue(
     mock_append.assert_called_once()
 
 
-@patch("jarvis_engine.phone_guard.write_spam_report")
-@patch("jarvis_engine.phone_guard.build_spam_block_actions", return_value=[{"action": "block"}])
-@patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[{"n": "x"}])
-@patch("jarvis_engine.phone_guard.load_call_log", return_value=[])
+@patch("jarvis_engine.phone.guard.write_spam_report")
+@patch("jarvis_engine.phone.guard.build_spam_block_actions", return_value=[{"action": "block"}])
+@patch("jarvis_engine.phone.guard.detect_spam_candidates", return_value=[{"n": "x"}])
+@patch("jarvis_engine.phone.guard.load_call_log", return_value=[])
 @patch("jarvis_engine._shared.check_path_within_root")
 def test_spam_guard_no_queue(
     mock_check: MagicMock,
@@ -392,7 +392,7 @@ def test_spam_guard_no_queue(
     assert result.queued_actions_count == 0
 
 
-@patch("jarvis_engine.phone_guard.load_call_log", side_effect=json.JSONDecodeError("err", "", 0))
+@patch("jarvis_engine.phone.guard.load_call_log", side_effect=json.JSONDecodeError("err", "", 0))
 @patch("jarvis_engine._shared.check_path_within_root")
 def test_spam_guard_bad_json(mock_check: MagicMock, mock_load: MagicMock, tmp_path: Path) -> None:
     log_file = tmp_path / "call_log.json"
@@ -412,7 +412,7 @@ def test_spam_guard_bad_json(mock_check: MagicMock, mock_load: MagicMock, tmp_pa
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.persona.load_persona_config", return_value={"enabled": True, "humor_level": 5})
+@patch("jarvis_engine.memory.persona.load_persona_config", return_value={"enabled": True, "humor_level": 5})
 def test_persona_config_read(mock_load: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand())
@@ -420,7 +420,7 @@ def test_persona_config_read(mock_load: MagicMock) -> None:
     mock_load.assert_called_once_with(ROOT)
 
 
-@patch("jarvis_engine.persona.save_persona_config", return_value={"enabled": True})
+@patch("jarvis_engine.memory.persona.save_persona_config", return_value={"enabled": True})
 def test_persona_config_enable(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(enable=True))
@@ -428,7 +428,7 @@ def test_persona_config_enable(mock_save: MagicMock) -> None:
     mock_save.assert_called_once_with(ROOT, enabled=True, humor_level=None, mode=None, style=None)
 
 
-@patch("jarvis_engine.persona.save_persona_config", return_value={"enabled": False})
+@patch("jarvis_engine.memory.persona.save_persona_config", return_value={"enabled": False})
 def test_persona_config_disable(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(disable=True))
@@ -436,14 +436,14 @@ def test_persona_config_disable(mock_save: MagicMock) -> None:
     mock_save.assert_called_once_with(ROOT, enabled=False, humor_level=None, mode=None, style=None)
 
 
-@patch("jarvis_engine.persona.save_persona_config", return_value={"humor_level": 8})
+@patch("jarvis_engine.memory.persona.save_persona_config", return_value={"humor_level": 8})
 def test_persona_config_set_humor(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(humor_level=8))
     mock_save.assert_called_once_with(ROOT, enabled=None, humor_level=8, mode=None, style=None)
 
 
-@patch("jarvis_engine.persona.save_persona_config", return_value={"mode": "formal"})
+@patch("jarvis_engine.memory.persona.save_persona_config", return_value={"mode": "formal"})
 def test_persona_config_set_mode_and_style(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(mode="formal", style="concise"))

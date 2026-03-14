@@ -1,4 +1,4 @@
-"""Comprehensive tests for jarvis_engine.connectors module.
+"""Comprehensive tests for jarvis_engine.ops.connectors module.
 
 Covers connector definitions, permission management, status evaluation,
 environment variable checks, fallback files, and prompt generation.
@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jarvis_engine.connectors import (
+from jarvis_engine.ops.connectors import (
     CONNECTORS,
     ConnectorDefinition,
     ConnectorStatus,

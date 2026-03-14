@@ -8,9 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.activity_feed import ActivityFeed
+from jarvis_engine.memory.activity_feed import ActivityFeed
 
-from jarvis_engine.harvest_discovery import (
+from jarvis_engine.harvesting.discovery import (
     SQL_NODE_BY_RELATION,
     SQL_RARE_RELATIONS,
     SQL_RECENT_SUMMARIES,
@@ -150,8 +150,8 @@ class TestGetRecentlyHarvestedTopics:
         db_dir.mkdir(parents=True, exist_ok=True)
         (db_dir / "activity_feed.db").write_text("")
 
-        with patch("jarvis_engine.activity_feed.ActivityFeed", return_value=mock_feed), \
-             patch("jarvis_engine.activity_feed.ActivityCategory") as mock_cat:
+        with patch("jarvis_engine.memory.activity_feed.ActivityFeed", return_value=mock_feed), \
+             patch("jarvis_engine.memory.activity_feed.ActivityCategory") as mock_cat:
             mock_cat.HARVEST = "HARVEST"
             result = _get_recently_harvested_topics(tmp_path)
 
@@ -165,7 +165,7 @@ class TestGetRecentlyHarvestedTopics:
         db_dir.mkdir(parents=True, exist_ok=True)
         (db_dir / "activity_feed.db").write_text("")
 
-        with patch("jarvis_engine.activity_feed.ActivityFeed", side_effect=ImportError("no module")):
+        with patch("jarvis_engine.memory.activity_feed.ActivityFeed", side_effect=ImportError("no module")):
             result = _get_recently_harvested_topics(tmp_path)
 
         assert result == set()
@@ -178,7 +178,7 @@ class TestGetRecentlyHarvestedTopics:
         db_dir.mkdir(parents=True, exist_ok=True)
         (db_dir / "activity_feed.db").write_text("")
 
-        with patch("jarvis_engine.activity_feed.ActivityFeed", side_effect=sqlite3.Error("db locked")):
+        with patch("jarvis_engine.memory.activity_feed.ActivityFeed", side_effect=sqlite3.Error("db locked")):
             result = _get_recently_harvested_topics(tmp_path)
 
         assert result == set()
@@ -196,8 +196,8 @@ class TestGetRecentlyHarvestedTopics:
         db_dir.mkdir(parents=True, exist_ok=True)
         (db_dir / "activity_feed.db").write_text("")
 
-        with patch("jarvis_engine.activity_feed.ActivityFeed", return_value=mock_feed), \
-             patch("jarvis_engine.activity_feed.ActivityCategory") as mock_cat:
+        with patch("jarvis_engine.memory.activity_feed.ActivityFeed", return_value=mock_feed), \
+             patch("jarvis_engine.memory.activity_feed.ActivityCategory") as mock_cat:
             mock_cat.HARVEST = "HARVEST"
             result = _get_recently_harvested_topics(tmp_path)
 

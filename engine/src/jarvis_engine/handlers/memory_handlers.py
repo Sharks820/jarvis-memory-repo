@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
-    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.memory.basic_ingest import IngestionPipeline
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
@@ -181,7 +181,7 @@ class IngestHandler:
     def _get_fallback_pipeline(self) -> IngestionPipeline:
         """Lazily create and cache the fallback MemoryStore + IngestionPipeline."""
         if self._fallback_pipeline is None:
-            from jarvis_engine.ingest import IngestionPipeline
+            from jarvis_engine.memory.basic_ingest import IngestionPipeline
             from jarvis_engine.memory.store import MemoryStore
 
             self._fallback_store = MemoryStore(self._root)
@@ -204,7 +204,7 @@ class IngestHandler:
                 kind=cmd.kind,
                 task_id=cmd.task_id,
             )
-        from jarvis_engine.ingest import MemoryKind, SourceType
+        from jarvis_engine.memory.basic_ingest import MemoryKind, SourceType
 
         pipeline = self._get_fallback_pipeline()
         record = pipeline.ingest(

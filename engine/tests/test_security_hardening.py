@@ -11,7 +11,7 @@ from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine.ops import gaming_mode as gaming_mode_mod
 from jarvis_engine.cli import ops as cli_ops_mod
 from jarvis_engine.voice import pipeline as voice_pipeline_mod
-from jarvis_engine import auto_ingest as auto_ingest_mod
+from jarvis_engine.memory import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
 
 
@@ -181,7 +181,7 @@ class TestMissionSecurity:
 
     def test_mission_url_safety_check_blocks_private_ips(self) -> None:
         """Mission should block private IP URLs."""
-        from jarvis_engine.web_fetch import is_safe_public_url
+        from jarvis_engine.web.fetch import is_safe_public_url
 
         # Private IP addresses should be blocked
         private_urls = [
@@ -198,7 +198,7 @@ class TestMissionSecurity:
 
     def test_mission_url_safety_allows_public_domains(self) -> None:
         """Mission should allow public domain URLs."""
-        from jarvis_engine.web_fetch import is_safe_public_url
+        from jarvis_engine.web.fetch import is_safe_public_url
 
         # Public URLs should be allowed
         public_urls = [
@@ -231,7 +231,7 @@ class TestMissionSecurity:
 
     def test_mission_fetch_respects_max_bytes(self, monkeypatch) -> None:
         """Mission page fetch should respect max_bytes limit."""
-        from jarvis_engine import web_fetch
+        from jarvis_engine.web import fetch as web_fetch
 
         large_content = b"X" * 1000000  # 1MB
 

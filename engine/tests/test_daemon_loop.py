@@ -26,13 +26,13 @@ from jarvis_engine.daemon_loop import (
     _run_core_autopilot,
     cmd_mission_run,
 )
-from jarvis_engine.gaming_mode import (
+from jarvis_engine.ops.gaming_mode import (
     gaming_mode_state_path,
     gaming_processes_path,
     read_gaming_mode_state,
     write_gaming_mode_state,
 )
-from jarvis_engine.harvest_discovery import (
+from jarvis_engine.harvesting.discovery import (
     discover_harvest_topics,
     _try_add_candidate,
     _add_phrases,
@@ -517,14 +517,14 @@ class TestDaemonCycleErrors:
 
     def test_log_cycle_start_handles_import_error(self) -> None:
         """Activity feed log failure should not raise."""
-        with patch("jarvis_engine.activity_feed.log_activity",
+        with patch("jarvis_engine.memory.activity_feed.log_activity",
                     side_effect=ImportError("no module")):
             # Should not raise
             _log_cycle_start(1, "2026-01-01T00:00:00Z")
 
     def test_log_cycle_end_handles_error(self) -> None:
         """Activity feed log failure should not raise."""
-        with patch("jarvis_engine.activity_feed.log_activity",
+        with patch("jarvis_engine.memory.activity_feed.log_activity",
                     side_effect=ImportError("no module")):
             _log_cycle_end(1, 0)
 

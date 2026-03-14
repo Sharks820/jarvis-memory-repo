@@ -40,8 +40,8 @@ from jarvis_engine._constants import (
     SUBSYSTEM_ERRORS,
 )
 from jarvis_engine._shared import memory_db_path, runtime_dir
-from jarvis_engine.ingest import IngestionPipeline
-from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
+from jarvis_engine.memory.basic_ingest import IngestionPipeline
+from jarvis_engine.security.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
     AuthRoutesMixin,
     CommandRoutesMixin,
@@ -812,7 +812,7 @@ class MobileIngestHandler(
         result: dict[str, Any] | None = None,
     ) -> None:
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+            from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 
             text = str(payload.get("text", "")).strip()
             details: dict[str, Any] = {
@@ -1367,7 +1367,7 @@ class MobileIngestHandler(
 
 # ---------------------------------------------------------------------------
 # Backward-compat re-exports — lifecycle functions moved to
-# jarvis_engine.mobile_api_lifecycle for file-health / desloppify.
+# jarvis_engine.mobile_routes.lifecycle for file-health / desloppify.
 # ---------------------------------------------------------------------------
 from jarvis_engine.mobile_routes.lifecycle import (  # noqa: F401, E402
     _resolve_tls,

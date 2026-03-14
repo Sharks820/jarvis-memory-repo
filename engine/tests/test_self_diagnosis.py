@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from jarvis_engine.self_diagnosis import (
+from jarvis_engine.ops.self_diagnosis import (
     DiagnosticEngine,
     DiagnosticIssue,
     _SEVERITY_ORDER,
@@ -709,7 +709,7 @@ class TestDashboardIntegration:
     def test_safe_diagnostics_returns_dict(self, tmp_path):
         root = _make_root(tmp_path)
         _create_db(root)
-        from jarvis_engine.intelligence_dashboard import _safe_diagnostics
+        from jarvis_engine.ops.intelligence_dashboard import _safe_diagnostics
         with patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
             with patch("urllib.request.urlopen", side_effect=OSError("refused")):
                 result = _safe_diagnostics(root)
@@ -720,7 +720,7 @@ class TestDashboardIntegration:
 
     def test_safe_diagnostics_graceful_failure(self, tmp_path):
         root = _make_root(tmp_path)
-        from jarvis_engine.intelligence_dashboard import _safe_diagnostics
+        from jarvis_engine.ops.intelligence_dashboard import _safe_diagnostics
         # Patch the module-level import inside the function
         with patch("jarvis_engine.ops.self_diagnosis.DiagnosticEngine", side_effect=RuntimeError("boom")):
             result = _safe_diagnostics(root)

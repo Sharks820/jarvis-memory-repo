@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from jarvis_engine import web_research
-from jarvis_engine.web_research import _extract_snippet, _query_keywords
+from jarvis_engine.web import research as web_research
+from jarvis_engine.web.research import _extract_snippet, _query_keywords
 
 
 def _patch_web(monkeypatch, urls=None, page_text=""):

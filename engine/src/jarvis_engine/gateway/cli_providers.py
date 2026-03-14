@@ -495,7 +495,7 @@ def _compact_messages_for_cli(messages: list[dict[str, str]]) -> list[dict[str, 
         if content_key != getattr(_compact_messages_for_cli, "_last_ckpt", None):
             _compact_messages_for_cli._last_ckpt = content_key  # type: ignore[attr-defined]
             try:
-                from jarvis_engine.conversation_state import get_conversation_state
+                from jarvis_engine.memory.conversation_state import get_conversation_state
 
                 csm = get_conversation_state()
                 csm.create_checkpoint(dropped)

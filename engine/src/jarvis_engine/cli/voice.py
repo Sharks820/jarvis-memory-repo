@@ -14,7 +14,7 @@ from pathlib import Path
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
-from jarvis_engine.activity_feed import ActivityCategory, log_activity
+from jarvis_engine.memory.activity_feed import ActivityCategory, log_activity
 from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import shorten_urls_for_speech
 from jarvis_engine.stt.contracts import VoiceUtterance
