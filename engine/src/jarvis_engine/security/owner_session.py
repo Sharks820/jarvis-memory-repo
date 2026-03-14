@@ -109,7 +109,7 @@ class OwnerSessionManager:
 
     def _purge_expired(self) -> None:
         """Remove expired sessions from ``_sessions``.  Caller must hold lock."""
-        now = time.monotonic()
+        now = time.time()
         expired = [t for t, exp in self._sessions.items() if now > exp]
         for t in expired:
             del self._sessions[t]
@@ -209,7 +209,7 @@ class OwnerSessionManager:
             ):
                 self._lockout_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = time.monotonic() + self._session_timeout
+            self._sessions[token] = time.time() + self._session_timeout
             logger.info("Owner authenticated, session ...%s created", token[-4:])
             return token
 
@@ -224,12 +224,12 @@ class OwnerSessionManager:
             expiry = self._sessions.get(token)
             if expiry is None:
                 return False
-            if time.monotonic() > expiry:
+            if time.time() > expiry:
                 # Expired — remove it
                 self._sessions.pop(token, None)
                 return False
             # Extend idle timeout
-            self._sessions[token] = time.monotonic() + self._session_timeout
+            self._sessions[token] = time.time() + self._session_timeout
             return True
 
     def logout(self, token: str) -> None:
@@ -307,7 +307,7 @@ class OwnerSessionManager:
                 return None
             self._failure_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = time.monotonic() + self._session_timeout
+            self._sessions[token] = time.time() + self._session_timeout
             logger.info("External session ...%s created", token[-4:])
             return token
 

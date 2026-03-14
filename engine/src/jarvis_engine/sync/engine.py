@@ -7,6 +7,7 @@ with field-level conflict resolution (desktop wins ties, DELETE wins over UPDATE
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 import threading
 from typing import Any, TypedDict
@@ -20,6 +21,27 @@ from jarvis_engine.sync.changelog import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_ts(ts: str) -> str:
+    """Normalize an ISO 8601 timestamp for reliable lexicographic comparison.
+
+    Handles the two most common format divergences between Python's
+    ``datetime.isoformat()`` and Android/Java date formatters:
+
+    * ``+00:00`` suffix → ``Z`` (``+`` is ASCII 43, ``Z`` is ASCII 90, so
+      ``2026-01-01T00:00:00+00:00`` would sort *before* any ``Z``-suffixed
+      timestamp without this normalization)
+    * Fractional seconds stripped to whole-second granularity
+    """
+    if not ts:
+        return ""
+    ts = ts.replace("+00:00", "Z")
+    # Strip fractional seconds only when immediately followed by a timezone
+    # indicator or end-of-string (avoids accidentally stripping decimal numbers
+    # in any other part of the string).
+    ts = re.sub(r"\.\d+(?=[Z+\-]|$)", "", ts)
+    return ts
 
 
 class OutgoingSyncPayload(TypedDict):
@@ -282,8 +304,8 @@ class SyncEngine:
                 # Both changed the same field — use configured strategy
                 if self._conflict_strategy == "most_recent":
                     # Compare timestamps: newer wins
-                    local_ts = local_entry.get("ts", "")
-                    remote_ts = remote_entry.get("ts", "")
+                    local_ts = _normalize_ts(local_entry.get("ts", ""))
+                    remote_ts = _normalize_ts(remote_entry.get("ts", ""))
                     if remote_ts > local_ts:
                         merged_new[field] = remote_new.get(field)
                     elif local_ts > remote_ts:

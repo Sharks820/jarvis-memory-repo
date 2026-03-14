@@ -3,7 +3,9 @@
 Tests cover password hashing (Argon2id + PBKDF2 fallback), session lifecycle,
 idle timeout extension, lockout after failed attempts, and logout.
 
-Uses mocked ``time.monotonic`` to avoid real sleeps — deterministic and fast.
+Uses mocked ``time`` module to avoid real sleeps — deterministic and fast.
+Session expiry uses ``time.time``; lockout timing uses ``time.monotonic``.
+Both are set to the same ``_MockClock`` instance in tests that mock time.
 Uses ``_pbkdf2_iterations=1`` on all tests except the PBKDF2-path test to
 avoid the 600 000-iteration cost that saturates CPUs in parallel test runs.
 """
@@ -93,6 +95,7 @@ def test_session_valid_after_auth():
 def test_session_invalid_after_timeout(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
+    mock_time.time = clock
 
     mgr = OwnerSessionManager(session_timeout=1, **_FAST)
     mgr.set_password("pass")
@@ -113,6 +116,7 @@ def test_session_invalid_after_timeout(mock_time):
 def test_session_extends_on_activity(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
+    mock_time.time = clock
 
     mgr = OwnerSessionManager(session_timeout=2, **_FAST)
     mgr.set_password("pass")
@@ -246,6 +250,7 @@ def test_logout_all():
 def test_lockout_exponential_backoff(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
+    mock_time.time = clock
 
     mgr = OwnerSessionManager(max_failures=2, lockout_duration=1, **_FAST)
     mgr.set_password("correct")

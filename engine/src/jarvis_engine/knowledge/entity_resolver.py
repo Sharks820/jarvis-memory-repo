@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import logging
 import sqlite3
+import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -48,6 +49,10 @@ class ResolutionResult:
 
 
 # Entity resolver
+
+#: Maximum time in seconds allowed for O(N²) string comparison before a
+#: warning is logged recommending the embed_service for vector mode.
+_STRING_COMPARISON_WARNING_THRESHOLD_S: float = 5.0
 
 
 class EntityResolver:
@@ -145,10 +150,10 @@ class EntityResolver:
                 self._find_duplicates_vector(members, candidates, top_k)
             else:
                 # --- Fallback: all-pairs string comparison (O(N^2)) ---
-                if n > 500:
+                if n > 200:
                     logger.warning(
                         "Skipping duplicate detection for node_type group with %d nodes "
-                        "(exceeds 500-node safety limit — provide embed_service for vector mode)",
+                        "(exceeds 200-node safety limit — provide embed_service for vector mode)",
                         n,
                     )
                     continue
@@ -174,7 +179,7 @@ class EntityResolver:
 
         if not embed_cache:
             # All embeddings failed -- fall back to string-only for this group
-            if len(members) <= 500:
+            if len(members) <= 200:
                 self._find_duplicates_string(members, candidates)
             return
 
@@ -209,7 +214,7 @@ class EntityResolver:
         # Also check nodes that failed embedding -- compare them string-only
         # against each other and against the top vector candidates.
         non_embedded = [(nid, lbl) for nid, lbl in members if nid not in embed_cache]
-        if non_embedded and len(non_embedded) <= 500:
+        if non_embedded and len(non_embedded) <= 200:
             self._find_duplicates_string(non_embedded, candidates)
 
     def _embed_all_nodes(
@@ -363,6 +368,7 @@ class EntityResolver:
     ) -> None:
         """All-pairs string comparison using SequenceMatcher. O(N^2)."""
         n = len(members)
+        t0 = _time.monotonic()
         for i in range(n):
             for j in range(i + 1, n):
                 id_a, label_a = members[i]
@@ -383,6 +389,14 @@ class EntityResolver:
                             merge_reason="string",
                         )
                     )
+        elapsed = _time.monotonic() - t0
+        if elapsed > _STRING_COMPARISON_WARNING_THRESHOLD_S:
+            logger.warning(
+                "String duplicate detection took %.1fs for %d nodes — "
+                "consider providing embed_service for faster vector mode",
+                elapsed,
+                n,
+            )
 
     # Merge
 
