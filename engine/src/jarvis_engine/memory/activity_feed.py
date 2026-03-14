@@ -6,12 +6,19 @@ with thread-safe writes and convenient query helpers.
 
 Thread safety: all mutations and reads go through a single threading.Lock
 to prevent cursor interleaving on the shared SQLite connection.
+
+Observability (OBS-01 through OBS-04):
+- OBS-01: ``log_engine_action`` records thinking-trace entries with auto PII redaction
+- OBS-02: Every event carries a ``correlation_id`` linking UI / backend / mission
+- OBS-03: ``log_progress`` provides backend-truth progress for widgets
+- OBS-04: ``log_error`` emits structured error surfaces (code + user msg + diagnostic)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -26,6 +33,28 @@ from jarvis_engine._shared import now_iso
 from jarvis_engine.config import repo_root
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# PII redaction patterns (OBS-01)
+# ---------------------------------------------------------------------------
+
+_PII_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # API keys / tokens first (before phone, to avoid partial digit match)
+    (re.compile(r"(?:sk-|key-|token-|AKIA)[A-Za-z0-9\-_]{20,}"), "[API_KEY_REDACTED]"),
+    # Generic long secret-looking strings prefixed by common env var patterns
+    (re.compile(r"(?<=[:=])\s*[A-Za-z0-9\-_]{40,}"), "[SECRET_REDACTED]"),
+    # Email addresses
+    (re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "[EMAIL_REDACTED]"),
+    # Phone numbers: 10+ digit sequences with optional separators / country code
+    (re.compile(r"\+?\d[\d\-\.\s]{8,}\d"), "[PHONE_REDACTED]"),
+]
+
+
+def redact_pii(text: str) -> str:
+    """Replace PII patterns (phone numbers, emails, API keys) with placeholders."""
+    for pattern, replacement in _PII_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 # Categories
@@ -52,6 +81,8 @@ class ActivityCategory:
     RESOURCE_PRESSURE = "resource_pressure"
     CONVERSATION_STATE = "conversation_state"
     VOICE_PIPELINE = "voice_pipeline"
+    ENGINE_ACTION = "engine_action"
+    PROGRESS = "progress"
 
 
 # Event dataclass
@@ -66,6 +97,8 @@ class ActivityEvent:
     summary: str
     details: dict = field(default_factory=dict)
     event_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    correlation_id: str = ""
+    mission_id: str = ""
 
 
 # Feed (SQLite-backed)
@@ -100,7 +133,9 @@ class ActivityFeed:
                 category TEXT NOT NULL,
                 summary TEXT NOT NULL,
                 details TEXT NOT NULL DEFAULT '{}',
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                mission_id TEXT NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_activity_category
@@ -109,7 +144,12 @@ class ActivityFeed:
                 ON activity_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_activity_created_at
                 ON activity_log(created_at);
+            CREATE INDEX IF NOT EXISTS idx_activity_correlation_id
+                ON activity_log(correlation_id);
         """)
+        # Migrate existing databases that lack the new columns (OBS-02)
+        self._migrate_add_column("correlation_id", "TEXT NOT NULL DEFAULT ''")
+        self._migrate_add_column("mission_id", "TEXT NOT NULL DEFAULT ''")
 
     # Public API
 
@@ -117,14 +157,34 @@ class ActivityFeed:
         if self._closed:
             raise RuntimeError("ActivityFeed is closed")
 
+    def _migrate_add_column(self, name: str, typedef: str) -> None:
+        """Idempotently add a column to activity_log (for schema migration)."""
+        try:
+            self._db.execute(f"ALTER TABLE activity_log ADD COLUMN {name} {typedef}")
+            self._db.commit()
+        except sqlite3.OperationalError:
+            # Column already exists — ignore
+            pass
+
     def log(
         self,
         category: str,
         summary: str,
         details: dict | None = None,
+        *,
+        correlation_id: str = "",
+        mission_id: str = "",
     ) -> str:
-        """Log an activity event and return its event_id.  Thread-safe."""
+        """Log an activity event and return its event_id.  Thread-safe.
+
+        Args:
+            correlation_id: Optional ID linking this event to a UI action / mission.
+                            Auto-generated UUID if empty string is passed.
+            mission_id: Optional mission ID for cross-referencing autonomous tasks.
+        """
         event_id = uuid.uuid4().hex
+        if not correlation_id:
+            correlation_id = uuid.uuid4().hex
         ts = now_iso()
         details_json = json.dumps(details or {})
         created_at = time.time()
@@ -132,54 +192,133 @@ class ActivityFeed:
         with self._lock:
             self._check_open()
             self._db.execute(
-                "INSERT INTO activity_log (id, timestamp, category, summary, details, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (event_id, ts, category, summary, details_json, created_at),
+                "INSERT INTO activity_log "
+                "(id, timestamp, category, summary, details, created_at, correlation_id, mission_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (event_id, ts, category, summary, details_json, created_at,
+                 correlation_id, mission_id),
             )
             self._db.commit()
             self._auto_prune()
 
         return event_id
 
+    # OBS-01: Engine action thinking trace ------------------------------------
+
+    def log_engine_action(
+        self,
+        action: str,
+        detail: str,
+        *,
+        secrets_redacted: bool = True,
+        correlation_id: str = "",
+        mission_id: str = "",
+    ) -> str:
+        """Log an engine action (thinking trace) with automatic PII redaction.
+
+        Returns the event_id of the logged event.
+        """
+        if secrets_redacted:
+            action = redact_pii(action)
+            detail = redact_pii(detail)
+        return self.log(
+            category=ActivityCategory.ENGINE_ACTION,
+            summary=action,
+            details={"detail": detail},
+            correlation_id=correlation_id,
+            mission_id=mission_id,
+        )
+
+    # OBS-03: Backend-truth progress -----------------------------------------
+
+    def log_progress(
+        self,
+        task_id: str,
+        progress_pct: float,
+        status_text: str,
+        *,
+        correlation_id: str = "",
+        mission_id: str = "",
+    ) -> str:
+        """Log a progress update — single source of truth for UI progress bars.
+
+        Args:
+            task_id: Identifies which task this progress belongs to.
+            progress_pct: 0.0 .. 100.0 completion percentage.
+            status_text: Human-readable status (e.g. "Transcribing audio...").
+
+        Returns the event_id.
+        """
+        progress_pct = max(0.0, min(100.0, progress_pct))
+        return self.log(
+            category=ActivityCategory.PROGRESS,
+            summary=status_text,
+            details={
+                "task_id": task_id,
+                "progress_pct": progress_pct,
+            },
+            correlation_id=correlation_id,
+            mission_id=mission_id,
+        )
+
+    # OBS-04: Structured error surfaces --------------------------------------
+
+    def log_error(
+        self,
+        error_code: str,
+        user_message: str,
+        technical_detail: str,
+        *,
+        correlation_id: str = "",
+        mission_id: str = "",
+    ) -> str:
+        """Log a structured error with both user-facing and diagnostic info.
+
+        Args:
+            error_code: Machine-readable code (e.g. "STT_TIMEOUT").
+            user_message: Human-readable explanation for the end user.
+            technical_detail: Stack trace or diagnostic details.
+
+        Returns the event_id.
+        """
+        return self.log(
+            category=ActivityCategory.ERROR,
+            summary=user_message,
+            details={
+                "error_code": error_code,
+                "technical_detail": technical_detail,
+            },
+            correlation_id=correlation_id,
+            mission_id=mission_id,
+        )
+
     def query(
         self,
         limit: int = 50,
         category: str | None = None,
         since: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[ActivityEvent]:
-        """Query recent events, newest first.  Optional category and since filters."""
-        params: list[str | int]
-        if category is not None and since is not None:
-            sql = (
-                "SELECT id, timestamp, category, summary, details "
-                "FROM activity_log "
-                "WHERE category = ? AND timestamp >= ? "
-                "ORDER BY timestamp DESC LIMIT ?"
-            )
-            params = [category, since, limit]
-        elif category is not None:
-            sql = (
-                "SELECT id, timestamp, category, summary, details "
-                "FROM activity_log "
-                "WHERE category = ? "
-                "ORDER BY timestamp DESC LIMIT ?"
-            )
-            params = [category, limit]
-        elif since is not None:
-            sql = (
-                "SELECT id, timestamp, category, summary, details "
-                "FROM activity_log "
-                "WHERE timestamp >= ? "
-                "ORDER BY timestamp DESC LIMIT ?"
-            )
-            params = [since, limit]
-        else:
-            sql = (
-                "SELECT id, timestamp, category, summary, details "
-                "FROM activity_log "
-                "ORDER BY timestamp DESC LIMIT ?"
-            )
-            params = [limit]
+        """Query recent events, newest first.
+
+        Optional filters: *category*, *since* (ISO timestamp), *correlation_id*.
+        """
+        _COLS = "id, timestamp, category, summary, details, correlation_id, mission_id"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if category is not None:
+            clauses.append("category = ?")
+            params.append(category)
+        if since is not None:
+            clauses.append("timestamp >= ?")
+            params.append(since)
+        if correlation_id is not None:
+            clauses.append("correlation_id = ?")
+            params.append(correlation_id)
+
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        sql = f"SELECT {_COLS} FROM activity_log{where} ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
 
         with self._lock:
             self._check_open()
@@ -192,6 +331,8 @@ class ActivityFeed:
                 summary=row["summary"],
                 details=json.loads(row["details"]),
                 event_id=row["id"],
+                correlation_id=row["correlation_id"],
+                mission_id=row["mission_id"],
             )
             for row in rows
         ]
@@ -287,8 +428,14 @@ def log_activity(
     category: str,
     summary: str,
     details: dict | None = None,
+    *,
+    correlation_id: str = "",
+    mission_id: str = "",
 ) -> str:
-    return get_activity_feed().log(category, summary, details)
+    return get_activity_feed().log(
+        category, summary, details,
+        correlation_id=correlation_id, mission_id=mission_id,
+    )
 
 
 def _reset_feed() -> None:

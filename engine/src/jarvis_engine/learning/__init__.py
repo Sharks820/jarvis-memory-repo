@@ -12,6 +12,8 @@ from jarvis_engine.learning.missions import (  # noqa: F401
     pause_mission,
     resume_mission,
     restart_mission,
+    block_mission,
+    unblock_mission,
     mission_dashboard_metrics,
     retry_failed_missions,
     MissionStep,
@@ -19,4 +21,6 @@ from jarvis_engine.learning.missions import (  # noqa: F401
     VerifiedFinding,
     MissionReport,
     MISSION_DEFAULT_SOURCES,
+    VALID_TRANSITIONS,
+    InvalidTransitionError,
 )

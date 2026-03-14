@@ -76,7 +76,7 @@ class TestMissionCancel:
              "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
         ])
 
-        with pytest.raises(ValueError, match="cannot cancel"):
+        with pytest.raises(ValueError, match="invalid transition"):
             cancel_mission(root, mission_id="m-done")
 
     def test_cancel_already_cancelled_mission_raises(self):
@@ -89,7 +89,7 @@ class TestMissionCancel:
              "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
         ])
 
-        with pytest.raises(ValueError, match="cannot cancel"):
+        with pytest.raises(ValueError, match="invalid transition"):
             cancel_mission(root, mission_id="m-can")
 
     def test_cancel_mission_logs_activity(self):

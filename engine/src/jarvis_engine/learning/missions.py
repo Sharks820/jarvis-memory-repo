@@ -26,6 +26,39 @@ _MISSIONS_LOCK = threading.Lock()
 logger = logging.getLogger(__name__)
 
 
+# LM-01: Finite state machine — valid transitions between mission states.
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "pending": {"running", "cancelled"},
+    "running": {"completed", "failed", "cancelled", "paused", "blocked"},
+    "blocked": {"running", "cancelled", "failed"},
+    "paused": {"pending", "cancelled"},
+    "failed": {"pending", "exhausted"},
+    "completed": set(),           # terminal
+    "cancelled": {"pending"},     # restart allows cancelled → pending
+    "exhausted": {"pending"},     # restart allows exhausted → pending
+}
+
+
+class InvalidTransitionError(ValueError):
+    """Raised when a mission state transition is not allowed."""
+
+    def __init__(self, mission_id: str, from_state: str, to_state: str) -> None:
+        self.mission_id = mission_id
+        self.from_state = from_state
+        self.to_state = to_state
+        super().__init__(
+            f"invalid transition for mission {mission_id}: "
+            f"'{from_state}' -> '{to_state}'"
+        )
+
+
+def _check_transition(mission_id: str, from_state: str, to_state: str) -> None:
+    """Validate a state transition, raising InvalidTransitionError if disallowed."""
+    allowed = VALID_TRANSITIONS.get(from_state, set())
+    if to_state not in allowed:
+        raise InvalidTransitionError(mission_id, from_state, to_state)
+
+
 def _now_ms() -> int:
     """Current time in milliseconds (monotonic-friendly wall clock)."""
     return int(time.time() * 1000)
@@ -51,14 +84,18 @@ class MissionStep(TypedDict, total=False):
     artifacts_produced: int
 
 
-class MissionRecord(TypedDict):
-    """Shape returned by ``create_learning_mission``."""
+class MissionRecord(TypedDict, total=False):
+    """Shape returned by ``create_learning_mission``.
+
+    Status is one of: pending, running, blocked, paused, completed, failed,
+    cancelled, exhausted.  Transitions are enforced by ``VALID_TRANSITIONS``.
+    """
 
     mission_id: str
     topic: str
     objective: str
     sources: list[str]
-    status: str
+    status: str          # pending|running|blocked|paused|completed|failed|cancelled|exhausted
     origin: str
     created_utc: str
     updated_utc: str
@@ -67,6 +104,7 @@ class MissionRecord(TypedDict):
     progress_pct: int
     status_detail: str
     progress_bar: str
+    prior_results: list[dict[str, Any]]  # LM-06: preserved results from prior attempts
 
 
 class VerifiedFinding(TypedDict):
@@ -382,6 +420,8 @@ def _start_mission(
                 break
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
+        current = str(target.get("status", "pending")).lower()
+        _check_transition(mission_id, current, "running")
         target["status"] = "running"
         target["updated_utc"] = now_iso()
         _save_missions(root, missions)
@@ -601,9 +641,11 @@ def run_learning_mission(
 
 
 def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
-    """Cancel a mission by setting its status to 'cancelled'.
+    """Cancel a mission immediately by setting its status to 'cancelled'.
 
-    Returns the updated mission dict, or raises ValueError if not found.
+    LM-07: Cancellation is immediate, safe, and visible across all clients.
+    Uses VALID_TRANSITIONS state machine for enforcement.
+    Returns the updated mission dict, or raises ValueError/InvalidTransitionError.
     """
     with _MISSIONS_LOCK:
         missions = load_missions(root)
@@ -615,10 +657,8 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
 
-        current_status = str(target.get("status", ""))
-        _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
-        if current_status in _NON_CANCELLABLE:
-            raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
+        current_status = str(target.get("status", "")).lower()
+        _check_transition(mission_id, current_status, "cancelled")
 
         target["status"] = "cancelled"
         target["updated_utc"] = now_iso()
@@ -643,6 +683,8 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 def retry_failed_missions(root: Path) -> int:
     """Re-queue failed missions (up to 2 retries) by setting status back to pending.
 
+    LM-06: Retries preserve prior context/results via ``prior_results`` field
+    so intermediate work is never lost.
     Broadens the query set on retry by appending alternate search terms.
     Returns the number of missions re-queued.
     """
@@ -655,10 +697,13 @@ def retry_failed_missions(root: Path) -> int:
                 continue
             retries = int(mission.get("retries", 0) or 0)
             if retries >= 2:
+                # Use state machine: failed → exhausted
                 mission["status"] = "exhausted"
                 mission["updated_utc"] = now_iso()
                 modified = True
                 continue
+            # LM-06: Preserve prior results before resetting progress
+            _preserve_prior_results(mission)
             # Broaden search: add alternative query phrasing
             sources = mission.get("sources", list(MISSION_DEFAULT_SOURCES))
             if not isinstance(sources, list):
@@ -668,10 +713,11 @@ def retry_failed_missions(root: Path) -> int:
                 sources.append("wikipedia")
             mission["sources"] = sources
             mission["retries"] = retries + 1
+            # Use state machine: failed → pending
             mission["status"] = "pending"
             mission["updated_utc"] = now_iso()
             mission["progress_pct"] = 0
-            mission["status_detail"] = "Retry queued"
+            mission["status_detail"] = f"Retry #{retries + 1} queued (prior results preserved)"
             mission["progress_bar"] = _progress_bar(0)
             re_queued += 1
             modified = True
@@ -680,6 +726,28 @@ def retry_failed_missions(root: Path) -> int:
     if re_queued > 0:
         logger.info("Re-queued %d failed mission(s) for retry", re_queued)
     return re_queued
+
+
+def _preserve_prior_results(mission: dict[str, Any]) -> None:
+    """Snapshot the current mission state into ``prior_results`` (LM-06).
+
+    Keeps verified findings, steps, progress, and report path from this attempt
+    so that retry does not lose intermediate work.
+    """
+    prior = mission.get("prior_results")
+    if not isinstance(prior, list):
+        prior = []
+    snapshot: dict[str, Any] = {
+        "attempt": int(mission.get("retries", 0) or 0) + 1,
+        "status": str(mission.get("status", "")),
+        "progress_pct": int(mission.get("progress_pct", 0) or 0),
+        "verified_findings": int(mission.get("verified_findings", 0) or 0),
+        "last_report_path": str(mission.get("last_report_path", "")),
+        "steps": mission.get("steps", []),
+        "preserved_utc": now_iso(),
+    }
+    prior.append(snapshot)
+    mission["prior_results"] = prior
 
 
 # Auto-generate missions from knowledge gaps
@@ -961,11 +1029,11 @@ def get_mission_steps(root: Path, mission_id: str) -> list[dict[str, Any]]:
 
 
 def get_active_missions(root: Path) -> list[dict[str, Any]]:
-    """Return all running and paused missions."""
+    """Return all running, paused, blocked, and pending missions."""
     missions = load_missions(root)
     return [
         m for m in missions
-        if str(m.get("status", "")).lower() in ("running", "paused", "pending")
+        if str(m.get("status", "")).lower() in ("running", "paused", "pending", "blocked")
     ]
 
 
@@ -1005,6 +1073,68 @@ def get_now_working_on(root: Path) -> dict[str, Any] | None:
 # Pause / Resume / Restart lifecycle controls (Task D)
 
 
+def block_mission(root: Path, *, mission_id: str, reason: str = "") -> dict[str, Any]:
+    """Block a running mission (LM-01: running -> blocked only).
+
+    Used when a mission cannot proceed due to external dependency (e.g.,
+    rate limit, missing API key, network outage).
+    """
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        target: dict[str, Any] | None = None
+        for item in missions:
+            if str(item.get("mission_id", "")) == mission_id:
+                target = item
+                break
+        if target is None:
+            raise ValueError(f"mission not found: {mission_id}")
+        current = str(target.get("status", "")).lower()
+        _check_transition(mission_id, current, "blocked")
+        target["status"] = "blocked"
+        target["updated_utc"] = now_iso()
+        target["status_detail"] = (reason or "Blocked")[:180]
+        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
+        _save_missions(root, missions)
+
+    _log_mission_activity(
+        mission_id=mission_id,
+        topic=str(target.get("topic", "")),
+        status="blocked",
+        progress_pct=int(target.get("progress_pct", 0) or 0),
+        step=target["status_detail"],
+    )
+    return target
+
+
+def unblock_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
+    """Unblock a blocked mission back to running (LM-01: blocked -> running)."""
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        target: dict[str, Any] | None = None
+        for item in missions:
+            if str(item.get("mission_id", "")) == mission_id:
+                target = item
+                break
+        if target is None:
+            raise ValueError(f"mission not found: {mission_id}")
+        current = str(target.get("status", "")).lower()
+        _check_transition(mission_id, current, "running")
+        target["status"] = "running"
+        target["updated_utc"] = now_iso()
+        target["status_detail"] = "Unblocked — resumed execution"
+        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
+        _save_missions(root, missions)
+
+    _log_mission_activity(
+        mission_id=mission_id,
+        topic=str(target.get("topic", "")),
+        status="running",
+        progress_pct=int(target.get("progress_pct", 0) or 0),
+        step="Unblocked",
+    )
+    return target
+
+
 def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
     """Pause a running mission, saving its checkpoint."""
     with _MISSIONS_LOCK:
@@ -1016,8 +1146,8 @@ def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
                 break
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
-        if str(target.get("status", "")).lower() != "running":
-            raise ValueError(f"can only pause a running mission, current status: {target.get('status')}")
+        current = str(target.get("status", "")).lower()
+        _check_transition(mission_id, current, "paused")
         target["status"] = "paused"
         target["updated_utc"] = now_iso()
         target["status_detail"] = "Paused"
@@ -1045,8 +1175,8 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
                 break
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
-        if str(target.get("status", "")).lower() != "paused":
-            raise ValueError(f"can only resume a paused mission, current status: {target.get('status')}")
+        current = str(target.get("status", "")).lower()
+        _check_transition(mission_id, current, "pending")
         target["status"] = "pending"  # Will be picked up by daemon loop
         target["updated_utc"] = now_iso()
         target["status_detail"] = "Resumed — queued for execution"
@@ -1064,7 +1194,7 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 
 
 def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
-    """Restart a failed/cancelled mission, preserving prior context."""
+    """Restart a failed/cancelled/exhausted mission, preserving prior context (LM-06)."""
     with _MISSIONS_LOCK:
         missions = load_missions(root)
         target: dict[str, Any] | None = None
@@ -1075,8 +1205,9 @@ def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
         current = str(target.get("status", "")).lower()
-        if current not in ("failed", "cancelled", "exhausted"):
-            raise ValueError(f"can only restart a failed/cancelled/exhausted mission, current status: {current}")
+        _check_transition(mission_id, current, "pending")
+        # LM-06: Preserve prior results before resetting
+        _preserve_prior_results(target)
         target["status"] = "pending"
         target["progress_pct"] = 0
         target["progress_bar"] = _progress_bar(0)

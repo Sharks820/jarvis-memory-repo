@@ -31,6 +31,7 @@ class LearningResult(TypedDict, total=False):
     preferences_detected: list[tuple[str, str]]
     feedback_detected: str
     error: str
+    source_interaction_id: str  # LM-05: trace learning outputs to source interaction
 
 
 # Greeting prefixes that indicate non-knowledge-bearing messages (when short).
@@ -69,26 +70,40 @@ class ConversationLearningEngine:
         task_id: str = "",
         route: str = "",
         topic: str = "",
+        source_interaction_id: str = "",
     ) -> LearningResult:
         """Learn from a single interaction, returning ingestion stats.
+
+        LM-05: Every learning output (preference, fact, correction) is traceable
+        to the ``source_interaction_id`` that produced it.
 
         Filters non-knowledge-bearing messages, then ingests user messages
         as episodic memory and assistant responses as semantic memory.
 
         Returns:
             Dict with 'records_created' count, 'correction_detected' bool,
-            'correction_applied' bool (and 'error' key on failure).
+            'correction_applied' bool, 'source_interaction_id', and 'error' on failure.
         """
+        # LM-05: Generate interaction ID if not provided
+        if not source_interaction_id:
+            import uuid
+            source_interaction_id = uuid.uuid4().hex
+
         if self._pipeline is None:
             return {
                 "records_created": 0,
                 "correction_detected": False,
                 "correction_applied": False,
+                "source_interaction_id": source_interaction_id,
                 "error": "no pipeline",
             }
 
-        correction_detected, correction_applied = self._detect_corrections(user_message)
-        preferences_detected = self._extract_preferences(user_message)
+        correction_detected, correction_applied = self._detect_corrections(
+            user_message, source_interaction_id=source_interaction_id,
+        )
+        preferences_detected = self._extract_preferences(
+            user_message, source_interaction_id=source_interaction_id,
+        )
         feedback_detected = self._record_feedback_and_usage(user_message, route, topic)
         records_created = self._ingest_messages(
             user_message, assistant_response, task_id
@@ -100,11 +115,18 @@ class ConversationLearningEngine:
             "correction_applied": correction_applied,
             "preferences_detected": preferences_detected,
             "feedback_detected": feedback_detected,
+            "source_interaction_id": source_interaction_id,
         }
 
-    def _detect_corrections(self, user_message: str) -> tuple[bool, bool]:
+    def _detect_corrections(
+        self,
+        user_message: str,
+        *,
+        source_interaction_id: str = "",
+    ) -> tuple[bool, bool]:
         """Check for user corrections and apply them if found.
 
+        LM-05: Includes ``source_interaction_id`` in activity log for traceability.
         Returns (correction_detected, correction_applied).
         """
         try:
@@ -126,6 +148,7 @@ class ConversationLearningEngine:
                             "old_claim": correction.old_claim,
                             "new_claim": correction.new_claim,
                             "applied": applied,
+                            "source_interaction_id": source_interaction_id,
                         },
                     )
                 except ImportError as exc:
@@ -137,8 +160,16 @@ class ConversationLearningEngine:
             logger.warning("correction_detector not available: %s", exc)
         return False, False
 
-    def _extract_preferences(self, user_message: str) -> list[tuple[str, str]]:
-        """Extract and log user preferences from the message."""
+    def _extract_preferences(
+        self,
+        user_message: str,
+        *,
+        source_interaction_id: str = "",
+    ) -> list[tuple[str, str]]:
+        """Extract and log user preferences from the message.
+
+        LM-05: Includes ``source_interaction_id`` in activity log for traceability.
+        """
         if self._preference_tracker is None:
             return []
         try:
@@ -154,7 +185,11 @@ class ConversationLearningEngine:
                         log_activity(
                             ActivityCategory.PREFERENCE_LEARNED,
                             f"Learned preference: {key}={value}",
-                            {"key": key, "value": value},
+                            {
+                                "key": key,
+                                "value": value,
+                                "source_interaction_id": source_interaction_id,
+                            },
                         )
                 except (ImportError, OSError, sqlite3.Error) as exc:
                     logger.warning("Preference activity logging failed: %s", exc)

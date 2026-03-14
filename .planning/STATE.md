@@ -6,16 +6,15 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v5.0 Phase 1 near-complete; debt gate (Task H) achieved — moving to Phase 2.
+**Current focus:** v5.0 Phase 3 (Learning Missions + Observability) in progress.
 
 ## Current Position
 
-Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- NEAR COMPLETE (Task H debt gate passed)
-Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
-Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-14 (massive typed-contract burn-down: mypy 104→1 errors across 44 files, ruff 17→0, widget placeholder UX fix, STT import path correction, security orchestrator cleanup; 5714 tests passed, 0 failures)
+Phase: v5.0 / Phase 3 (Learning Missions + Live Intelligence Telemetry) -- IN PROGRESS
+Status: Phase 1 DONE (debt gate), Phase 2 DONE (CTX-01..06), Phase 3 executing
+Last activity: 2026-03-14 (Phase 2 shipped: 49 CTX tests, all 6 requirements implemented; Phase 1 quality gate: mypy 104→1, ruff 17→0, Codex/Gemini review HIGH+MEDIUM findings fixed; 5766 tests passing)
 
-Progress (v5.0): [███████░░░] 65%
+Progress (v5.0): [████████░░] 75%
 
 ## Performance Metrics
 

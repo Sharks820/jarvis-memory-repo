@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime
+from jarvis_engine._compat import UTC
 from jarvis_engine._shared import atomic_write_json, now_iso, parse_iso_timestamp, safe_float
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
@@ -402,6 +403,144 @@ def build_intelligence_dashboard(
             "new": new_unlocks,
             "all": unlocked,
         },
+    }
+
+
+def get_intelligence_delta(
+    root: Path,
+    period_days: int = 7,
+    *,
+    pref_tracker: PreferenceTracker | None = None,
+    feedback_tracker: ResponseFeedbackTracker | None = None,
+) -> dict[str, Any]:
+    """Compute intelligence trend metrics over the given period (LM-04).
+
+    Returns a dict with:
+      - mission_throughput: missions completed per day in the period
+      - quality_trend: average route quality scores (if feedback tracker present)
+      - learning_rate: new facts/preferences per day
+      - period_days: the period used
+    """
+    period_days = max(1, int(period_days))
+
+    # Mission throughput
+    mission_throughput = 0.0
+    try:
+        from jarvis_engine.learning.missions import load_missions
+
+        missions = load_missions(root)
+        from datetime import timedelta
+        cutoff = (datetime.now(UTC) - timedelta(days=period_days)).isoformat()
+        completed_in_period = sum(
+            1 for m in missions
+            if str(m.get("status", "")).lower() == "completed"
+            and str(m.get("updated_utc", "")) >= cutoff
+        )
+        mission_throughput = round(completed_in_period / period_days, 3)
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Mission throughput calc failed: %s", exc)
+
+    # Quality trend from route quality scores
+    quality_trend: dict[str, Any] = {}
+    if feedback_tracker is not None:
+        try:
+            quality_trend = feedback_tracker.get_all_route_quality()
+        except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+            logger.debug("Route quality trend fetch failed: %s", exc)
+
+    # Learning rate: preferences count
+    learning_rate = 0.0
+    if pref_tracker is not None:
+        try:
+            all_prefs = pref_tracker.get_all_preferences()
+            pref_count = len(all_prefs) if isinstance(all_prefs, list) else 0
+            # Approximate: total prefs / period as daily rate
+            learning_rate = round(pref_count / period_days, 3)
+        except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+            logger.debug("Learning rate calc failed: %s", exc)
+
+    return {
+        "mission_throughput": mission_throughput,
+        "quality_trend": quality_trend,
+        "learning_rate": learning_rate,
+        "period_days": period_days,
+    }
+
+
+def generate_intelligence_report(
+    root: Path,
+    period_days: int = 7,
+    *,
+    pref_tracker: PreferenceTracker | None = None,
+    feedback_tracker: ResponseFeedbackTracker | None = None,
+    usage_tracker: UsagePatternTracker | None = None,
+) -> dict[str, Any]:
+    """Generate a daily/weekly intelligence delta report (LM-08).
+
+    Quantifies measurable improvement or regression across:
+      - Mission throughput and success rate
+      - Knowledge growth (score delta)
+      - Learning rate (preferences/facts per day)
+      - Route quality trend
+      - Overall assessment (improving / stable / regressing)
+    """
+    period_days = max(1, int(period_days))
+    now = now_iso()
+
+    delta = get_intelligence_delta(
+        root,
+        period_days,
+        pref_tracker=pref_tracker,
+        feedback_tracker=feedback_tracker,
+    )
+
+    # Score delta from capability history
+    history_rows = read_history(_history_path(root))
+    summary = summarize_history(history_rows, last=20)
+    latest_score = safe_float(summary.get("latest_score_pct", 0.0), 0.0)
+    delta_vs_prev = safe_float(summary.get("delta_vs_prev_pct", 0.0), 0.0)
+
+    # Mission stats for the period
+    mission_metrics: dict[str, Any] = {}
+    try:
+        from jarvis_engine.learning.missions import mission_dashboard_metrics
+
+        mission_metrics = mission_dashboard_metrics(root)
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Mission metrics for report failed: %s", exc)
+
+    # Determine overall assessment
+    signals = []
+    if delta_vs_prev > 0.5:
+        signals.append("improving")
+    elif delta_vs_prev < -0.5:
+        signals.append("regressing")
+    else:
+        signals.append("stable")
+
+    if delta["mission_throughput"] > 0:
+        signals.append("active_missions")
+
+    assessment = "improving" if signals.count("improving") > signals.count("regressing") else (
+        "regressing" if signals.count("regressing") > signals.count("improving") else "stable"
+    )
+
+    return {
+        "generated_utc": now,
+        "period_days": period_days,
+        "intelligence_score": {
+            "current_pct": latest_score,
+            "delta_vs_prev_pct": delta_vs_prev,
+        },
+        "mission_throughput": delta["mission_throughput"],
+        "mission_stats": {
+            "completed_in_period": mission_metrics.get("missions_completed_7d", 0),
+            "failed_in_period": mission_metrics.get("missions_failed_7d", 0),
+            "success_rate": mission_metrics.get("mission_success_rate", 0.0),
+        },
+        "learning_rate": delta["learning_rate"],
+        "quality_trend": delta["quality_trend"],
+        "assessment": assessment,
     }
 
 

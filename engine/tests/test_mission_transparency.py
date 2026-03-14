@@ -277,7 +277,7 @@ class TestMissionPause:
 
     def test_pause_non_running_raises(self, mission_root: Path) -> None:
         m = _create_test_mission(mission_root)
-        with pytest.raises(ValueError, match="can only pause a running mission"):
+        with pytest.raises(ValueError, match="invalid transition"):
             pause_mission(mission_root, mission_id=m["mission_id"])
 
     def test_pause_unknown_mission_raises(self, mission_root: Path) -> None:
@@ -301,7 +301,7 @@ class TestMissionResume:
 
     def test_resume_non_paused_raises(self, mission_root: Path) -> None:
         m = _create_test_mission(mission_root)
-        with pytest.raises(ValueError, match="can only resume a paused mission"):
+        with pytest.raises(ValueError, match="invalid transition"):
             resume_mission(mission_root, mission_id=m["mission_id"])
 
 
@@ -349,7 +349,7 @@ class TestMissionRestart:
         from jarvis_engine.learning.missions import _save_missions
         _save_missions(mission_root, missions)
 
-        with pytest.raises(ValueError, match="can only restart"):
+        with pytest.raises(ValueError, match="invalid transition"):
             restart_mission(mission_root, mission_id=m["mission_id"])
 
 
