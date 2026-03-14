@@ -97,6 +97,57 @@ _RE_PII_SSN = re.compile(r"\d{3}-\d{2}-\d{4}")
 _RE_PII_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _RE_PII_CC = re.compile(r"\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}")
 
+# Provider name normalization (CTX-05): raw model strings → canonical provider name
+_PROVIDER_NORMALIZATION: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"claude[-_]?\d", re.IGNORECASE), "claude"),
+    (re.compile(r"^claude$", re.IGNORECASE), "claude"),
+    (re.compile(r"gpt[-_]?\d", re.IGNORECASE), "openai"),
+    (re.compile(r"^gpt", re.IGNORECASE), "openai"),
+    (re.compile(r"^o\d", re.IGNORECASE), "openai"),
+    (re.compile(r"qwen", re.IGNORECASE), "qwen"),
+    (re.compile(r"gemini", re.IGNORECASE), "gemini"),
+    (re.compile(r"gemma", re.IGNORECASE), "gemma"),
+    (re.compile(r"llama", re.IGNORECASE), "llama"),
+    (re.compile(r"mistral", re.IGNORECASE), "mistral"),
+    (re.compile(r"mixtral", re.IGNORECASE), "mixtral"),
+    (re.compile(r"deepseek", re.IGNORECASE), "deepseek"),
+    (re.compile(r"codex", re.IGNORECASE), "codex"),
+    (re.compile(r"groq", re.IGNORECASE), "groq"),
+    (re.compile(r"phi[-_]?\d", re.IGNORECASE), "phi"),
+    (re.compile(r"command[-_]?r", re.IGNORECASE), "cohere"),
+    (re.compile(r"whisper", re.IGNORECASE), "whisper"),
+]
+
+
+def normalize_provider_name(raw_model: str) -> str:
+    """Normalize a raw model identifier to a canonical provider name.
+
+    Examples::
+
+        "claude-3-opus-20240229" → "claude"
+        "qwen3.5:latest"        → "qwen"
+        "gpt-4-turbo"           → "openai"
+        "unknown-model"         → "unknown-model"  (passthrough)
+
+    Parameters
+    ----------
+    raw_model : str
+        The raw model name as returned by the gateway.
+
+    Returns
+    -------
+    str
+        Canonical provider name, or the original string if no rule matched.
+    """
+    if not raw_model:
+        return "unknown"
+    stripped = raw_model.strip()
+    for pattern, canonical in _PROVIDER_NORMALIZATION:
+        if pattern.search(stripped):
+            return canonical
+    return stripped
+
+
 # Semantic extraction patterns — decisions and unresolved goals
 _RE_DECISIONS = re.compile(
     r"(?:^|\.\s+|\n)"
@@ -243,6 +294,7 @@ class ConversationSnapshot:
     unresolved_goals: list[str] = field(default_factory=list)
     prior_decisions: list[str] = field(default_factory=list)
     referenced_artifacts: list[str] = field(default_factory=list)
+    active_mission_ids: list[str] = field(default_factory=list)
     active_model: str = ""
     model_history: list[list[Any]] = field(default_factory=list)
     turn_count: int = 0
@@ -1193,14 +1245,15 @@ class ConversationStateManager:
         """Return state to inject into the system prompt for continuity.
 
         Provides the rolling summary, anchor entities, unresolved goals,
-        and prior decisions so a new LLM provider can seamlessly continue
-        the conversation.
+        prior decisions, active missions, and referenced artifacts so a
+        new LLM provider can seamlessly continue the conversation.
 
         Returns
         -------
         dict
             Keys: ``rolling_summary``, ``anchor_entities``,
-            ``unresolved_goals``, ``prior_decisions``.
+            ``unresolved_goals``, ``prior_decisions``,
+            ``active_mission_ids``, ``referenced_artifacts``.
         """
         with self._lock:
             return {
@@ -1208,7 +1261,174 @@ class ConversationStateManager:
                 "anchor_entities": list(self._snapshot.anchor_entities),
                 "unresolved_goals": list(self._snapshot.unresolved_goals),
                 "prior_decisions": list(self._snapshot.prior_decisions),
+                "active_mission_ids": list(self._snapshot.active_mission_ids),
+                "referenced_artifacts": list(self._snapshot.referenced_artifacts),
             }
+
+    # CTX-03: Mission and artifact tracking
+
+    def track_mission(self, mission_id: str) -> None:
+        """Track an active mission in the conversation state.
+
+        Parameters
+        ----------
+        mission_id : str
+            The mission identifier to track.
+        """
+        if not mission_id or not isinstance(mission_id, str):
+            return
+        mid = mission_id.strip()
+        if not mid:
+            return
+        with self._lock:
+            if mid not in self._snapshot.active_mission_ids:
+                self._snapshot.active_mission_ids.append(mid)
+                # Cap at 50 active missions
+                if len(self._snapshot.active_mission_ids) > 50:
+                    self._snapshot.active_mission_ids = (
+                        self._snapshot.active_mission_ids[-50:]
+                    )
+                self._snapshot.updated_at = now_iso()
+        self._save_debounced()
+
+    def track_artifact(self, artifact_ref: str) -> None:
+        """Track a referenced artifact in the conversation state.
+
+        Parameters
+        ----------
+        artifact_ref : str
+            The artifact reference (URL, file path, or identifier) to track.
+        """
+        if not artifact_ref or not isinstance(artifact_ref, str):
+            return
+        ref = artifact_ref.strip()
+        if not ref:
+            return
+        with self._lock:
+            if ref not in self._snapshot.referenced_artifacts:
+                self._snapshot.referenced_artifacts.append(ref)
+                if len(self._snapshot.referenced_artifacts) > 200:
+                    self._snapshot.referenced_artifacts = (
+                        self._snapshot.referenced_artifacts[-200:]
+                    )
+                self._snapshot.updated_at = now_iso()
+        self._save_debounced()
+
+    def get_active_missions(self) -> list[str]:
+        """Return the list of active mission IDs.
+
+        Returns
+        -------
+        list[str]
+            Copy of the active mission IDs list.
+        """
+        with self._lock:
+            return list(self._snapshot.active_mission_ids)
+
+    # CTX-04: Transport-limit-aware compaction
+
+    def compact_for_transport(self, max_chars: int = 8000) -> dict[str, Any]:
+        """Return prompt injection data compacted to fit within *max_chars*.
+
+        Prioritizes data by importance:
+        1. anchor_entities (most important — identity/context anchors)
+        2. unresolved_goals
+        3. prior_decisions
+        4. active_mission_ids
+        5. referenced_artifacts
+        6. rolling_summary (truncated last)
+
+        Parameters
+        ----------
+        max_chars : int
+            Maximum total character count for the serialized output.
+
+        Returns
+        -------
+        dict[str, Any]
+            Same keys as ``get_prompt_injection()`` but trimmed to fit.
+        """
+        with self._lock:
+            data = self.get_prompt_injection()
+
+        # Start with full data, iteratively trim to fit
+        import json as _json
+
+        def _measure(d: dict[str, Any]) -> int:
+            return len(_json.dumps(d, ensure_ascii=False))
+
+        # Phase 1: trim rolling_summary first (lowest priority text)
+        if _measure(data) > max_chars and data.get("rolling_summary"):
+            # Binary search for the right truncation point
+            summary = data["rolling_summary"]
+            lo, hi = 0, len(summary)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                data["rolling_summary"] = summary[:mid]
+                if _measure(data) <= max_chars:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            data["rolling_summary"] = summary[:lo]
+
+        # Phase 2: trim referenced_artifacts
+        if _measure(data) > max_chars:
+            while data.get("referenced_artifacts") and _measure(data) > max_chars:
+                data["referenced_artifacts"].pop()
+
+        # Phase 3: trim active_mission_ids
+        if _measure(data) > max_chars:
+            while data.get("active_mission_ids") and _measure(data) > max_chars:
+                data["active_mission_ids"].pop()
+
+        # Phase 4: trim prior_decisions
+        if _measure(data) > max_chars:
+            while data.get("prior_decisions") and _measure(data) > max_chars:
+                data["prior_decisions"].pop()
+
+        # Phase 5: trim unresolved_goals
+        if _measure(data) > max_chars:
+            while data.get("unresolved_goals") and _measure(data) > max_chars:
+                data["unresolved_goals"].pop()
+
+        # Phase 6: trim entities as last resort
+        if _measure(data) > max_chars:
+            entities = data.get("anchor_entities", [])
+            while entities and _measure(data) > max_chars:
+                entities.pop()
+            data["anchor_entities"] = entities
+
+        return data
+
+    # CTX-05: Unified cross-provider timeline
+
+    def get_unified_timeline(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return timeline entries with normalized provider names.
+
+        Each entry contains: timestamp, normalized_provider, role,
+        content_hash, summary_snippet.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of entries to return.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Timeline entries with canonical provider names, newest first.
+        """
+        entries = self._timeline.recent(limit=limit)
+        result: list[dict[str, Any]] = []
+        for e in entries:
+            result.append({
+                "timestamp": e.timestamp,
+                "normalized_provider": normalize_provider_name(e.model),
+                "role": e.role,
+                "content_hash": e.content_hash,
+                "summary_snippet": e.summary_snippet,
+            })
+        return result
 
     # State snapshot (for mobile API / dashboard)
 

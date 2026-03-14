@@ -875,6 +875,16 @@ def _prepare_history(
         decisions = injection.get("prior_decisions", [])
         if decisions:
             system_parts.append(f"Prior decisions made: {'; '.join(decisions)}")
+        mission_ids = injection.get("active_mission_ids", [])
+        if mission_ids:
+            system_parts.append(
+                f"Active missions: {', '.join(mission_ids)}"
+            )
+        artifacts = injection.get("referenced_artifacts", [])
+        if artifacts:
+            system_parts.append(
+                f"Referenced artifacts: {', '.join(artifacts[-10:])}"
+            )
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Conversation state injection failed: %s", exc)
 

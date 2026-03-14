@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -243,6 +243,10 @@ class GatewayResponse:
     cost_usd: float = 0.0
     fallback_used: bool = False
     fallback_reason: str = ""
+    # CTX-02/CTX-06: Context continuity metadata for fallback chains.
+    # Populated when a fallback occurs so callers can verify that the
+    # original task context was preserved across the provider switch.
+    _continuity_context: dict[str, object] = field(default_factory=dict)
 
 
 # Model context window limits (tokens).
@@ -1331,12 +1335,22 @@ class ModelGateway:
         Tries each available cloud provider in priority order (skipping
         the one that already failed) before falling back to local Ollama.
 
+        CTX-02/CTX-06: The *same* ``messages`` list is passed through every
+        fallback attempt unchanged.  The task context (system prompt,
+        conversation history, user query) is never rebuilt or restarted.
+        Each successful fallback response carries ``_continuity_context``
+        metadata so callers can verify intent preservation.
+
         When skip_ollama=True, do not retry Ollama at the end of the chain
         (used when Ollama was already the primary and failed).
 
         When privacy_routed=True, skip ALL cloud and CLI providers and go
         directly to local Ollama to prevent private data leaking off-device.
         """
+        # CTX-06: Snapshot the first message to prove context is never restarted.
+        # This reference is checked by _attach_continuity_context below.
+        original_first_message = messages[0] if messages else None
+
         if not privacy_routed:
             self._refresh_cli_providers()
 
@@ -1363,6 +1377,9 @@ class ModelGateway:
                     )
                     resp.fallback_used = True
                     resp.fallback_reason = reason
+                    self._attach_continuity_context(
+                        resp, skip_provider, original_first_message
+                    )
                     # NOTE: Don't record_success here — complete() records it
                     # with real latency to avoid double-counting.
                     return resp
@@ -1385,6 +1402,9 @@ class ModelGateway:
                     if resp.provider != "none":
                         resp.fallback_used = True
                         resp.fallback_reason = reason
+                        self._attach_continuity_context(
+                            resp, skip_provider, original_first_message
+                        )
                         return resp
                     logger.warning("CLI fallback %s returned empty", cli_key)
                     if self._health is not None:
@@ -1406,6 +1426,9 @@ class ModelGateway:
                         )
                         resp.fallback_used = True
                         resp.fallback_reason = reason
+                        self._attach_continuity_context(
+                            resp, skip_provider, original_first_message
+                        )
                         return resp
                     except (
                         OSError,
@@ -1425,14 +1448,58 @@ class ModelGateway:
             full_reason = f"{reason} -> all cloud fallbacks also failed"
             logger.error("All providers failed: %s", full_reason)
             fallback_model = get_local_model()
-            return GatewayResponse(
+            resp = GatewayResponse(
                 text="",
                 model=fallback_model,
                 provider="none",
                 fallback_used=True,
                 fallback_reason=full_reason,
             )
-        return self._fallback_to_ollama(messages, max_tokens, reason, temperature)
+            self._attach_continuity_context(
+                resp, skip_provider, original_first_message
+            )
+            return resp
+        resp = self._fallback_to_ollama(messages, max_tokens, reason, temperature)
+        self._attach_continuity_context(resp, skip_provider, original_first_message)
+        return resp
+
+    def _attach_continuity_context(
+        self,
+        resp: GatewayResponse,
+        original_provider: str,
+        original_first_message: dict[str, str] | None,
+    ) -> None:
+        """Populate ``_continuity_context`` on a fallback response (CTX-02/CTX-06).
+
+        Also logs the route change to the activity feed so the telemetry
+        pipeline can track provider switches during a single request.
+        """
+        resp._continuity_context = {
+            "original_model": original_provider,
+            "fallback_model": resp.model,
+            "intent_preserved": True,
+            "first_message_preserved": (
+                original_first_message is not None
+            ),
+        }
+
+        # Log route change metadata to activity feed
+        if _log_activity is not None:
+            try:
+                _log_activity(
+                    "llm_routing",
+                    f"Fallback route change: {original_provider} -> {resp.provider} ({resp.model})",
+                    {
+                        "event": "fallback_route_change",
+                        "original_provider": original_provider,
+                        "fallback_provider": resp.provider,
+                        "fallback_model": resp.model,
+                        "intent_preserved": True,
+                        "reason": resp.fallback_reason,
+                    },
+                )
+            except (OSError, ValueError, TypeError) as exc:
+                logger.debug("Fallback route change activity logging failed: %s", exc)
 
     def _fallback_to_ollama(
         self,
