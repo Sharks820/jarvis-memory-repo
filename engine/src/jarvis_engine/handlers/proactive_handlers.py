@@ -129,6 +129,49 @@ class WakeWordStartHandler:
         self._mic_lock = threading.Lock()
         self._conversation_until: float = 0.0
 
+    def _confirm_stt(self, text: str, confidence: float) -> bool:
+        """Show a widget confirmation dialog for low-confidence STT.
+
+        Marshals the dialog to tkinter's main thread and blocks until
+        the user responds.  Returns True if the user confirms.
+        """
+        try:
+            import tkinter as _tk
+            from tkinter import messagebox as _mb
+
+            # Find the running widget instance (it's the root Tk window)
+            roots = [w for w in _tk.Tk._default_root.__class__.__subclasses__(_tk.Tk)  # type: ignore[union-attr]
+                     if hasattr(w, '_confirm_exit')]  # noqa: E501
+            # Simpler: use Tk._default_root directly
+            root_win = _tk.Tk._default_root  # type: ignore[union-attr]
+            if root_win is None:
+                return True  # No widget running, assume confirmed
+
+            result_holder: list[bool] = [False]
+            done = threading.Event()
+
+            def _ask() -> None:
+                try:
+                    pct = int(confidence * 100)
+                    result_holder[0] = _mb.askyesno(
+                        "Confirm Voice Command",
+                        f"I heard ({pct}% confidence):\n\n"
+                        f'  "{text}"\n\n'
+                        "Execute this command?",
+                        parent=root_win,
+                    )
+                except (_tk.TclError, RuntimeError):
+                    result_holder[0] = True  # Widget gone, proceed anyway
+                finally:
+                    done.set()
+
+            root_win.after(0, _ask)
+            done.wait(timeout=30.0)  # 30s timeout — auto-reject if no response
+            return result_holder[0]
+        except Exception:
+            logger.debug("STT confirmation dialog failed, proceeding with command")
+            return True  # Graceful fallback: execute anyway
+
     def handle(self, cmd: WakeWordStartCommand) -> WakeWordStartResult:
         # Prevent duplicate threads
         if self._thread is not None and self._thread.is_alive():
@@ -188,6 +231,19 @@ class WakeWordStartHandler:
                 if not text:
                     logger.info("Wake word only, no command.")
                     return
+
+                # STT-11: Low-confidence confirmation via widget dialog
+                if getattr(result, "needs_confirmation", False):
+                    logger.info(
+                        "Low-confidence (%.3f): requesting user confirmation for '%s'",
+                        result.confidence,
+                        text[:60],
+                    )
+                    confirmed = self._confirm_stt(text, result.confidence)
+                    if not confirmed:
+                        logger.info("User rejected low-confidence transcription.")
+                        return
+
                 logger.info(
                     "Voice command: '%s' (backend=%s, %.2fs)",
                     text,
