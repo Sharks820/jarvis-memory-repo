@@ -1590,12 +1590,22 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         return "break"
 
     def _notify_toast(self, title: str, message: str, icon: str = "Info") -> None:
-        """Send a toast notification if the Notifications toggle is enabled."""
+        """Send a toast notification if the Notifications toggle is enabled.
+
+        Marshals the BooleanVar read to the main thread to avoid tkinter
+        thread-safety violations when called from background threads.
+        """
+        def _do_toast() -> None:
+            try:
+                if self.notify_var.get():
+                    _show_toast(title, message, icon)
+            except (tk.TclError, RuntimeError):
+                logger.debug("Toast notification failed (widget may be destroyed)")
+
         try:
-            if self.notify_var.get():
-                _show_toast(title, message, icon)
-        except (tk.TclError, RuntimeError):  # Widget may be destroyed; toast is best-effort
-            logger.debug("Toast notification failed (widget may be destroyed)")
+            self.after(0, _do_toast)
+        except (tk.TclError, RuntimeError):
+            pass  # Widget already destroyed
 
     def _set_command_text(self, value: str) -> None:
         self._placeholder_active = False
