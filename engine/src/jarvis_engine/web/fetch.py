@@ -180,7 +180,7 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
     # Prefer proper HTML parser over regex for tag stripping (security)
     try:
         from lxml.html.clean import Cleaner  # type: ignore[import-untyped]
-        from lxml.html import fromstring as _lxml_parse, tostring as _lxml_tostring  # type: ignore[import-untyped]
+        from lxml.html import fromstring as _lxml_parse  # type: ignore[import-untyped]
 
         cleaner = Cleaner(scripts=True, javascript=True, style=True, comments=True, page_structure=False)
         doc = _lxml_parse(text)
