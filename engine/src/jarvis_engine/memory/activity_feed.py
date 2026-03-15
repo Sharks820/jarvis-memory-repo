@@ -144,12 +144,16 @@ class ActivityFeed:
                 ON activity_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_activity_created_at
                 ON activity_log(created_at);
+        """)
+        # Migrate existing databases that lack the new columns (OBS-02).
+        # Must run BEFORE creating indexes on these columns, since pre-migration
+        # databases won't have them yet and CREATE INDEX would fail.
+        self._migrate_add_column("correlation_id", "TEXT NOT NULL DEFAULT ''")
+        self._migrate_add_column("mission_id", "TEXT NOT NULL DEFAULT ''")
+        self._db.executescript("""
             CREATE INDEX IF NOT EXISTS idx_activity_correlation_id
                 ON activity_log(correlation_id);
         """)
-        # Migrate existing databases that lack the new columns (OBS-02)
-        self._migrate_add_column("correlation_id", "TEXT NOT NULL DEFAULT ''")
-        self._migrate_add_column("mission_id", "TEXT NOT NULL DEFAULT ''")
 
     # Public API
 

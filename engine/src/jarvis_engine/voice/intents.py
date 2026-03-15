@@ -387,7 +387,8 @@ def _handle_automation_run(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 def _handle_generate_code(ctx: _DispatchCtx) -> tuple[str, int]:
-    idx = ctx.lowered.index("generate code") + len("generate code")
+    idx = ctx.lowered.find("generate code")
+    idx = (idx + len("generate code")) if idx >= 0 else len(ctx.lowered)
     prompt = ctx.text[idx:].strip()
     prompt = prompt or "Generate high-quality production code for the requested task."
     return "generate_code", ctx.cmd_run_task(
@@ -399,7 +400,8 @@ def _handle_generate_code(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 def _handle_generate_image(ctx: _DispatchCtx) -> tuple[str, int]:
-    idx = ctx.lowered.index("generate image") + len("generate image")
+    idx = ctx.lowered.find("generate image")
+    idx = (idx + len("generate image")) if idx >= 0 else len(ctx.lowered)
     prompt = ctx.text[idx:].strip()
     prompt = prompt or "Generate a high-quality concept image."
     return "generate_image", ctx.cmd_run_task(
@@ -411,7 +413,8 @@ def _handle_generate_image(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 def _handle_generate_video(ctx: _DispatchCtx) -> tuple[str, int]:
-    idx = ctx.lowered.index("generate video") + len("generate video")
+    idx = ctx.lowered.find("generate video")
+    idx = (idx + len("generate video")) if idx >= 0 else len(ctx.lowered)
     prompt = ctx.text[idx:].strip()
     prompt = prompt or "Generate a high-quality short cinematic video."
     return "generate_video", ctx.cmd_run_task(

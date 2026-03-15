@@ -159,10 +159,11 @@ class ContradictionManager(KGManagerBase):
         :class:`ResolutionResult` error dict if the record is missing or
         already resolved.
         """
-        row = self._db.execute(
-            "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
-            (contradiction_id,),
-        ).fetchone()
+        with self._db_lock:
+            row = self._db.execute(
+                "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
+                (contradiction_id,),
+            ).fetchone()
 
         if row is None:
             return {

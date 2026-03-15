@@ -161,7 +161,7 @@ def _play_audio_file(path: str) -> None:
         "  $player.Open([Uri]$p); "
         "  $player.Play(); "
         "  Start-Sleep -Milliseconds 150; "
-        "  while (-not $player.NaturalDuration.HasTimeSpan) { Start-Sleep -Milliseconds 120 }; "
+        "  $maxWait=100; while (-not $player.NaturalDuration.HasTimeSpan -and $maxWait-- -gt 0) { Start-Sleep -Milliseconds 120 }; "
         "  Start-Sleep -Milliseconds ([int]$player.NaturalDuration.TimeSpan.TotalMilliseconds + 150); "
         "  $player.Close(); "
         "}"

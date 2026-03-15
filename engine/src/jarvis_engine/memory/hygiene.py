@@ -57,7 +57,7 @@ _EPHEMERAL_KEYWORDS = re.compile(
 _JUNK_PATTERNS = [
     re.compile(r"^[\s\W]*$"),  # whitespace/punctuation only
     re.compile(r"^(.)\1{10,}$"),  # repeated single character
-    re.compile(r"test_?\d*|unittest|pytest|mock", re.IGNORECASE),  # test data
+    re.compile(r"^test_\w+$|^unittest\b|^pytest\b|^mock_\w+$", re.IGNORECASE),  # test data identifiers only
     re.compile(r"lorem ipsum", re.IGNORECASE),  # placeholder text
 ]
 

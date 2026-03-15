@@ -1788,7 +1788,7 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
             raw = json.dumps(payload).encode("utf-8")
             headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
             headers["X-Jarvis-Device-Id"] = f"untrusted_device_{i}"
-            headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
+            headers["X-Jarvis-Master-Password"] = "WrongPassword999!"
             code, body = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
 
             if code == 429:

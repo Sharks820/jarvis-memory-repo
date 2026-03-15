@@ -124,6 +124,8 @@ class AuthRoutesMixin:
         }
 
     def _handle_get_auth_status(self: _AuthRoutesHandlerProtocol) -> None:
+        if not self._validate_auth(b""):
+            return
         owner_session = self._require_owner_session()
         if owner_session is None:
             return
@@ -237,6 +239,8 @@ class AuthRoutesMixin:
         })
 
     def _handle_post_auth_logout(self: _AuthRoutesHandlerProtocol) -> None:
+        if not self._validate_auth(b""):
+            return
         owner_session = self._require_owner_session()
         if owner_session is None:
             return
@@ -257,6 +261,8 @@ class AuthRoutesMixin:
         self._write_json(HTTPStatus.OK, {"ok": True})
 
     def _handle_post_auth_lock(self: _AuthRoutesHandlerProtocol) -> None:
+        if not self._validate_auth(b""):
+            return
         owner_session = self._require_owner_session()
         if owner_session is None:
             return

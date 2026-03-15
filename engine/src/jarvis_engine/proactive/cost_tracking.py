@@ -55,6 +55,20 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapsh
     Returns a snapshot dict with date, local_pct, cloud_cost_usd, failed metrics,
     and total_queries for both 7-day and 30-day windows.
     """
+    if cost_tracker is None:
+        logger.debug("Cost tracker unavailable — returning empty snapshot")
+        empty: CostSnapshot = {
+            "date": "",
+            "local_pct_7d": 0.0,
+            "cloud_cost_usd_7d": 0.0,
+            "failed_7d": 0,
+            "total_queries_7d": 0,
+            "local_pct_30d": 0.0,
+            "cloud_cost_usd_30d": 0.0,
+            "failed_30d": 0,
+            "total_queries_30d": 0,
+        }
+        return empty
     try:
         summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
         summary_30d = cost_tracker.local_vs_cloud_summary(days=30)

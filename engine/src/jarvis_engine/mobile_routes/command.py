@@ -176,6 +176,10 @@ class CommandRoutesMixin:
             import jarvis_engine.voice.pipeline as _vp_mod
             from jarvis_engine.memory.conversation_state import get_conversation_state
 
+            if not hasattr(_vp_mod, "_state") or _vp_mod._state is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "error": "Voice pipeline not initialized."})
+                return
             _vp_mod._state.clear_history()
             _vp_mod._state._conversation_history_loaded = True
             try:

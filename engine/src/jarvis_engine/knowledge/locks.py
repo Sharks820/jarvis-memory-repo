@@ -109,7 +109,7 @@ class FactLockManager(KGManagerBase):
         deadlock -- calling lock_fact() would re-acquire _write_lock (a
         non-reentrant Lock).  Also prevents TOCTOU race between read and lock.
         """
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             row = self._db.execute(
                 "SELECT node_id, confidence, sources, locked FROM kg_nodes WHERE node_id = ?",
                 (node_id,),

@@ -96,8 +96,9 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
     try:
         db = kg.db
 
-        # Wrap all metric queries in a single transaction for consistent reads
-        db.execute("BEGIN DEFERRED")
+        # All queries below are read-only SELECTs; WAL mode provides snapshot
+        # isolation automatically.  Do NOT use explicit BEGIN here — it can
+        # conflict with concurrent writes on the shared connection.
 
         # Node count
         row = db.execute("SELECT COUNT(*) FROM kg_nodes").fetchone()
@@ -164,16 +165,7 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
             # Column may not exist if temporal migration has not run
             logger.debug("Temporal query failed: %s", exc)
 
-        db.execute("COMMIT")
-
     except (sqlite3.Error, OSError, AttributeError) as exc:
-        if "db" in locals():
-            try:
-                db.execute("ROLLBACK")
-            except sqlite3.Error as rollback_exc:
-                logger.debug(
-                    "ROLLBACK failed during KG metrics collection: %s", rollback_exc
-                )
         logger.warning("Failed to collect KG metrics: %s", exc)
 
     return cast(KGMetrics, metrics)

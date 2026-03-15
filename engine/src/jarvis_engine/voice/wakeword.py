@@ -316,13 +316,18 @@ class WakeWordDetector:
                 except ImportError:
                     logger.debug("sounddevice not available; cannot start audio stream")
                     return
-            self._stream = sd_module.InputStream(
-                samplerate=16000,
-                channels=1,
-                dtype="float32",
-                blocksize=1280,
-            )
-            self._stream.start()
+            try:
+                stream = sd_module.InputStream(
+                    samplerate=16000,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=1280,
+                )
+                stream.start()
+                self._stream = stream
+            except OSError as exc:
+                logger.warning("Failed to resume wake word mic stream: %s", exc)
+                return
 
             # Reset VAD state for clean slate after pause
             if self._vad is not None:

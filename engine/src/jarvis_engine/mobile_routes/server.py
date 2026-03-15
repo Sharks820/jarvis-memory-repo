@@ -1083,10 +1083,10 @@ class MobileIngestHandler(
                 "Too many master password attempts. Try again later.",
             )
             return False
-        server.record_master_pw_attempt(client_ip)
         if verify_master_password(self._root, master_password):
             trust_mobile_device(self._root, device_id)
             return True
+        server.record_master_pw_attempt(client_ip)
         self._unauthorized("Untrusted mobile device.")
         return False
 

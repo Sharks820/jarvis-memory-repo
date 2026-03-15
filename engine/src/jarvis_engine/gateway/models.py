@@ -498,7 +498,7 @@ class ModelGateway:
         # Check route-based temperature first (covers all known intent routes)
         reason_lower = route_reason.lower()
         for route, temp in _ROUTE_TEMPERATURE.items():
-            if route in reason_lower:
+            if route and route == reason_lower:
                 return temp
 
         # Model-specific overrides for cases where route_reason is empty/generic
@@ -1021,7 +1021,9 @@ class ModelGateway:
                 # All providers failed — record failure for the attempted model
                 failed_provider = self._resolve_provider(model)
                 if failed_provider:
-                    self._health.record_failure(failed_provider)
+                    # Strip routing prefix (e.g. "cli:claude-cli" → "claude-cli")
+                    bare_provider = failed_provider.split(":", 1)[-1] if ":" in failed_provider else failed_provider
+                    self._health.record_failure(bare_provider)
 
         # Record cost in budget enforcer
         if self._budget is not None and response.cost_usd > 0:

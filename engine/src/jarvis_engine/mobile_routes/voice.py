@@ -26,6 +26,7 @@ from jarvis_engine.mobile_routes._helpers import (
     MobileRouteHandlerProtocol,
     MobileRouteServerProtocol,
     _parse_bool,
+    _repo_root_patch_lock,
     _thread_local,
 )
 
@@ -327,11 +328,12 @@ class VoiceRoutesMixin:
             if not hasattr(main_mod, "_original_repo_root"):
                 main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
 
-            # Install thread-aware repo_root if not already done
-            if not getattr(main_mod, "_repo_root_patched", False):
-                _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-                main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
-                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+            # Install thread-aware repo_root if not already done (lock prevents race with prewarm)
+            with _repo_root_patch_lock:
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
+                    main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
 
             # Per-thread stdout capture -- concurrent requests run in parallel.
             _ThreadCapturingStdout.install()
@@ -430,7 +432,7 @@ class VoiceRoutesMixin:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=240,
+                timeout=90,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             logger.error("Voice subprocess failed: %s", exc)

@@ -175,6 +175,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             maximum=1_800_000,
         )
         self._last_diag_poll_at: float = 0.0
+        self._last_auto_start_at: float = 0.0  # Cooldown for service auto-restart
         self._ensure_controller()
 
         self.title("Jarvis Unlimited")
@@ -3183,6 +3184,15 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 continue
 
             ok, intel_data = self._probe_health_endpoints(cfg)
+
+            # Auto-restart services if offline (cooldown: 60s between attempts)
+            if not ok and not self.stop_event.is_set():
+                now = time.monotonic()
+                if (now - self._last_auto_start_at) >= 60.0:
+                    self._last_auto_start_at = now
+                    logger.info("Services offline — attempting auto-restart")
+                    self._log_async("Services offline. Restarting...", role="system")
+                    self._auto_start_services()
 
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []

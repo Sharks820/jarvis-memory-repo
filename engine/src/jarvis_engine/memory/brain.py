@@ -459,13 +459,33 @@ def _build_brain_record(
 
 
 def _persist_record(root: Path, record: BrainRecord) -> None:
-    """Append a BrainRecord to the JSONL records file with fsync."""
+    """Append a BrainRecord to the JSONL records file with fsync.
+
+    Uses OS-level file locking to prevent cross-process data loss when
+    the daemon and CLI write concurrently.
+    """
     rpath = _records_path(root)
     rpath.parent.mkdir(parents=True, exist_ok=True)
     with rpath.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(asdict(record), ensure_ascii=True) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+        # Cross-process file lock (Windows: msvcrt, Unix: fcntl)
+        import sys as _sys
+        if _sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(json.dumps(asdict(record), ensure_ascii=True) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
+            if _sys.platform == "win32":
+                import msvcrt
+                try:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass  # unlocked on close anyway
 
 
 def _update_index(

@@ -110,6 +110,7 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 # Both mobile_api.py and route mixin modules import this single instance to ensure
 # repo_root_override set by command.py is visible to get_bus() in mobile_api.py.
 _thread_local = threading.local()
+_repo_root_patch_lock = threading.Lock()
 
 THREAD_CAPTURE_MAX_CHARS = 200_000
 

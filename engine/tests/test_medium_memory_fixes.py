@@ -533,13 +533,12 @@ class TestConversationStateMasterPassword:
         assert "master password" in call_args[0][1]["error"].lower()
 
     def test_full_with_invalid_master_pwd_returns_403(self):
-        """Requesting full=1 with wrong master_pwd should return 403."""
+        """Requesting full=1 with wrong master_pwd via header should return 403."""
         from jarvis_engine.mobile_routes.intelligence import IntelligenceRoutesMixin
         from http import HTTPStatus
 
-        handler = self._make_handler(
-            path="/conversation/state?full=1&master_pwd=wrongpassword"
-        )
+        handler = self._make_handler(path="/conversation/state?full=1")
+        handler.headers["X-Jarvis-Master-Password"] = "wrongpassword"
         with patch(
             "jarvis_engine.security.owner_guard.verify_master_password",
             return_value=False,
@@ -551,13 +550,12 @@ class TestConversationStateMasterPassword:
         assert "invalid" in call_args[0][1]["error"].lower()
 
     def test_full_with_valid_master_pwd_succeeds(self):
-        """Requesting full=1 with valid master_pwd should return state."""
+        """Requesting full=1 with valid master_pwd via header should return state."""
         from jarvis_engine.mobile_routes.intelligence import IntelligenceRoutesMixin
         from http import HTTPStatus
 
-        handler = self._make_handler(
-            path="/conversation/state?full=1&master_pwd=correctpassword"
-        )
+        handler = self._make_handler(path="/conversation/state?full=1")
+        handler.headers["X-Jarvis-Master-Password"] = "correctpassword"
         mock_csm = MagicMock()
         mock_csm.get_state_snapshot.return_value = {"full": True, "data": "unredacted"}
 

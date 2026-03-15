@@ -584,8 +584,9 @@ class TestAPISurfaceCompatibility:
         assert isinstance(payload, dict)
 
     def test_auth_status_endpoint_shape(self, mobile_server):
-        """GET /auth/status returns session info."""
-        code, body = http_request("GET", f"{mobile_server.base_url}/auth/status")
+        """GET /auth/status returns session info (requires auth)."""
+        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+        code, body = http_request("GET", f"{mobile_server.base_url}/auth/status", headers=headers)
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         assert isinstance(payload, dict)

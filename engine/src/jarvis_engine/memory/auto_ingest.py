@@ -124,6 +124,9 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
         seen_set = set(seen)
         if dedupe_hash in seen_set:
             return ""
+        # Mark as pending immediately to prevent TOCTOU duplicate ingestion
+        seen.append(dedupe_hash)
+        _store_auto_ingest_hashes(dedupe_path, seen)
 
     from jarvis_engine.memory.basic_ingest import IngestionPipeline
 
@@ -149,12 +152,6 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
         )
     except (ValueError, OSError) as exc:
         logger.warning("brain ingest failed for task_id=%s: %s", safe_task_id[:32], exc)
-
-    # Mark as seen only AFTER successful ingestion so failures can be retried
-    with _auto_ingest_lock:
-        seen = _load_auto_ingest_hashes(dedupe_path)
-        seen.append(dedupe_hash)
-        _store_auto_ingest_hashes(dedupe_path, seen)
 
     return rec.record_id
 

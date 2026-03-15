@@ -19,7 +19,7 @@ import sqlite3 as _sqlite3
 
 from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine._shared import make_thread_aware_repo_root, memory_db_path
-from jarvis_engine.mobile_routes._helpers import _thread_local
+from jarvis_engine.mobile_routes._helpers import _repo_root_patch_lock, _thread_local
 
 logger = logging.getLogger(__name__)
 
@@ -209,12 +209,13 @@ def _start_bus_prewarm(repo_root: Path) -> None:
 
             # Use thread-local override for prewarm thread
             _thread_local.repo_root_override = repo_root
-            # Install thread-aware repo_root once
-            if not getattr(main_mod, "_repo_root_patched", False):
-                _orig = main_mod.repo_root
-                main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
-                main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
-                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+            # Install thread-aware repo_root once (lock prevents race with voice thread)
+            with _repo_root_patch_lock:
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    _orig = main_mod.repo_root
+                    main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
+                    main_mod.repo_root = make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 from jarvis_engine._bus import get_bus
 
