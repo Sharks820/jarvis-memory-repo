@@ -38,8 +38,9 @@ def check_medication_reminders(
     """Check medications list for items with due_time within 30 minutes of now."""
     alerts: list[str] = []
     medications = snapshot_data.get("medications", [])
-    # Use local time since medication due_times are in local HH:MM format
-    now = _now or datetime.now()
+    # Use local wall-clock time since medication due_times are in local HH:MM format.
+    # astimezone() handles DST transitions correctly.
+    now = _now or datetime.now().astimezone()
 
     for med in medications:
         due_time_str = med.get("due_time", "")

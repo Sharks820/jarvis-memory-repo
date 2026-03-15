@@ -225,7 +225,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         # 1. Start Ollama if not running
         try:
             import urllib.request
-            urllib.request.urlopen("http://localhost:11434/", timeout=2)
+            with urllib.request.urlopen("http://localhost:11434/", timeout=2):
+                pass  # Ollama is already running
         except (OSError, ValueError):
             if self.stop_event.is_set():
                 return

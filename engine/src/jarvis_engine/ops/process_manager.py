@@ -318,8 +318,11 @@ def _hard_kill(pid: int) -> None:
         PROCESS_TERMINATE = 0x0001
         handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
         if handle:
-            kernel32.TerminateProcess(handle, 1)
-            kernel32.CloseHandle(handle)
+            try:
+                if not kernel32.TerminateProcess(handle, 1):
+                    logger.warning("TerminateProcess failed for pid %d", pid)
+            finally:
+                kernel32.CloseHandle(handle)
     else:
         os.kill(pid, signal.SIGKILL)
 

@@ -282,9 +282,7 @@ class ForensicLogger:
         # Move current to .1
         rotated = self._path.with_suffix(".jsonl.1")
         try:
-            if rotated.exists():
-                rotated.unlink()
-            self._path.rename(rotated)
+            os.replace(str(self._path), str(rotated))
             logger.info("Rotated forensic log -> %s", rotated)
         except OSError as exc:
             logger.warning("Failed to rotate forensic log: %s", exc)
