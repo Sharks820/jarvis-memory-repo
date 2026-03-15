@@ -59,14 +59,16 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapsh
         logger.debug("Cost tracker unavailable — returning empty snapshot")
         empty: CostSnapshot = {
             "date": "",
-            "local_pct_7d": 0.0,
-            "cloud_cost_usd_7d": 0.0,
-            "failed_7d": 0,
-            "total_queries_7d": 0,
-            "local_pct_30d": 0.0,
-            "cloud_cost_usd_30d": 0.0,
-            "failed_30d": 0,
-            "total_queries_30d": 0,
+            "7d_local_pct": 0.0,
+            "7d_cloud_cost_usd": 0.0,
+            "7d_failed_count": 0,
+            "7d_failed_cost_usd": 0.0,
+            "7d_total_queries": 0,
+            "30d_local_pct": 0.0,
+            "30d_cloud_cost_usd": 0.0,
+            "30d_failed_count": 0,
+            "30d_failed_cost_usd": 0.0,
+            "30d_total_queries": 0,
         }
         return empty
     try:

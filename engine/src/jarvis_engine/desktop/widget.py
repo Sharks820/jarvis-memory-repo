@@ -201,14 +201,17 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _startup_status_check(self) -> None:
         """Quick connection check on startup; auto-start services if offline."""
-        time.sleep(1.5)  # Give health loop a moment to poll
-        if self.stop_event.is_set():
-            return
-        if self.online:
-            self._log_async("Connected to Jarvis services.", role="jarvis")
-        else:
-            self._log_async("Services not running. Starting automatically...", role="system")
-            self._auto_start_services()
+        try:
+            time.sleep(1.5)  # Give health loop a moment to poll
+            if self.stop_event.is_set():
+                return
+            if self.online:
+                self._log_async("Connected to Jarvis services.", role="jarvis")
+            else:
+                self._log_async("Services not running. Starting automatically...", role="system")
+                self._auto_start_services()
+        except (tk.TclError, RuntimeError):
+            logger.debug("Widget destroyed during startup status check")
 
     def _auto_start_services(self) -> None:
         """Auto-start Ollama, mobile API, and daemon when widget launches."""
@@ -216,11 +219,16 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         root = self.root_path if hasattr(self, "root_path") else _repo_root()
 
+        if self.stop_event.is_set():
+            return
+
         # 1. Start Ollama if not running
         try:
             import urllib.request
             urllib.request.urlopen("http://localhost:11434/", timeout=2)
         except (OSError, ValueError):
+            if self.stop_event.is_set():
+                return
             self._log_async("Starting Ollama...", role="system")
             try:
                 ollama_path = Path(Path.home(), "AppData", "Local", "Programs", "Ollama", "ollama.exe")
@@ -240,6 +248,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 logger.warning("Failed to start Ollama: %s", exc)
 
         # 2. Start mobile API + daemon via startup script
+        if self.stop_event.is_set():
+            return
         script = root / "scripts" / "start-jarvis-services.ps1"
         if script.exists():
             self._log_async("Starting Jarvis services...", role="system")

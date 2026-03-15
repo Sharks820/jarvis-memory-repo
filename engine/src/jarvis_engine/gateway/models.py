@@ -508,7 +508,7 @@ class ModelGateway:
         if "gemini" in model_lower:
             return 0.85
 
-        return _ROUTE_TEMPERATURE.get("", _DEFAULT_TEMPERATURE)
+        return _DEFAULT_TEMPERATURE
 
     def _remap_model_if_needed(self, model: str) -> str:
         """Remap Claude API model to best cloud model if Anthropic is unavailable."""

@@ -469,13 +469,16 @@ def _persist_record(root: Path, record: BrainRecord) -> None:
     with rpath.open("a", encoding="utf-8") as f:
         # Cross-process file lock (Windows: msvcrt, Unix: fcntl)
         import sys as _sys
+        _lock_size = 1 << 30  # ~1GB advisory range lock
         if _sys.platform == "win32":
             import msvcrt
-            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, _lock_size)
         else:
             import fcntl
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
+            f.seek(0, 2)  # seek back to end for append
             f.write(json.dumps(asdict(record), ensure_ascii=True) + "\n")
             f.flush()
             os.fsync(f.fileno())
@@ -483,7 +486,8 @@ def _persist_record(root: Path, record: BrainRecord) -> None:
             if _sys.platform == "win32":
                 import msvcrt
                 try:
-                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, _lock_size)
                 except OSError:
                     pass  # unlocked on close anyway
 
