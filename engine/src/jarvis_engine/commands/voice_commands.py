@@ -80,6 +80,7 @@ class VoiceListenResult(ResultBase):
     duration_seconds: float = 0.0
     segments: list[TranscriptionSegment] | None = None
     utterance: VoiceUtterance | None = None
+    needs_confirmation: bool = False
 
 
 @dataclass(frozen=True)

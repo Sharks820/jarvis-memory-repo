@@ -142,6 +142,17 @@ def cmd_voice_listen(
     print(f"confidence={result.confidence}")
     print(f"duration={result.duration_seconds}s")
 
+    if getattr(result, "needs_confirmation", False):
+        print(f"[low confidence — {int(result.confidence * 100)}%] Did you say: \"{result.text}\"?")
+        try:
+            answer = input("Execute? (y/n): ").strip().lower()
+            if answer not in ("y", "yes"):
+                print("Command cancelled.")
+                return 0
+        except (EOFError, KeyboardInterrupt):
+            print("\nCommand cancelled.")
+            return 0
+
     if execute and result.text:
         _emit_voice_listen_state("executing", details={"transcription_chars": len(result.text)})
         print("executing transcribed command...")

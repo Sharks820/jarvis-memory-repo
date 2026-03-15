@@ -120,7 +120,21 @@ class JarvisApiClient @Inject constructor(
      * The relay URL is used automatically when the LAN URL is unreachable.
      */
     fun updateRelayUrl(url: String) {
-        relayUrl = url
+        val trimmed = url.trim()
+        // Block cleartext HTTP for non-local hosts to prevent relay downgrade attacks
+        if (trimmed.startsWith("http://", ignoreCase = true)) {
+            val host = try {
+                java.net.URI(trimmed).host?.lowercase() ?: ""
+            } catch (_: Exception) { "" }
+            val isLocal = host == "localhost" || host == "127.0.0.1" || host == "::1"
+                || host.startsWith("192.168.") || host.startsWith("10.")
+                || host.endsWith(".local")
+            if (!isLocal) {
+                Log.w(TAG, "Rejected cleartext relay URL for non-local host: $host")
+                return
+            }
+        }
+        relayUrl = trimmed
     }
 
     companion object {

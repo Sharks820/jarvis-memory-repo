@@ -58,6 +58,11 @@ class AutoSyncManager @Inject constructor(
      * Call this from JarvisService.onCreate().
      */
     fun start() {
+        // Idempotency guard — prevent stacking callbacks on repeated onStartCommand
+        if (networkCallback != null) {
+            Log.d(TAG, "AutoSyncManager already started — skipping")
+            return
+        }
         registerNetworkCallback()
         startSyncLoop()
         startHeartbeatLoop()
@@ -165,8 +170,8 @@ class AutoSyncManager @Inject constructor(
         heartbeatJob = scope.launch {
             while (true) {
                 try {
-                    val response = apiClient.api().health()
-                    isDesktopReachable = response.status == "ok"
+                    val response = apiClient.api().syncHeartbeat()
+                    isDesktopReachable = response.ok
                     if (isDesktopReachable) {
                         consecutiveFailures = 0
                     }

@@ -228,14 +228,20 @@ class VoiceListenHandler:
             logger.warning("Voice listen failed: %s", exc)
             return VoiceListenResult(message="error: voice listen failed.")
 
+        # Preserve the raw transcription before any normalization
+        raw = result.text
+        from jarvis_engine.voice.extractors import strip_wake_word
+        command = strip_wake_word(result.text) or result.text
+
         return VoiceListenResult(
             text=result.text,
             confidence=result.confidence,
             duration_seconds=result.duration_seconds,
             segments=getattr(result, "segments", None),
+            needs_confirmation=getattr(result, "needs_confirmation", False),
             utterance=_build_voice_utterance(
-                raw_text=result.text,
-                command_text=result.text,
+                raw_text=raw,
+                command_text=command,
                 language=getattr(result, "language", cmd.language),
                 confidence=result.confidence,
                 backend=getattr(result, "backend", ""),
