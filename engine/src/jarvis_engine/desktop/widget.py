@@ -2697,12 +2697,23 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.after(0, self._cancel_processing_timeout)
                 self._process_worker_response(data, cfg)
             except _REMOTE_WIDGET_ERRORS as exc:
-                self._handle_transport_failure(
-                    "Command",
-                    exc,
-                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
-                    command_mode=True,
-                )
+                exc_str = str(exc)
+                if "HTTP 403" in exc_str or "HTTP 401" in exc_str:
+                    # Server rejected the request — show the actual reason
+                    hint = exc_str.replace("HTTP request failed: ", "")
+                    self._handle_transport_failure(
+                        "Command",
+                        exc,
+                        hints=((f"Server rejected request: {hint}", "error"),),
+                        command_mode=True,
+                    )
+                else:
+                    self._handle_transport_failure(
+                        "Command",
+                        exc,
+                        hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                        command_mode=True,
+                    )
             except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError) as exc:
                 self._handle_transport_failure(
                     "Command",

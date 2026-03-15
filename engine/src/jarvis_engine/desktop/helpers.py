@@ -552,7 +552,16 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
                 # HTTP errors (401, 403, 500, etc.) indicate the server IS
                 # reachable but rejected the request.  Do NOT fall back to
                 # localhost -- the issue is auth/server-side, not connectivity.
-                raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
+                # Include the server's error body so the user sees what happened.
+                server_msg = ""
+                try:
+                    body = exc.read().decode("utf-8", errors="replace")[:500]
+                    import json as _json
+                    parsed_err = _json.loads(body)
+                    server_msg = str(parsed_err.get("error", parsed_err.get("reason", "")))
+                except Exception:
+                    server_msg = str(exc.reason)
+                raise RuntimeError(f"HTTP {exc.code}: {server_msg or exc.reason}") from exc
             except (URLError, TimeoutError, OSError) as exc:
                 last_exc = RuntimeError(f"HTTP request failed: {exc}")
                 if _retry == 0:

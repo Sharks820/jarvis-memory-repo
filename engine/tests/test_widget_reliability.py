@@ -235,7 +235,7 @@ class TestWidgetNetworkResilience:
             master_password="",
         )
         
-        with pytest.raises(RuntimeError, match="HTTP request failed"):
+        with pytest.raises(RuntimeError, match="HTTP"):
             desktop_widget._http_json(cfg, "/test", method="GET")
 
 
