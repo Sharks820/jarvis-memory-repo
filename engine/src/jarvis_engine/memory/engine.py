@@ -680,9 +680,17 @@ class MemoryEngine:
     def close(self) -> None:
         """Close the database connection (idempotent).
 
-        Acquires both locks to ensure no in-flight reads or writes
-        touch the connection after close.
+        Flushes pending search access counts, then acquires both locks
+        to ensure no in-flight reads or writes touch the connection
+        after close.
         """
+        # Flush buffered access counts before closing the connection
+        try:
+            from jarvis_engine.memory.search import flush_all_access_updates
+            flush_all_access_updates()
+        except (ImportError, Exception):
+            pass  # Best-effort — search module may not be imported
+
         with self._write_lock:
             with self._db_lock:
                 if self._closed:

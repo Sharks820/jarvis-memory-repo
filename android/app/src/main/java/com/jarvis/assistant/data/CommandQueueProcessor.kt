@@ -162,10 +162,14 @@ class CommandQueueProcessor @Inject constructor(
                         )
                     }
                     IntelligenceRouter.Source.QUEUED -> {
+                        // Restore to pending so next flush cycle picks it up
+                        commandQueueDao.updateStatus(cmd.id, "pending")
                         commandQueueDao.incrementRetry(cmd.id)
                     }
                 }
             } catch (e: Exception) {
+                // Restore to pending on failure — don't leave in "sending" limbo
+                commandQueueDao.updateStatus(cmd.id, "pending")
                 commandQueueDao.incrementRetry(cmd.id)
                 Log.w(TAG, "Retry #${cmd.retryCount + 1} failed for command ${cmd.id}: ${e.message}")
             }

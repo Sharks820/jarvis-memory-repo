@@ -107,9 +107,11 @@ class IntelligenceMerger @Inject constructor(
             Log.i(TAG, "Pushed $count intelligence items to desktop")
 
             // Mark only the exported facts as synced AFTER network success
+            // Uses content_hash + timestamp as stable identity to avoid marking
+            // facts that were added between export and ack
             if (response.ok && unsyncedFacts.isNotEmpty()) {
-                val exportedContents = unsyncedFacts.mapNotNull { it["content"] as? String }.toSet()
-                knowledgeStore.markFactsSynced(exportedContents)
+                val exportedIds = unsyncedFacts.mapNotNull { it["_export_id"] as? String }.toSet()
+                knowledgeStore.markFactsSynced(exportedIds)
             }
 
             return count

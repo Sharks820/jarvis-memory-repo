@@ -139,8 +139,9 @@ class WakeWordStartHandler:
             import tkinter as _tk
             from tkinter import messagebox as _mb
 
-            root_win = _tk.Tk._default_root  # type: ignore[union-attr]
-            if root_win is None:
+            # _default_root is a module-level attribute, not a class attribute
+            root_win = getattr(_tk, "_default_root", None)
+            if root_win is None or not isinstance(root_win, _tk.Tk):
                 return True  # No widget running, assume confirmed
 
             result_holder: list[bool] = [False]

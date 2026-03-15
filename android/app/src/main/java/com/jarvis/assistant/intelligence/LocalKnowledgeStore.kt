@@ -348,13 +348,15 @@ class LocalKnowledgeStore @Inject constructor(
                 for (i in 0 until facts.length()) {
                     val fact = facts.getJSONObject(i)
                     if (fact.optString("source") == "phone" && !fact.optBoolean("synced", false)) {
+                        val ts = fact.optLong("timestamp", 0)
                         unsynced.add(mapOf(
                             "content" to fact.optString("content", ""),
                             "category" to fact.optString("category", CAT_GENERAL),
                             "confidence" to fact.optDouble("confidence", 0.8),
                             "keywords" to fact.optString("keywords", ""),
                             "source" to "phone",
-                            "timestamp" to fact.optLong("timestamp", 0),
+                            "timestamp" to ts,
+                            "_export_id" to "${fact.optString("content", "").hashCode()}_$ts",
                         ))
                     }
                 }
@@ -371,7 +373,7 @@ class LocalKnowledgeStore @Inject constructor(
      * Mark exported facts as synced AFTER the network push succeeds.
      * Call this only after the desktop has acknowledged receipt.
      */
-    fun markFactsSynced(exportedContents: Set<String> = emptySet()) {
+    fun markFactsSynced(exportedIds: Set<String> = emptySet()) {
         synchronized(lock) {
             try {
                 val facts = loadFacts()
@@ -379,8 +381,9 @@ class LocalKnowledgeStore @Inject constructor(
                 for (i in 0 until facts.length()) {
                     val fact = facts.getJSONObject(i)
                     if (fact.optString("source") == "phone" && !fact.optBoolean("synced", false)) {
-                        // Only mark facts that were actually exported (if set provided)
-                        if (exportedContents.isEmpty() || fact.optString("content", "") in exportedContents) {
+                        // Only mark facts whose content+timestamp identity was exported
+                        val factId = "${fact.optString("content", "").hashCode()}_${fact.optLong("timestamp", 0)}"
+                        if (exportedIds.isEmpty() || factId in exportedIds) {
                             fact.put("synced", true)
                             changed = true
                         }

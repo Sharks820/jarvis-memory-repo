@@ -816,7 +816,6 @@ class MobileIngestHandler(
 
             text = str(payload.get("text", "")).strip()
             details: dict[str, Any] = {
-                "correlation_id": correlation_id,
                 "lifecycle_state": lifecycle_state,
                 "command_len": len(text),
                 "command_preview": text[:120],
@@ -836,6 +835,7 @@ class MobileIngestHandler(
                 ActivityCategory.COMMAND_LIFECYCLE,
                 f"Command {lifecycle_state}",
                 details,
+                correlation_id=correlation_id,
             )
         except SUBSYSTEM_ERRORS as exc:
             # Activity feed must never break command execution.

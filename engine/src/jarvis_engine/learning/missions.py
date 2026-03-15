@@ -535,7 +535,6 @@ def _finalize_mission(
             except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
-            retries = int(target.get("retries", 0) or 0)
             target["status"] = "failed"  # retry_failed_missions handles failed→exhausted
             target["progress_pct"] = 100
             target["status_detail"] = "Completed with no verified findings"
