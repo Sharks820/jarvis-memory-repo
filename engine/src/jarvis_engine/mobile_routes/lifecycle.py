@@ -82,6 +82,7 @@ def _wrap_tls_socket(
         return
     assert tls_cert is not None and tls_key is not None  # for type-checker
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(tls_cert, tls_key)
     server.socket = context.wrap_socket(server.socket, server_side=True)  # type: ignore[attr-defined]
     server.tls_active = True  # type: ignore[attr-defined]

@@ -177,10 +177,21 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
         logger.debug("Failed to fetch page text from %s: %s", url, exc)
         return ""
     text = payload.decode("utf-8", errors="replace")
-    text = _SCRIPT_RE.sub(" ", text)
-    text = _STYLE_RE.sub(" ", text)
-    text = _TAG_RE.sub(" ", text)
-    text = html_mod.unescape(text)
+    # Prefer proper HTML parser over regex for tag stripping (security)
+    try:
+        from lxml.html.clean import Cleaner  # type: ignore[import-untyped]
+        from lxml.html import fromstring as _lxml_parse, tostring as _lxml_tostring  # type: ignore[import-untyped]
+
+        cleaner = Cleaner(scripts=True, javascript=True, style=True, comments=True, page_structure=False)
+        doc = _lxml_parse(text)
+        cleaned = cleaner.clean_html(doc)
+        text = cleaned.text_content()
+    except (ImportError, Exception):
+        # Fallback to regex if lxml not available
+        text = _SCRIPT_RE.sub(" ", text)
+        text = _STYLE_RE.sub(" ", text)
+        text = _TAG_RE.sub(" ", text)
+        text = html_mod.unescape(text)
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip()
 
@@ -222,7 +233,7 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
             parsed = urlparse(candidate)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 continue
-            if "duckduckgo.com" in parsed.netloc.lower():
+            if parsed.netloc.lower().endswith((".duckduckgo.com", "duckduckgo.com")):
                 continue
             if not is_safe_public_url(candidate):
                 continue

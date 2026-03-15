@@ -392,13 +392,17 @@ class VoiceRoutesMixin:
     ) -> dict[str, Any]:
         """Execute voice command via subprocess (fallback when in-process import fails)."""
         root = self._root
+        # Sanitize user text to prevent command-line injection via subprocess args.
+        # Even though subprocess.run with list args doesn't invoke a shell, we
+        # strip null bytes and control chars that could confuse argument parsing.
+        safe_text = params["text"].replace("\x00", "").replace("\r", " ").replace("\n", " ")[:2000]
         cmd = [
             sys.executable,
             "-m",
             "jarvis_engine.main",
             "voice-run",
             "--text",
-            params["text"],
+            safe_text,
             "--voice-user",
             params["voice_user"],
             "--voice-threshold",
