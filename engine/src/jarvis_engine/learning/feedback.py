@@ -108,7 +108,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
                 (route, feedback, snippet, now),
             )
             self._db.commit()
-        subject_id = str(cur.lastrowid)
+            subject_id = str(cur.lastrowid)
         provenance = classify_learning_subject(
             subject_type="feedback",
             subject_id=subject_id,
@@ -157,7 +157,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
                 (route, quality, snippet, now_str),
             )
             self._db.commit()
-        subject_id = str(cur.lastrowid)
+            subject_id = str(cur.lastrowid)
         provenance = classify_learning_subject(
             subject_type="feedback",
             subject_id=subject_id,

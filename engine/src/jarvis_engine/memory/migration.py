@@ -428,7 +428,7 @@ def migrate_facts(
     inserted = 0
     errors = 0
 
-    with engine.write_lock:
+    with engine.write_lock, engine.db_lock:
         try:
             for key, value in facts_data.items():
                 try:

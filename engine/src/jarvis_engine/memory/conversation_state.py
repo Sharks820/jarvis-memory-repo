@@ -673,6 +673,9 @@ def _get_encryption_key(state_dir: Path) -> bytes | None:
 
 def _mask_ssn(value: str) -> str:
     """Mask SSN: 123-45-6789 -> ***-**-6789"""
+    digits = re.sub(r"\D", "", value)
+    if len(digits) < 4:
+        return "[REDACTED]"
     return f"***-**-{value[-4:]}"
 
 
@@ -685,6 +688,8 @@ def _mask_cc(value: str) -> str:
 def _mask_phone(value: str) -> str:
     """Mask phone: (555) 123-4567 -> ***-***-4567"""
     digits = re.sub(r"\D", "", value)
+    if len(digits) < 4:
+        return "[REDACTED]"
     return f"***-***-{digits[-4:]}"
 
 
@@ -1491,15 +1496,18 @@ class ConversationStateManager:
         Callers should use ``save()`` for immediate persistence (e.g. on
         shutdown).
         """
-        now = time.monotonic()
-        if now - self._last_save_time < self._SAVE_DEBOUNCE_SECONDS:
-            self._save_pending = True
-            return
+        with self._lock:
+            now = time.monotonic()
+            if now - self._last_save_time < self._SAVE_DEBOUNCE_SECONDS:
+                self._save_pending = True
+                return
         self.save()
 
     def flush_pending(self) -> None:
         """Force-save if a debounced save is pending (call on shutdown)."""
-        if self._save_pending:
+        with self._lock:
+            pending = self._save_pending
+        if pending:
             self.save()
 
     def save(self) -> None:
@@ -1622,6 +1630,7 @@ class ConversationStateManager:
             self._snapshot = ConversationSnapshot()
             self._snapshot.anchor_entities = preserved_entities
             self._snapshot.prior_decisions = preserved_decisions
+            session_id = self._snapshot.session_id
 
         # Emit telemetry
         try:
@@ -1629,7 +1638,7 @@ class ConversationStateManager:
 
             log_activity(
                 ActivityCategory.CONVERSATION_STATE,
-                f"Session reset: new session {self._snapshot.session_id}",
+                f"Session reset: new session {session_id}",
                 {
                     "event": "session_resume",
                     "entities_loaded": len(preserved_entities),

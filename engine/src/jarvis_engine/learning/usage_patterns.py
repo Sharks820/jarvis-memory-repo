@@ -71,7 +71,7 @@ class UsagePatternTracker(LearningTrackerBase):
                 (hour, day_of_week, route, topic, ts.isoformat()),
             )
             self._db.commit()
-        subject_id = str(cur.lastrowid)
+            subject_id = str(cur.lastrowid)
         provenance = classify_learning_subject(
             subject_type="usage_pattern",
             subject_id=subject_id,

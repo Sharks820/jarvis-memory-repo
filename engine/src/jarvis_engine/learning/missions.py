@@ -301,8 +301,9 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             ts, value = cached
             if now - ts <= _PAGE_CACHE_TTL_SECONDS:
                 return value
-            _page_cache_bytes[0] -= len(value.encode("utf-8"))
-            _PAGE_CACHE.pop(key, None)
+            old = _PAGE_CACHE.pop(key, None)
+            if old is not None:
+                _page_cache_bytes[0] -= len(old[1].encode("utf-8"))
     value = _fetch_page_text(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
         # Adjust byte counter if key already exists (concurrent fetch or refresh)
