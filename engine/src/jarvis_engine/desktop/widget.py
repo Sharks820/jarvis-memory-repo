@@ -199,16 +199,87 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._thread(self._startup_status_check)
 
     def _startup_status_check(self) -> None:
-        """Quick connection check on startup so user sees status immediately."""
+        """Quick connection check on startup; auto-start services if offline."""
         time.sleep(1.5)  # Give health loop a moment to poll
         if self.stop_event.is_set():
             return
         if self.online:
             self._log_async("Connected to Jarvis services.", role="jarvis")
         else:
-            self._log_async("OFFLINE - Cannot reach Jarvis services.", role="error")
-            self._log_async("Start services with: jarvis-engine daemon", role="system")
-            self._log_async("Then click Connect to authenticate.", role="system")
+            self._log_async("Services not running. Starting automatically...", role="system")
+            self._auto_start_services()
+
+    def _auto_start_services(self) -> None:
+        """Auto-start Ollama, mobile API, and daemon when widget launches."""
+        import subprocess
+
+        root = self.root_path if hasattr(self, "root_path") else _repo_root()
+
+        # 1. Start Ollama if not running
+        try:
+            import urllib.request
+            urllib.request.urlopen("http://localhost:11434/", timeout=2)
+        except (OSError, ValueError):
+            self._log_async("Starting Ollama...", role="system")
+            try:
+                ollama_path = Path(Path.home(), "AppData", "Local", "Programs", "Ollama", "ollama.exe")
+                if ollama_path.exists():
+                    subprocess.Popen(
+                        [str(ollama_path), "serve"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                    )
+                    time.sleep(3)
+                    self._log_async("Ollama started.", role="system")
+                else:
+                    self._log_async("Ollama not found at default path.", role="error")
+            except OSError as exc:
+                logger.warning("Failed to start Ollama: %s", exc)
+
+        # 2. Start mobile API + daemon via startup script
+        script = root / "scripts" / "start-jarvis-services.ps1"
+        if script.exists():
+            self._log_async("Starting Jarvis services...", role="system")
+            try:
+                subprocess.Popen(
+                    [
+                        "powershell.exe", "-ExecutionPolicy", "Bypass",
+                        "-File", str(script), "-Port", "8787",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    cwd=str(root),
+                    creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                )
+                # Wait for services to come up
+                for _ in range(10):
+                    time.sleep(2)
+                    if self.stop_event.is_set():
+                        return
+                    try:
+                        import urllib.request
+                        url = self.cfg.base_url + "/health"
+                        req = urllib.request.Request(url, method="GET")
+                        ctx = None
+                        if url.startswith("https"):
+                            import ssl
+                            ctx = ssl.create_default_context()
+                            ctx.check_hostname = False
+                            ctx.verify_mode = ssl.CERT_NONE
+                        with urllib.request.urlopen(req, timeout=3, context=ctx):
+                            self._log_async("All services started successfully.", role="jarvis")
+                            return
+                    except (OSError, ValueError):
+                        continue
+                self._log_async("Services starting slowly. They should connect shortly.", role="system")
+            except OSError as exc:
+                logger.warning("Failed to start services: %s", exc)
+                self._log_async(f"Failed to start services: {exc}", role="error")
+        else:
+            self._log_async("Startup script not found. Start manually: powershell scripts/start-jarvis-services.ps1", role="error")
 
     def _on_close(self) -> None:
         """Handle window close (X button): minimize to launcher orb."""
