@@ -989,7 +989,11 @@ def transcribe_smart(
             entity_list=resolved_entities,
         )
 
+    # Capture raw text before postprocessing (STT sidecar for learning/telemetry)
+    pre_postprocess_text = final.text
+
     result = _apply_postprocessing(final, gateway=gateway, entity_list=resolved_entities)
+    result.raw_text = pre_postprocess_text
 
     # STT-12: Record total pipeline latency (preprocessing + transcription + postprocessing)
     pipeline_elapsed_ms = (time.monotonic() - pipeline_t0) * 1000

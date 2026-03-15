@@ -20,6 +20,7 @@ class TranscriptionResult:
     """Result of a speech-to-text transcription."""
 
     text: str = ""
+    raw_text: str = ""  # Pre-postprocessing transcription (before NER, spelling, etc.)
     language: str = ""
     confidence: float = 0.0
     duration_seconds: float = 0.0

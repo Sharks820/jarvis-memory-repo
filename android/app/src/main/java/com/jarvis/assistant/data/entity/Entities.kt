@@ -24,5 +24,6 @@ data class CommandQueueEntity(
     val status: String = "pending",  // pending, sent, failed
     @ColumnInfo(name = "retry_count") val retryCount: Int = 0,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "last_attempt_at") val lastAttemptAt: Long = 0L,
     @ColumnInfo(name = "response") val response: String? = null,
 )

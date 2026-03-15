@@ -130,15 +130,16 @@ class CommandQueueProcessor @Inject constructor(
                 continue
             }
 
-            // Exponential backoff
-            if (cmd.retryCount > 0) {
+            // Exponential backoff based on last attempt time, not creation age
+            if (cmd.retryCount > 0 && cmd.lastAttemptAt > 0) {
                 val backoffBase = syncConfig.retryBackoffBase * 1000L
                 val backoffMax = syncConfig.retryBackoffMax * 1000L
                 val backoff = minOf(
                     backoffBase * (1L shl minOf(cmd.retryCount, 10)),
                     backoffMax,
                 )
-                if (cmd.retryCount > 3 && age < backoff) {
+                val sinceLast = now - cmd.lastAttemptAt
+                if (sinceLast < backoff) {
                     continue // Not time to retry yet
                 }
             }

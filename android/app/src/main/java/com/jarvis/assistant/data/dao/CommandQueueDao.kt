@@ -21,8 +21,8 @@ interface CommandQueueDao {
     @Query("UPDATE command_queue SET status = :status, response = :response WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String, response: String? = null)
 
-    @Query("UPDATE command_queue SET retry_count = retry_count + 1 WHERE id = :id")
-    suspend fun incrementRetry(id: Long)
+    @Query("UPDATE command_queue SET retry_count = retry_count + 1, last_attempt_at = :attemptAt WHERE id = :id")
+    suspend fun incrementRetry(id: Long, attemptAt: Long = System.currentTimeMillis())
 
     /** Atomically claim a pending command for sending. Returns rows affected (0 or 1). */
     @Query("UPDATE command_queue SET status = 'sending' WHERE id = :id AND status = 'pending'")

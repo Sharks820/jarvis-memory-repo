@@ -1263,7 +1263,7 @@ class ConversationStateManager:
         with self._lock:
             return {
                 "rolling_summary": self._snapshot.rolling_summary,
-                "anchor_entities": list(self._snapshot.anchor_entities),
+                "anchor_entities": sorted(self._snapshot.anchor_entities),
                 "unresolved_goals": list(self._snapshot.unresolved_goals),
                 "prior_decisions": list(self._snapshot.prior_decisions),
                 "active_mission_ids": list(self._snapshot.active_mission_ids),

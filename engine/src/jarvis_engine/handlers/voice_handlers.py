@@ -228,8 +228,8 @@ class VoiceListenHandler:
             logger.warning("Voice listen failed: %s", exc)
             return VoiceListenResult(message="error: voice listen failed.")
 
-        # Preserve the raw transcription before any normalization
-        raw = result.text
+        # Use pre-postprocessing raw text for telemetry/learning
+        raw = getattr(result, "raw_text", "") or result.text
         from jarvis_engine.voice.extractors import strip_wake_word
         command = strip_wake_word(result.text) or result.text
 
