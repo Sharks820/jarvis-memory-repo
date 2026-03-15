@@ -320,6 +320,6 @@ def _load_voice_auth_impl() -> tuple[
 ]:
     try:
         from jarvis_engine.voice.auth import enroll_voiceprint, verify_voiceprint
-    except ModuleNotFoundError as exc:
+    except ImportError as exc:
         return None, None, str(exc)
     return enroll_voiceprint, verify_voiceprint, ""

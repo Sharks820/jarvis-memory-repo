@@ -211,6 +211,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self._log_async("Connected to Jarvis services.", role="jarvis")
             else:
                 self._log_async("Services not running. Starting automatically...", role="system")
+                self._last_auto_start_at = time.monotonic()  # Prevent health loop double-start
                 self._auto_start_services()
         except (tk.TclError, RuntimeError):
             logger.debug("Widget destroyed during startup status check")
@@ -265,7 +266,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 subprocess.Popen(
                     [
-                        "powershell.exe", "-ExecutionPolicy", "Bypass",
+                        _powershell_executable(), "-ExecutionPolicy", "Bypass",
                         "-File", str(script), "-Port", "8787",
                     ],
                     stdout=subprocess.DEVNULL,
@@ -3238,9 +3239,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     self._log_async(f"Services offline. Restart attempt {self._auto_start_failures}/5...", role="system")
                     self._auto_start_services()
             elif ok:
-                # Reset backoff on successful connection
+                # Reset backoff and cooldown on successful connection
                 if self._auto_start_failures > 0:
                     self._auto_start_failures = 0
+                    self._last_auto_start_at = 0.0
 
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []

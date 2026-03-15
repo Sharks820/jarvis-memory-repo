@@ -48,12 +48,13 @@ if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($signi
     throw "Invalid mobile API config: $configPath"
 }
 
-# Kill ALL existing Jarvis processes (any Python interpreter) for a clean start.
-# This prevents stale/duplicate processes from different Python installs or
-# previous sessions from causing port conflicts and connection errors.
+# Kill existing Jarvis processes FROM THIS REPO for a clean start.
+# Scoped to current repo root to avoid killing processes from other installations.
+$repoRootNorm = $repoRoot.ToLowerInvariant()
 $allJarvis = @(Get-CimInstance Win32_Process | Where-Object {
     ($_.Name -eq "python.exe" -or $_.Name -eq "pythonw.exe") -and
-    $_.CommandLine -match "jarvis_engine\.main\s+(daemon-run|serve-mobile)"
+    $_.CommandLine -match "jarvis_engine\.main\s+(daemon-run|serve-mobile)" -and
+    ([string]$_.CommandLine).ToLowerInvariant() -like "*$repoRootNorm*"
 })
 foreach ($proc in $allJarvis) {
     Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue

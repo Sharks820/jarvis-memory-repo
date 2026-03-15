@@ -188,17 +188,32 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
 def cmd_desktop_widget() -> int:
     set_process_title("jarvis-widget")
     root = repo_root()
-    from jarvis_engine.ops.process_manager import is_service_running, write_pid_file, remove_pid_file
+    from jarvis_engine.ops.process_manager import is_service_running, kill_service, write_pid_file, remove_pid_file
     if is_service_running("widget", root):
         print("error: widget is already running")
         return 4
+    import atexit
+
+    def _cleanup_on_exit() -> None:
+        """Kill child services if widget exits unexpectedly."""
+        try:
+            for svc in ("mobile_api", "daemon"):
+                try:
+                    kill_service(svc, root)
+                except (OSError, ValueError):
+                    pass
+        except Exception:
+            pass
+
     try:
         write_pid_file("widget", root)
+        atexit.register(_cleanup_on_exit)
         result = _get_bus().dispatch(DesktopWidgetCommand())
         if result.return_code != 0:
             print("error: desktop widget unavailable")
         return result.return_code
     finally:
+        atexit.unregister(_cleanup_on_exit)
         remove_pid_file("widget", root)
 
 
