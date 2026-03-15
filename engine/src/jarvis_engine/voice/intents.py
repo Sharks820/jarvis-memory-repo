@@ -112,8 +112,8 @@ class _DispatchCtx:
         "cmd_ops_autopilot", "cmd_phone_spam_guard",
         "cmd_phone_action", "cmd_ops_sync", "cmd_ops_brief",
         "cmd_automation_run", "cmd_run_task", "cmd_brain_context",
-        "cmd_ingest", "cmd_brain_status", "cmd_mission_cancel",
-        "cmd_mission_status", "cmd_status",
+        "cmd_ingest", "cmd_brain_status", "cmd_mission_create",
+        "cmd_mission_cancel", "cmd_mission_status", "cmd_status",
     )
 
     text: str
@@ -156,6 +156,7 @@ class _DispatchCtx:
     cmd_brain_context: _CommandFn
     cmd_ingest: _CommandFn
     cmd_brain_status: _CommandFn
+    cmd_mission_create: _CommandFn
     cmd_mission_cancel: _CommandFn
     cmd_mission_status: _CommandFn
     cmd_status: _CommandFn
@@ -567,6 +568,27 @@ def _handle_mission_cancel(ctx: _DispatchCtx) -> tuple[str, int]:
     return "mission_cancel", ctx.cmd_mission_cancel(mission_id=mission_id)
 
 
+def _handle_mission_create(ctx: _DispatchCtx) -> tuple[str, int]:
+    """Extract topic from voice command and create a learning mission."""
+    # Strip trigger phrases to get the topic
+    topic = ctx.lowered
+    for prefix in (
+        "start a learning mission about ", "start learning mission about ",
+        "start a mission about ", "start mission about ",
+        "learn about ", "research ", "learn everything about ",
+        "study ", "investigate ",
+    ):
+        if topic.startswith(prefix):
+            topic = ctx.text[len(prefix):].strip()
+            break
+    if not topic or len(topic) < 3:
+        ctx._respond("What would you like me to learn about?")
+        return "mission_create", 2
+    return "mission_create", ctx.cmd_mission_create(
+        topic=topic, objective="learn", sources=["duckduckgo"],
+    )
+
+
 def _handle_mission_status(ctx: _DispatchCtx) -> tuple[str, int]:
     return "mission_status", ctx.cmd_mission_status(last=5)
 
@@ -825,11 +847,16 @@ _DISPATCH_RULES: list[_IntentRule] = [
      _handle_brain_status),
 
     # -- Missions & system status --
+    (_match_any("start a learning mission", "start learning mission",
+                "start a mission about", "start mission about",
+                "learn about", "learn everything about",
+                "research ", "study ", "investigate "),
+     _handle_mission_create),
     (_match_any("cancel mission", "cancel the mission",
                 "stop mission", "abort mission"),
      _handle_mission_cancel),
-    (_match_any("mission status", "learning mission",
-                "active missions", "my missions"),
+    (_match_any("mission status", "learning mission status",
+                "active missions", "my missions", "show missions"),
      _handle_mission_status),
     (_match_any("system status", "jarvis status", "how are you",
                 "status report", "health check",
@@ -1029,7 +1056,8 @@ def _import_voice_commands():
     )
     from jarvis_engine.cli.ops import (
         cmd_ops_autopilot, cmd_ops_sync, cmd_ops_brief,
-        cmd_automation_run, cmd_mission_cancel, cmd_mission_status,
+        cmd_automation_run, cmd_mission_create, cmd_mission_cancel,
+        cmd_mission_status,
     )
     from jarvis_engine.cli.knowledge import cmd_brain_context, cmd_brain_status
     import jarvis_engine.voice.pipeline as _vp
@@ -1054,6 +1082,7 @@ def _import_voice_commands():
         "cmd_brain_context": cmd_brain_context,
         "cmd_ingest": cmd_ingest,
         "cmd_brain_status": cmd_brain_status,
+        "cmd_mission_create": cmd_mission_create,
         "cmd_mission_cancel": cmd_mission_cancel,
         "cmd_mission_status": cmd_mission_status,
         "cmd_status": cmd_status,
