@@ -317,7 +317,8 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             _page_cache_bytes[0] -= len(old_val.encode("utf-8"))
         _PAGE_CACHE[key] = (now, value)
         _page_cache_bytes[0] += len(value.encode("utf-8"))
-        _page_cache_bytes[0] = max(0, _page_cache_bytes[0])  # clamp against drift
+        # Recompute byte total from actual cache to prevent counter drift
+        _page_cache_bytes[0] = sum(len(v.encode("utf-8")) for _, (_, v) in _PAGE_CACHE.items())
         if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes[0] > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:_PAGE_CACHE_EVICT_BATCH]
@@ -512,9 +513,9 @@ def _finalize_mission(
         if target is None:
             logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
             return
-        # Respect user-initiated cancellation — do not overwrite.
-        if target.get("status") == "cancelled":
-            logger.info("Mission %s was cancelled during run — preserving cancelled status", mission_id)
+        # Respect user-initiated cancellation or pause — do not overwrite.
+        if target.get("status") in ("cancelled", "paused"):
+            logger.info("Mission %s is %s — preserving status", mission_id, target["status"])
             return
         if verified:
             target["status"] = "completed"
@@ -535,7 +536,7 @@ def _finalize_mission(
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
             retries = int(target.get("retries", 0) or 0)
-            target["status"] = "failed" if retries < 2 else "exhausted"
+            target["status"] = "failed"  # retry_failed_missions handles failed→exhausted
             target["progress_pct"] = 100
             target["status_detail"] = "Completed with no verified findings"
             target["progress_bar"] = _progress_bar(100)

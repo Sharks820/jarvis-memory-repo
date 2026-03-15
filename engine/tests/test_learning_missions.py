@@ -499,11 +499,13 @@ def test_full_retry_cycle(tmp_path: Path, monkeypatch) -> None:
     assert missions[0]["status"] == "pending"
     assert missions[0]["retries"] == 2
 
-    # Run 3: should be exhausted now (retries=2, so status="exhausted")
+    # Run 3: fails again (retries=2, FSM requires failed→exhausted via retry)
     run_learning_mission(tmp_path, mission_id=mid)
     missions = load_missions(tmp_path)
-    assert missions[0]["status"] == "exhausted"
+    assert missions[0]["status"] == "failed"
 
-    # No more retries
+    # retry_failed_missions transitions to exhausted (retries >= 2)
     retried = retry_failed_missions(tmp_path)
-    assert retried == 0
+    assert retried == 0  # No retry — already exhausted
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "exhausted"
