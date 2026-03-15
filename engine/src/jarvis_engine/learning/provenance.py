@@ -53,7 +53,7 @@ class LearningProvenanceStore:
             self._init_schema()
 
     def _init_schema(self) -> None:
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             self._db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS learning_provenance (
@@ -160,7 +160,7 @@ class LearningProvenanceStore:
             return
         now = now_iso()
         metadata_json = _serialize_payload(metadata)
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             self._db.execute(
                 """
                 INSERT INTO learning_provenance (
@@ -239,7 +239,7 @@ class LearningProvenanceStore:
     ) -> None:
         if not self._enabled:
             return
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             self._db.execute(
                 """
                 INSERT INTO trust_policy_events (
@@ -278,7 +278,7 @@ class LearningProvenanceStore:
             return
         first_seen_at = now_iso()
         expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             self._db.execute(
                 """
                 INSERT INTO artifact_quarantine (
@@ -325,7 +325,7 @@ class LearningProvenanceStore:
     ) -> None:
         if not self._enabled:
             return
-        with self._write_lock:
+        with self._write_lock, self._db_lock:
             self._db.execute(
                 """
                 INSERT INTO threat_memory_indicators (

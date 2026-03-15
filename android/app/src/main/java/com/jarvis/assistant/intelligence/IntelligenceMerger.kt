@@ -105,6 +105,12 @@ class IntelligenceMerger @Inject constructor(
             )
             val count = if (response.ok) response.merged else 0
             Log.i(TAG, "Pushed $count intelligence items to desktop")
+
+            // Mark facts as synced ONLY after network success
+            if (response.ok && unsyncedFacts.isNotEmpty()) {
+                knowledgeStore.markFactsSynced()
+            }
+
             return count
         } catch (e: Exception) {
             Log.w(TAG, "Push phone intelligence failed: ${e.message}")

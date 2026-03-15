@@ -224,13 +224,13 @@ def _log_mission_activity(
             ActivityCategory.MISSION_STATE_CHANGE,
             f"Mission {status}: {topic}",
             {
-                "mission_id": mission_id,
                 "provider": "web_research",
                 "step": step[:180],
                 "progress_pct": max(0, min(100, int(progress_pct))),
-                "correlation_id": f"mission-{mission_id}",
                 "status": status,
             },
+            correlation_id=f"mission-{mission_id}",
+            mission_id=mission_id,
         )
     except (OSError, ValueError, RuntimeError):
         logger.debug("Mission activity logging failed for %s", mission_id)

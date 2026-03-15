@@ -356,18 +356,38 @@ class LocalKnowledgeStore @Inject constructor(
                             "source" to "phone",
                             "timestamp" to fact.optLong("timestamp", 0),
                         ))
-                        fact.put("synced", true)
                     }
-                }
-
-                if (unsynced.isNotEmpty()) {
-                    saveFacts(facts)
                 }
 
                 return unsynced
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to export facts: ${e.message}")
                 return emptyList()
+            }
+        }
+    }
+
+    /**
+     * Mark exported facts as synced AFTER the network push succeeds.
+     * Call this only after the desktop has acknowledged receipt.
+     */
+    fun markFactsSynced() {
+        synchronized(lock) {
+            try {
+                val facts = loadFacts()
+                var changed = false
+                for (i in 0 until facts.length()) {
+                    val fact = facts.getJSONObject(i)
+                    if (fact.optString("source") == "phone" && !fact.optBoolean("synced", false)) {
+                        fact.put("synced", true)
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    saveFacts(facts)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to mark facts synced: ${e.message}")
             }
         }
     }

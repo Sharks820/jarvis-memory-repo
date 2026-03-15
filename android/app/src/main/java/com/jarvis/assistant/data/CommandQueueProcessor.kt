@@ -143,6 +143,12 @@ class CommandQueueProcessor @Inject constructor(
                 }
             }
 
+            // Atomically claim before sending to prevent duplicate processing
+            val claimed = commandQueueDao.claimForSend(cmd.id)
+            if (claimed == 0) {
+                continue // Another thread already claimed this command
+            }
+
             // Try routing again through the intelligence router
             try {
                 val result = intelligenceRouter.route(cmd.text, cmd.execute, cmd.speak)

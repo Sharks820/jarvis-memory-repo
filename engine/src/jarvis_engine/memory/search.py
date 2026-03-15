@@ -15,12 +15,14 @@ Algorithm:
 
 from __future__ import annotations
 
+import atexit
 import logging
 import math
 import os
 import sqlite3
 import threading
 import time
+import weakref
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from jarvis_engine._shared import recency_weight as _recency_weight_core
@@ -70,6 +72,7 @@ _ACCESS_FLUSH_INTERVAL = 10.0  # seconds
 _access_lock = threading.Lock()
 _access_pending: dict[int, set[str]] = {}
 _access_first_ts: dict[int, float] = {}
+_access_engines: dict[int, weakref.ref] = {}  # weakrefs for shutdown flush
 
 
 def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> None:
@@ -81,6 +84,7 @@ def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> No
         if bucket is None:
             bucket = set()
             _access_pending[eid] = bucket
+            _access_engines[eid] = weakref.ref(engine)
         if not bucket:
             _access_first_ts[eid] = time.monotonic()
         bucket.update(record_ids)
@@ -98,6 +102,35 @@ def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> No
             engine.update_access_batch(flush_ids)
         except (sqlite3.Error, OSError, RuntimeError):
             logger.debug("Failed to flush access count updates", exc_info=True)
+
+
+def flush_all_access_updates() -> None:
+    """Drain all pending access count updates to their engines.
+
+    Called on shutdown to prevent losing buffered access counts.
+    """
+    with _access_lock:
+        snapshot = [
+            (_access_engines.get(eid), list(bucket))
+            for eid, bucket in _access_pending.items()
+            if bucket
+        ]
+        _access_pending.clear()
+        _access_first_ts.clear()
+        _access_engines.clear()
+    for engine_ref, ids in snapshot:
+        if engine_ref is None:
+            continue
+        engine = engine_ref()
+        if engine is None:
+            continue  # Engine was garbage collected
+        try:
+            engine.update_access_batch(ids)
+        except (sqlite3.Error, OSError, RuntimeError, AttributeError):
+            logger.debug("Failed to flush access counts on shutdown", exc_info=True)
+
+
+atexit.register(flush_all_access_updates)
 
 
 def _recency_weight(ts_str: str) -> float:
