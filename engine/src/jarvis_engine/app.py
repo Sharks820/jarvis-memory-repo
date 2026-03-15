@@ -912,21 +912,40 @@ def create_app(root: Path) -> CommandBus:
 
     # Warm embedding model in background (skip in test environments to avoid
     # loading the full nomic-bert model in every xdist worker).
-    if embed_service is not None and not os.environ.get("JARVIS_SKIP_EMBED_WARMUP"):
-
-        def _warm_embeddings() -> None:
-            try:
-                embed_service.embed("warmup", prefix="search_document")
-                logger.info("Embedding model warmed up")
-            except (OSError, RuntimeError, ValueError) as exc:
-                logger.debug(
-                    "Embedding warm-up failed (will load on first use): %s", exc
-                )
-
+    if not os.environ.get("JARVIS_SKIP_EMBED_WARMUP"):
         import threading as _threading
 
-        _threading.Thread(
-            target=_warm_embeddings, daemon=True, name="embed-warmup"
-        ).start()
+        if embed_service is not None:
+            def _warm_embeddings() -> None:
+                try:
+                    embed_service.embed("warmup", prefix="search_document")
+                    logger.info("Embedding model warmed up")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    logger.debug(
+                        "Embedding warm-up failed (will load on first use): %s", exc
+                    )
+
+            _threading.Thread(
+                target=_warm_embeddings, daemon=True, name="embed-warmup"
+            ).start()
+
+        # Pre-load Ollama model into VRAM so first request doesn't wait 30-60s.
+        # Uses /api/generate with keep_alive to load without generating.
+        if gateway is not None and getattr(gateway, "_ollama", None) is not None:
+            def _warm_ollama() -> None:
+                try:
+                    from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
+                    gateway._ollama.chat(  # type: ignore[union-attr]
+                        model=DEFAULT_LOCAL_MODEL,
+                        messages=[{"role": "user", "content": "warmup"}],
+                        options={"num_predict": 1},
+                    )
+                    logger.info("Ollama model pre-loaded into VRAM")
+                except Exception as exc:
+                    logger.debug("Ollama warmup failed (will load on first use): %s", exc)
+
+            _threading.Thread(
+                target=_warm_ollama, daemon=True, name="ollama-warmup"
+            ).start()
 
     return bus
