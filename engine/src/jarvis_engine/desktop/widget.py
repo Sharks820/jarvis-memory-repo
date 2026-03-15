@@ -176,6 +176,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._last_diag_poll_at: float = 0.0
         self._last_auto_start_at: float = 0.0  # Cooldown for service auto-restart
+        self._auto_start_failures: int = 0  # Exponential backoff counter
+        self._ollama_started_by_widget: bool = False  # Track if we started Ollama
         self._ensure_controller()
 
         self.title("Jarvis Unlimited")
@@ -241,8 +243,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
                         | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
                     )
+                    self._ollama_started_by_widget = True
                     time.sleep(3)
-                    self._log_async("Ollama started.", role="system")
+                    # Verify Ollama actually came up
+                    try:
+                        with urllib.request.urlopen("http://localhost:11434/", timeout=2):
+                            self._log_async("Ollama started.", role="system")
+                    except (OSError, ValueError):
+                        self._log_async("Ollama started but not yet responding.", role="system")
                 else:
                     self._log_async("Ollama not found at default path.", role="error")
             except OSError as exc:
@@ -298,7 +306,19 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._hide_panel()
 
     def _kill_child_services(self) -> None:
-        """Kill mobile API and daemon processes spawned alongside the widget."""
+        """Kill mobile API, daemon, and Ollama (if we started it) on shutdown."""
+        # Kill Ollama if the widget started it
+        if self._ollama_started_by_widget:
+            try:
+                import subprocess as _sp
+                _sp.run(
+                    [_taskkill_executable(), "/F", "/IM", "ollama.exe"],
+                    capture_output=True, timeout=5,
+                )
+                logger.info("Killed Ollama on widget shutdown.")
+            except (OSError, _sp.SubprocessError) as exc:
+                logger.debug("Failed to kill Ollama on shutdown: %s", exc)
+
         try:
             from jarvis_engine.ops.process_manager import read_pid_file, kill_service
             root = self.root_path if hasattr(self, "root_path") else _repo_root()
@@ -332,7 +352,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             "This will terminate all Jarvis services:\n"
             "  \u2022 Desktop Widget\n"
             "  \u2022 Mobile API Server\n"
-            "  \u2022 Background Daemon\n\n"
+            "  \u2022 Background Daemon\n"
+            "  \u2022 Ollama (if started by widget)\n\n"
             "For best results before exiting:\n"
             "  1. Let any active command finish processing\n"
             "  2. Memory is auto-saved (SQLite WAL mode),\n"
@@ -3206,14 +3227,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
             ok, intel_data = self._probe_health_endpoints(cfg)
 
-            # Auto-restart services if offline (cooldown: 60s between attempts)
+            # Auto-restart services if offline (exponential backoff: 60s, 120s, 240s, max 5 attempts)
             if not ok and not self.stop_event.is_set():
                 now = time.monotonic()
-                if (now - self._last_auto_start_at) >= 60.0:
+                cooldown = 60.0 * (2 ** min(self._auto_start_failures, 3))  # 60, 120, 240, 480
+                if self._auto_start_failures < 5 and (now - self._last_auto_start_at) >= cooldown:
                     self._last_auto_start_at = now
-                    logger.info("Services offline — attempting auto-restart")
-                    self._log_async("Services offline. Restarting...", role="system")
+                    self._auto_start_failures += 1
+                    logger.info("Services offline — auto-restart attempt %d/5", self._auto_start_failures)
+                    self._log_async(f"Services offline. Restart attempt {self._auto_start_failures}/5...", role="system")
                     self._auto_start_services()
+            elif ok:
+                # Reset backoff on successful connection
+                if self._auto_start_failures > 0:
+                    self._auto_start_failures = 0
 
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []

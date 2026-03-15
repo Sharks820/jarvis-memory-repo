@@ -53,7 +53,7 @@ if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($signi
 # previous sessions from causing port conflicts and connection errors.
 $allJarvis = @(Get-CimInstance Win32_Process | Where-Object {
     ($_.Name -eq "python.exe" -or $_.Name -eq "pythonw.exe") -and
-    $_.CommandLine -match "jarvis_engine\.main\s+(daemon-run|serve-mobile|desktop-widget)"
+    $_.CommandLine -match "jarvis_engine\.main\s+(daemon-run|serve-mobile)"
 })
 foreach ($proc in $allJarvis) {
     Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
