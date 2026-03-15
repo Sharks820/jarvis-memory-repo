@@ -58,12 +58,8 @@ class SecurityRoutesMixin:
             "resource_usage": sec.resource_monitor.status()
             if sec.resource_monitor
             else {},
-            "heartbeat": getattr(sec, "heartbeat", None).status()
-            if getattr(sec, "heartbeat", None)
-            else {},
-            "threat_intel": getattr(sec, "threat_intel", None).status()
-            if getattr(sec, "threat_intel", None)
-            else {},
+            "heartbeat": hb.status() if (hb := getattr(sec, "heartbeat", None)) else {},
+            "threat_intel": ti.status() if (ti := getattr(sec, "threat_intel", None)) else {},
         }
         self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
 
