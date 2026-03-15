@@ -71,7 +71,9 @@ logger = logging.getLogger(__name__)
 
 # Timeout constants (seconds)
 _OLLAMA_IMPORT_TIMEOUT_S = 3.0
-_OLLAMA_CLIENT_TIMEOUT_S = 45.0
+_OLLAMA_CLIENT_TIMEOUT_S = 90.0
+_OLLAMA_RETRY_COUNT = 2  # retry transient connection errors (e.g. RemoteDisconnected)
+_OLLAMA_RETRY_BASE_S = 1.0  # exponential backoff base: 1s, 2s
 _ANTHROPIC_CLIENT_TIMEOUT_S = 60.0
 _HTTP_CLIENT_TIMEOUT_S = 60.0  # shared httpx pool for cloud calls
 
@@ -1100,17 +1102,33 @@ class ModelGateway:
             "temperature": temperature,
         }
 
-        try:
-            resp = self._http.post(
-                url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"{cfg['provider_name']} request failed: {exc}") from exc
+        # Retry once on transient connection errors (stale keep-alive, reset).
+        _cloud_last_exc: Exception | None = None
+        for _cloud_attempt in range(2):
+            try:
+                resp = self._http.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                break
+            except httpx.HTTPError as exc:
+                _cloud_last_exc = exc
+                if _cloud_attempt == 0:
+                    logger.info(
+                        "%s connection error, retrying once: %s",
+                        cfg["provider_name"], exc,
+                    )
+                    time.sleep(0.5)
+                    continue
+                raise RuntimeError(f"{cfg['provider_name']} request failed: {exc}") from exc
+        else:
+            raise RuntimeError(
+                f"{cfg['provider_name']} request failed: {_cloud_last_exc}"
+            ) from _cloud_last_exc
 
         if resp.status_code == 429:
             headers = getattr(resp, "headers", None)
@@ -1267,36 +1285,63 @@ class ModelGateway:
         On success, returns ``(GatewayResponse, "")``.
         On failure, returns ``(None, reason_string)`` describing the error.
         Handles all Ollama-specific exception classes in one place.
+
+        Retries up to ``_OLLAMA_RETRY_COUNT`` times on transient connection
+        errors (e.g. ``RemoteDisconnected``, connection reset) with
+        exponential backoff to survive brief Ollama restarts and stale
+        HTTP keep-alive connections.
         """
         if self._ollama is None:
             return None, "ollama package is not installed"
-        try:
-            resp = self._ollama.chat(
+
+        last_error = ""
+        for attempt in range(_OLLAMA_RETRY_COUNT + 1):
+            try:
+                resp = self._ollama.chat(
+                    model=model,
+                    messages=messages,
+                    options={"num_predict": max_tokens, "temperature": temperature},
+                    think=False,
+                )
+            except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
+                last_error = "Ollama error"
+                if attempt < _OLLAMA_RETRY_COUNT:
+                    delay = _OLLAMA_RETRY_BASE_S * (2 ** attempt)
+                    logger.info(
+                        "Ollama call failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, _OLLAMA_RETRY_COUNT + 1, delay, exc,
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.warning("Ollama call failed after %d attempts: %s", attempt + 1, exc)
+                return None, last_error
+            except (RuntimeError, ValueError, TypeError) as exc:
+                last_error = f"Ollama error: {type(exc).__name__}"
+                if attempt < _OLLAMA_RETRY_COUNT:
+                    delay = _OLLAMA_RETRY_BASE_S * (2 ** attempt)
+                    logger.info(
+                        "Ollama call failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, _OLLAMA_RETRY_COUNT + 1, delay, exc,
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.warning("Ollama call failed (unexpected) after %d attempts: %s", attempt + 1, exc)
+                return None, last_error
+
+            text = (resp.message.content if resp.message else "") or ""
+            input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
+            output_tokens = getattr(resp, "eval_count", 0) or 0
+
+            return GatewayResponse(
+                text=text,
                 model=model,
-                messages=messages,
-                options={"num_predict": max_tokens, "temperature": temperature},
-                think=False,
-            )
-        except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
-            logger.warning("Ollama call failed: %s", exc)
-            return None, "Ollama error"
-        except (RuntimeError, ValueError, TypeError) as exc:
-            # Catch httpx transport/timeout errors that don't inherit from builtins
-            logger.warning("Ollama call failed (unexpected): %s", exc)
-            return None, f"Ollama error: {type(exc).__name__}"
+                provider="ollama",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=0.0,
+            ), ""
 
-        text = (resp.message.content if resp.message else "") or ""
-        input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
-        output_tokens = getattr(resp, "eval_count", 0) or 0
-
-        return GatewayResponse(
-            text=text,
-            model=model,
-            provider="ollama",
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=0.0,
-        ), ""
+        return None, last_error or "Ollama error"
 
     def _call_ollama(
         self,
@@ -1562,15 +1607,23 @@ class ModelGateway:
         )
 
     def check_ollama(self) -> bool:
-        """Check if local Ollama server is reachable."""
+        """Check if local Ollama server is reachable.
+
+        Retries once on transient connection errors (stale keep-alive).
+        """
         if self._ollama is None:
             return False
-        try:
-            self._ollama.list()
-            return True
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            logger.debug("Ollama health check failed: %s", exc)
-            return False
+        for attempt in range(2):
+            try:
+                self._ollama.list()
+                return True
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                if attempt == 0:
+                    time.sleep(0.5)
+                    continue
+                logger.debug("Ollama health check failed: %s", exc)
+                return False
+        return False
 
     def check_anthropic(self) -> bool:
         return self._anthropic is not None

@@ -524,35 +524,46 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
 
     last_exc: Exception | None = None
     for base in _urls_to_try:
-        # Generate FRESH signed headers for each URL attempt.  Each attempt
-        # produces a unique nonce so that if the primary URL's server consumes
-        # the nonce (even on an HTTP error or timeout), the fallback URL gets
-        # its own valid nonce instead of being rejected as a replay.
-        request_url = _validated_widget_request_url(f"{base.rstrip('/')}{path}")
-        headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
-        if payload is not None:
-            headers["Content-Type"] = "application/json"
-        req = Request(url=request_url, method=method, data=(None if payload is None else body), headers=headers)
-        ssl_ctx = _get_ssl_context(base)
-        try:
-            with _safe_urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
-                raw = resp.read().decode("utf-8")
+        # Retry once on transient connection errors (e.g. RemoteDisconnected,
+        # connection reset by peer) which happen when the server closes a
+        # keep-alive connection between requests.
+        for _retry in range(2):
+            # Generate FRESH signed headers for each attempt.  Each attempt
+            # produces a unique nonce so that if the server consumes the nonce
+            # (even on an HTTP error or timeout), the retry gets its own valid
+            # nonce instead of being rejected as a replay.
+            request_url = _validated_widget_request_url(f"{base.rstrip('/')}{path}")
+            headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
+            if payload is not None:
+                headers["Content-Type"] = "application/json"
+            req = Request(url=request_url, method=method, data=(None if payload is None else body), headers=headers)
+            ssl_ctx = _get_ssl_context(base)
             try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise RuntimeError(f"Invalid JSON response: {exc}") from exc
-            if not isinstance(parsed, dict):
-                raise RuntimeError("Invalid response payload")
-            return parsed
-        except HTTPError as exc:
-            # HTTP errors (401, 403, 500, etc.) indicate the server IS
-            # reachable but rejected the request.  Do NOT fall back to
-            # localhost -- the issue is auth/server-side, not connectivity.
-            raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
-        except (URLError, TimeoutError, OSError) as exc:
-            last_exc = RuntimeError(f"HTTP request failed: {exc}")
-            if base != _urls_to_try[-1]:
-                logger.info("Primary URL %s unreachable, trying localhost fallback", base)
+                with _safe_urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
+                    raw = resp.read().decode("utf-8")
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise RuntimeError(f"Invalid JSON response: {exc}") from exc
+                if not isinstance(parsed, dict):
+                    raise RuntimeError("Invalid response payload")
+                return parsed
+            except HTTPError as exc:
+                # HTTP errors (401, 403, 500, etc.) indicate the server IS
+                # reachable but rejected the request.  Do NOT fall back to
+                # localhost -- the issue is auth/server-side, not connectivity.
+                raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
+            except (URLError, TimeoutError, OSError) as exc:
+                last_exc = RuntimeError(f"HTTP request failed: {exc}")
+                if _retry == 0:
+                    # Transient error — retry once after a short delay
+                    import time as _http_time
+                    logger.info("Transient connection error to %s, retrying: %s", base, exc)
+                    _http_time.sleep(0.5)
+                    continue
+                if base != _urls_to_try[-1]:
+                    logger.info("Primary URL %s unreachable, trying localhost fallback", base)
+                break  # move to next base URL
     raise last_exc or RuntimeError("HTTP request failed")
 
 

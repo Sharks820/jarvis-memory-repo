@@ -165,7 +165,7 @@ def http_request(
 ) -> tuple[int, bytes]:
     req = Request(url=url, method=method, data=body, headers=headers or {})
     try:
-        with urlopen(req, timeout=8) as resp:
+        with urlopen(req, timeout=15) as resp:
             return resp.getcode(), resp.read()
     except HTTPError as exc:
         return exc.code, exc.read()

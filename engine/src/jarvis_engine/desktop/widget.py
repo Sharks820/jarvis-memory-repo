@@ -640,8 +640,43 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
         self._controls_toggle_btn.pack(side=tk.LEFT)
 
-        # Drawer body (hidden by default)
-        self._controls_body = tk.Frame(drawer, bg=self.PANEL)
+        # Drawer body (hidden by default) — wrapped in a height-limited
+        # scrollable canvas so the controls never steal all vertical space
+        # from the chat area above.
+        self._controls_outer = tk.Frame(drawer, bg=self.PANEL)
+        # Max height = 40% of screen to leave room for chat
+        try:
+            _max_h = max(200, int(self.winfo_screenheight() * 0.40))
+        except (tk.TclError, RuntimeError):
+            _max_h = 350
+        self._controls_canvas = tk.Canvas(
+            self._controls_outer, bg=self.PANEL, highlightthickness=0,
+            height=_max_h,
+        )
+        self._controls_scrollbar = tk.Scrollbar(
+            self._controls_outer, orient=tk.VERTICAL,
+            command=self._controls_canvas.yview,
+        )
+        self._controls_body = tk.Frame(self._controls_canvas, bg=self.PANEL)
+        self._controls_body.bind(
+            "<Configure>",
+            lambda _e: self._controls_canvas.configure(
+                scrollregion=self._controls_canvas.bbox("all"),
+            ),
+        )
+        self._controls_canvas_window = self._controls_canvas.create_window(
+            (0, 0), window=self._controls_body, anchor="nw",
+        )
+        self._controls_canvas.configure(yscrollcommand=self._controls_scrollbar.set)
+        # Resize inner frame width to match canvas width
+        self._controls_canvas.bind(
+            "<Configure>",
+            lambda e: self._controls_canvas.itemconfig(
+                self._controls_canvas_window, width=e.width,
+            ),
+        )
+        self._controls_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._controls_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Build all control sections inside the drawer body
         self._build_session_config(self._controls_body)
@@ -655,11 +690,11 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _toggle_controls_drawer(self) -> None:
         """Toggle visibility of the controls drawer."""
         if self._controls_collapsed.get():
-            self._controls_body.pack(fill=tk.X, padx=0, pady=(4, 0))
+            self._controls_outer.pack(fill=tk.X, padx=0, pady=(4, 0))
             self._controls_toggle_btn.config(text="\u25BC Controls & Info")
             self._controls_collapsed.set(False)
         else:
-            self._controls_body.pack_forget()
+            self._controls_outer.pack_forget()
             self._controls_toggle_btn.config(text="\u25B6 Controls & Info")
             self._controls_collapsed.set(True)
 
@@ -1604,7 +1639,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
 
     def _diag_run_self_heal(self, cfg: WidgetConfig) -> None:
-        """Diagnostic step 4: run self-heal maintenance and display results."""
+        """Diagnostic step 4: run self-heal maintenance and display results.
+
+        After a successful self-heal the diagnostics poll cooldown is pushed
+        forward by 120 seconds so the health loop does not immediately re-scan
+        and show the same transient issues (e.g. Ollama briefly unreachable),
+        which previously created the illusion of a fix/break loop.
+        """
         self._log_async("[4/4] Running self-heal maintenance...", role="system")
         heal_data = _http_json(
             cfg,
@@ -1632,9 +1673,15 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._log_async("\u2500" * 40, role="system")
         if heal_ok:
             self._log_async("\u2705 All systems healthy.", role="jarvis")
+            # Push diagnostics cooldown forward so the health loop doesn't
+            # immediately re-scan and flash stale issues.
+            self._last_diag_poll_at = time.monotonic() + 120.0
         else:
             self._log_async("\u26A0 Some issues detected. Check details above.", role="error")
             self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
+            # Shorter cooldown (60s) after a failed heal to allow re-check
+            # sooner, but still avoid the rapid loop.
+            self._last_diag_poll_at = time.monotonic() + 60.0
 
     def _diagnose_repair_async(self) -> None:
         cfg = self._current_cfg()  # Read tkinter vars on main thread

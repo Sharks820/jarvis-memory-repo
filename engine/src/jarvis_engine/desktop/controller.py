@@ -266,12 +266,23 @@ class DesktopInteractionController:
         now_working_on: dict[str, Any] | None = None,
         clear_missing: bool = False,
     ) -> list[dict[str, Any]]:
-        """Update controller-owned desktop status from health/widget payloads."""
+        """Update controller-owned desktop status from health/widget payloads.
+
+        When *clear_missing* is True **and** *online* is False, stale growth /
+        intelligence values are zeroed.  When the server is online but a
+        particular sub-fetch (e.g. ``/widget-status``) returned ``None``, the
+        previous values are preserved so that a single transient failure does
+        not flash all counters to zero.
+        """
         with self._lock:
             self._online = online
-            if intel_data is not None or clear_missing:
+            # Only update intelligence when we have fresh data, or when the
+            # server is confirmed offline and we should clear stale values.
+            if intel_data is not None or (clear_missing and not online):
                 self._apply_intelligence_locked(intel_data)
-            if growth_data is not None or now_working_on is not None or clear_missing:
+            # Only update growth when we received a real payload, or when the
+            # server is confirmed offline (clear stale values).
+            if growth_data is not None or now_working_on is not None or (clear_missing and not online):
                 self._apply_growth_locked(growth_data, now_working_on)
             if recent_events is not None:
                 return self._ingest_activity_events_locked(recent_events)
