@@ -401,8 +401,7 @@ class MemoryConsolidator:
         """
         tag_value = f"consolidated_into:{new_record_id}"
 
-        with self._engine.write_lock:
-            with self._engine.db_lock:
+        with self._engine.write_lock, self._engine.db_lock:
                 for rec in records:
                     rid = rec.get("record_id")
                     if not rid:

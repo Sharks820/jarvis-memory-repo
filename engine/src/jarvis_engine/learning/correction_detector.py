@@ -484,12 +484,17 @@ class SttErrorTracker:
         trend = "stable"
         if len(daily_counts) >= 2:
             sorted_dates = sorted(daily_counts.keys())
-            mid = len(sorted_dates) // 2
+            mid = len(sorted_dates) // 2 or 1  # Ensure at least 1 date in first half
             first_half = sum(daily_counts[d] for d in sorted_dates[:mid])
             second_half = sum(daily_counts[d] for d in sorted_dates[mid:])
-            if second_half < first_half * 0.8:
+            # Normalize to per-date averages to avoid bias from unequal split sizes
+            n_first = max(mid, 1)
+            n_second = max(len(sorted_dates) - mid, 1)
+            first_avg = first_half / n_first
+            second_avg = second_half / n_second
+            if second_avg < first_avg * 0.8:
                 trend = "improving"
-            elif second_half > first_half * 1.2:
+            elif second_avg > first_avg * 1.2:
                 trend = "worsening"
 
         return {

@@ -65,7 +65,7 @@ def cross_branch_query(
     provenance_by_id = engine.get_learning_provenance_batch([record_id for record_id, _ in vec_results[:k]])
 
     # Step 3: Build direct results and find cross-branch connections
-    G = kg.to_networkx(copy=False)
+    G = kg.to_networkx(copy=True)
     direct_results = []
     cross_branch_connections = []
     branches_seen: set[str] = set()

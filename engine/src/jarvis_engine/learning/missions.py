@@ -143,7 +143,12 @@ def load_missions(root: Path) -> list[dict[str, Any]]:
     from jarvis_engine._shared import load_json_file
 
     path = _missions_path(root)
-    raw = load_json_file(path, None, expected_type=list)
+    try:
+        raw = load_json_file(path, None, expected_type=list)
+    except FileNotFoundError:
+        # On Windows, os.replace() during concurrent _save_missions can briefly
+        # remove the file.  Return empty rather than crashing.
+        return []
     if raw is None:
         return []
     return [item for item in raw if isinstance(item, dict)]
@@ -711,8 +716,9 @@ def run_learning_mission(
                  elapsed_ms=_now_ms() - _t2,
                  artifacts_produced=len(scanned_urls))
 
-    # Step: extract candidates
+    # Step: extract candidates (done inline during fetch_pages)
     _t3 = _now_ms()
+    _update_step(root, mission_id, "extract_candidates", status="running")
     _update_step(root, mission_id, "extract_candidates", status="completed",
                  elapsed_ms=_now_ms() - _t3,
                  artifacts_produced=len(candidate_rows))
