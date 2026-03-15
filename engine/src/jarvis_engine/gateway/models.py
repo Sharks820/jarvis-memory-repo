@@ -1103,6 +1103,7 @@ class ModelGateway:
         }
 
         # Retry once on transient connection errors (stale keep-alive, reset).
+        resp: httpx.Response | None = None
         _cloud_last_exc: Exception | None = None
         for _cloud_attempt in range(2):
             try:
@@ -1130,6 +1131,7 @@ class ModelGateway:
                 f"{cfg['provider_name']} request failed: {_cloud_last_exc}"
             ) from _cloud_last_exc
 
+        assert resp is not None  # guaranteed by break/else above
         if resp.status_code == 429:
             headers = getattr(resp, "headers", None)
             retry_after_raw = (
