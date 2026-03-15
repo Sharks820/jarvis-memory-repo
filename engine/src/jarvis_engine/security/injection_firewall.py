@@ -155,9 +155,10 @@ _FAKE_HEADER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 _ENCODING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    # Base64 blocks over 16 chars (lower threshold catches short attack payloads;
-    # 16 chars of base64 encodes ~12 bytes, enough for keywords like "ignore")
-    ("base64_block", re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")),
+    # Base64 blocks over 40 chars (encodes ~30 bytes). Lower thresholds cause
+    # false positives on normal English text and URLs. Real base64 injection
+    # payloads need 40+ chars to encode meaningful instructions.
+    ("base64_block", re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")),
     # Hex sequences (e.g. \x41\x42 style)
     ("hex_escape_sequence", re.compile(r"(\\x[0-9a-fA-F]{2}){4,}")),
     # URL-encoded sequences (e.g. %69%67%6E%6F%72%65)
