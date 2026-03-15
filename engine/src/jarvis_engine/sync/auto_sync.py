@@ -77,7 +77,7 @@ class AutoSyncConfig:
         if config_path is None:
             return
         try:
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             # Merge: saved values override defaults, new defaults are added
             merged = dict(DEFAULT_SYNC_CONFIG)
@@ -93,9 +93,16 @@ class AutoSyncConfig:
         try:
             self._config_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._config_path.with_suffix(".tmp")
-            with open(tmp, "w") as f:
-                json.dump(self._config, f, indent=2)
-            os.replace(str(tmp), str(self._config_path))
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(self._config, f, indent=2, ensure_ascii=True)
+                os.replace(str(tmp), str(self._config_path))
+            finally:
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except OSError:
+                    pass
         except OSError as exc:
             logger.warning("Failed to save auto-sync config: %s", exc)
 
