@@ -1,9 +1,8 @@
 {
   "mode": "yolo",
-  "depth": "comprehensive",
   "parallelization": true,
   "commit_docs": true,
-  "model_profile": "quality",
+  "model_profile": "balanced",
   "workflow": {
     "research": true,
     "plan_check": true,
@@ -16,9 +15,13 @@
     "secondary_runtime": "weaker_laptop",
     "security_strictness": "balanced",
     "cloud_burst_enabled": true,
-    "access_channels": ["desktop", "mobile"],
+    "access_channels": [
+      "desktop",
+      "mobile"
+    ],
     "regression_gate_enabled": true,
     "capability_mode": "tiered_authorization"
   },
-  "last_updated": "2026-02-22"
+  "last_updated": "2026-03-14",
+  "granularity": "fine"
 }
