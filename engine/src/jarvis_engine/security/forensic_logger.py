@@ -102,7 +102,7 @@ class ForensicLogger:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 for line_no, raw_line in enumerate(f, 1):
-                    raw_line = raw_line.rstrip("\n")
+                    raw_line = raw_line.rstrip("\r\n")
                     if not raw_line:
                         continue
                     try:
@@ -175,7 +175,7 @@ class ForensicLogger:
                 try:
                     with open(log_path, "r", encoding="utf-8") as f:
                         for raw_line in f:
-                            raw_line = raw_line.rstrip("\n")
+                            raw_line = raw_line.rstrip("\r\n")
                             if not raw_line:
                                 continue
                             try:

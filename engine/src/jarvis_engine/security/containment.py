@@ -423,6 +423,7 @@ class ContainmentEngine:
             key_path = _repo_root / ".planning" / "security" / "signing_key"
             key_path.parent.mkdir(parents=True, exist_ok=True)
             key_path.write_text(new_key, encoding="utf-8")
+            os.chmod(key_path, 0o600)
             logger.info("Rotated HMAC key persisted to %s", key_path)
         except OSError as exc:
             logger.error("Failed to persist rotated HMAC key to disk: %s", exc)

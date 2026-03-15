@@ -448,6 +448,8 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
         from jarvis_engine._db_pragmas import connect_db
 
         _sec_db = connect_db(_sec_db_path, check_same_thread=False)
+        import atexit
+        atexit.register(_sec_db.close)
         _sec_lock = threading.Lock()
         _sec_log_dir = runtime_dir(root) / "forensic"
 

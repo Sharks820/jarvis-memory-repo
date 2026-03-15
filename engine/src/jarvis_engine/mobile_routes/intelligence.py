@@ -236,7 +236,15 @@ class IntelligenceRoutesMixin:
 
             # Full (unredacted) state requires master password verification.
             if full:
-                master_pwd = qs.get("master_pwd", [""])[0]
+                master_pwd = str(self.headers.get("X-Jarvis-Master-Password", "") or "").strip()
+                if not master_pwd:
+                    # Backward compat: fall back to query param (deprecated)
+                    master_pwd = qs.get("master_pwd", [""])[0]
+                    if master_pwd:
+                        logger.warning(
+                            "master_pwd in query string is deprecated; "
+                            "use X-Jarvis-Master-Password header instead"
+                        )
                 if not master_pwd:
                     self._write_json(HTTPStatus.FORBIDDEN, {
                         "ok": False,

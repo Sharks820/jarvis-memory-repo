@@ -161,7 +161,7 @@ def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_inge
         print("error: mission run failed")
         return result.return_code
 
-    report = result.report
+    report = result.report if isinstance(result.report, dict) else {}
     _emit("learning_mission_completed=true")
     _emit(f"mission_id={report.get('mission_id', '')}")
     _emit(f"candidate_count={report.get('candidate_count', 0)}")

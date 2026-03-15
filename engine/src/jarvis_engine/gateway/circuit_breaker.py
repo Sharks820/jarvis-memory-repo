@@ -263,8 +263,30 @@ class ProviderHealthTracker:
         with self._lock:
             return {name: h.to_dict() for name, h in self._providers.items()}
 
+    def _is_healthy_unlocked(self, provider: str) -> bool:
+        """Check health without acquiring lock. Caller must hold self._lock."""
+        h = self._providers.get(provider)
+        if h is None:
+            return True
+
+        if h.circuit_state == CircuitState.OPEN:
+            if time.monotonic() < h.cooldown_until:
+                return False
+            h.circuit_state = CircuitState.HALF_OPEN
+            h.reset_stats()
+            logger.info(
+                "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired via is_healthy)",
+                provider,
+            )
+
+        if h.total_requests >= 4 and h.success_rate < _MIN_SUCCESS_RATE:
+            return False
+
+        return True
+
     def filter_healthy(self, providers: list[str]) -> list[str]:
-        return [p for p in providers if self.is_healthy(p)]
+        with self._lock:
+            return [p for p in providers if self._is_healthy_unlocked(p)]
 
     def rank_by_health(self, providers: list[str]) -> list[str]:
         """Sort providers by health score (best first).
@@ -272,13 +294,14 @@ class ProviderHealthTracker:
         Score = success_rate * (1 / (1 + avg_latency_ms/1000))
         Unknown providers get score 0.5 (neutral).
         """
-
-        def _score(provider: str) -> float:
-            with self._lock:
+        with self._lock:
+            scores: dict[str, float] = {}
+            for provider in providers:
                 h = self._providers.get(provider)
                 if h is None:
-                    return 0.5
-                latency_factor = 1.0 / (1.0 + h.avg_latency_ms / 1000.0)
-                return h.success_rate * latency_factor
+                    scores[provider] = 0.5
+                else:
+                    latency_factor = 1.0 / (1.0 + h.avg_latency_ms / 1000.0)
+                    scores[provider] = h.success_rate * latency_factor
 
-        return sorted(providers, key=_score, reverse=True)
+        return sorted(providers, key=lambda p: scores[p], reverse=True)

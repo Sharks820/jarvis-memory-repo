@@ -295,20 +295,20 @@ class BudgetEnforcer:
             daily = self._daily_spend()
             monthly = self._monthly_spend()
 
-        if self._daily_cap > 0 and (daily + estimated_cost) > self._daily_cap:
-            raise BudgetExceededError(
-                f"Daily budget exceeded: ${daily:.2f} + ${estimated_cost:.4f} > ${self._daily_cap:.2f}",
-                period="daily",
-                spent=daily,
-                cap=self._daily_cap,
-            )
-        if self._monthly_cap > 0 and (monthly + estimated_cost) > self._monthly_cap:
-            raise BudgetExceededError(
-                f"Monthly budget exceeded: ${monthly:.2f} + ${estimated_cost:.4f} > ${self._monthly_cap:.2f}",
-                period="monthly",
-                spent=monthly,
-                cap=self._monthly_cap,
-            )
+            if self._daily_cap > 0 and (daily + estimated_cost) > self._daily_cap:
+                raise BudgetExceededError(
+                    f"Daily budget exceeded: ${daily:.2f} + ${estimated_cost:.4f} > ${self._daily_cap:.2f}",
+                    period="daily",
+                    spent=daily,
+                    cap=self._daily_cap,
+                )
+            if self._monthly_cap > 0 and (monthly + estimated_cost) > self._monthly_cap:
+                raise BudgetExceededError(
+                    f"Monthly budget exceeded: ${monthly:.2f} + ${estimated_cost:.4f} > ${self._monthly_cap:.2f}",
+                    period="monthly",
+                    spent=monthly,
+                    cap=self._monthly_cap,
+                )
 
     def status(self) -> BudgetStatus:
         """Return current budget utilisation snapshot."""

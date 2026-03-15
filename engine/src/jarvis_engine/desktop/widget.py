@@ -2419,10 +2419,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     [_taskkill_executable(), "/F", "/IM", f"{proc_name}.exe"],
                     capture_output=True, timeout=5,
                 )
-            # Kill PowerShell speech synthesis if running
+            # Kill PowerShell speech synthesis if running (only our TTS processes)
             subprocess.run(
                 [_powershell_executable(), "-Command",
-                 "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                 "Get-Process powershell -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowTitle -eq '' -and ($_ | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue) -match 'System\\.Speech|SpeechSynthesizer'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
                 capture_output=True, timeout=5,
             )
         except (OSError, subprocess.SubprocessError, FileNotFoundError) as exc:
@@ -2926,11 +2926,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         return
             except _WIDGET_VOICE_ERRORS as exc:
                 logger.warning("Hotword detection error: %s", exc)
-            # Cooldown: 10s after wake word to avoid re-triggering during processing
-            for _ in range(20):
-                if self.stop_event.is_set() or (not _read_hotword_var()):
-                    return
-                time.sleep(0.5)
+                continue
+            if heard:
+                # Cooldown: 10s after wake word to avoid re-triggering during processing
+                for _ in range(20):
+                    if self.stop_event.is_set() or (not _read_hotword_var()):
+                        return
+                    time.sleep(0.5)
 
     def _start_status_workers(self) -> None:
         self._thread(self._health_loop)

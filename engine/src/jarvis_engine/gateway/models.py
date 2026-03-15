@@ -558,30 +558,53 @@ class ModelGateway:
             limit,
         )
 
-        # Try to switch to a model with a larger context window
-        for candidate, candidate_limit in sorted(
-            _MODEL_CONTEXT_LIMITS.items(),
-            key=lambda x: x[1],
-            reverse=True,
-        ):
-            if candidate == model or candidate_limit <= limit:
-                continue
+        # Try to switch to a model with a larger context window.
+        # Prefer candidates from the same provider family as the original model.
+        original_provider = self._resolve_provider(model)
+        original_family = original_provider.split(":")[0] if original_provider else ""
+
+        candidates = [
+            (c, cl)
+            for c, cl in sorted(
+                _MODEL_CONTEXT_LIMITS.items(), key=lambda x: x[1], reverse=True
+            )
+            if c != model and cl > limit
+        ]
+
+        def _try_candidate(candidate: str, candidate_limit: int) -> str | None:
             candidate_threshold = int(candidate_limit * _CONTEXT_GUARD_THRESHOLD)
-            if estimated <= candidate_threshold:
-                # Check that we can actually route to this candidate
-                provider = self._resolve_provider(candidate)
-                if provider != "ollama" or candidate in (
-                    get_local_model(),
-                    get_fast_local_model(),
-                ):
-                    logger.info(
-                        "Context guard: switching %s -> %s (limit %d -> %d)",
-                        model,
-                        candidate,
-                        limit,
-                        candidate_limit,
-                    )
-                    return messages, candidate
+            if estimated > candidate_threshold:
+                return None
+            provider = self._resolve_provider(candidate)
+            if provider != "ollama" or candidate in (
+                get_local_model(),
+                get_fast_local_model(),
+            ):
+                logger.info(
+                    "Context guard: switching %s -> %s (limit %d -> %d)",
+                    model,
+                    candidate,
+                    limit,
+                    candidate_limit,
+                )
+                return candidate
+            return None
+
+        # First pass: same provider family only
+        for candidate, candidate_limit in candidates:
+            cand_provider = self._resolve_provider(candidate)
+            cand_family = cand_provider.split(":")[0] if cand_provider else ""
+            if cand_family != original_family:
+                continue
+            result = _try_candidate(candidate, candidate_limit)
+            if result is not None:
+                return messages, result
+
+        # Second pass: any provider family
+        for candidate, candidate_limit in candidates:
+            result = _try_candidate(candidate, candidate_limit)
+            if result is not None:
+                return messages, result
 
         # No larger model available — truncate user/assistant messages
         # (oldest first) to fit.  System prompts define model behavior and
@@ -992,6 +1015,11 @@ class ModelGateway:
             provider_name = response.provider
             if provider_name and provider_name != "none":
                 self._health.record_success(provider_name, latency_ms)
+            else:
+                # All providers failed — record failure for the attempted model
+                failed_provider = self._resolve_provider(model)
+                if failed_provider:
+                    self._health.record_failure(failed_provider)
 
         # Record cost in budget enforcer
         if self._budget is not None and response.cost_usd > 0:
