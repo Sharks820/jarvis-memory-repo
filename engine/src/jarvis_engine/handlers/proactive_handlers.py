@@ -139,10 +139,6 @@ class WakeWordStartHandler:
             import tkinter as _tk
             from tkinter import messagebox as _mb
 
-            # Find the running widget instance (it's the root Tk window)
-            roots = [w for w in _tk.Tk._default_root.__class__.__subclasses__(_tk.Tk)  # type: ignore[union-attr]
-                     if hasattr(w, '_confirm_exit')]  # noqa: E501
-            # Simpler: use Tk._default_root directly
             root_win = _tk.Tk._default_root  # type: ignore[union-attr]
             if root_win is None:
                 return True  # No widget running, assume confirmed

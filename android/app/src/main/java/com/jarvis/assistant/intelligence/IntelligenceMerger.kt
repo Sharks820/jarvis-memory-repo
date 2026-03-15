@@ -106,9 +106,10 @@ class IntelligenceMerger @Inject constructor(
             val count = if (response.ok) response.merged else 0
             Log.i(TAG, "Pushed $count intelligence items to desktop")
 
-            // Mark facts as synced ONLY after network success
+            // Mark only the exported facts as synced AFTER network success
             if (response.ok && unsyncedFacts.isNotEmpty()) {
-                knowledgeStore.markFactsSynced()
+                val exportedContents = unsyncedFacts.mapNotNull { it["content"] as? String }.toSet()
+                knowledgeStore.markFactsSynced(exportedContents)
             }
 
             return count

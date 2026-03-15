@@ -371,7 +371,7 @@ class LocalKnowledgeStore @Inject constructor(
      * Mark exported facts as synced AFTER the network push succeeds.
      * Call this only after the desktop has acknowledged receipt.
      */
-    fun markFactsSynced() {
+    fun markFactsSynced(exportedContents: Set<String> = emptySet()) {
         synchronized(lock) {
             try {
                 val facts = loadFacts()
@@ -379,8 +379,11 @@ class LocalKnowledgeStore @Inject constructor(
                 for (i in 0 until facts.length()) {
                     val fact = facts.getJSONObject(i)
                     if (fact.optString("source") == "phone" && !fact.optBoolean("synced", false)) {
-                        fact.put("synced", true)
-                        changed = true
+                        // Only mark facts that were actually exported (if set provided)
+                        if (exportedContents.isEmpty() || fact.optString("content", "") in exportedContents) {
+                            fact.put("synced", true)
+                            changed = true
+                        }
                     }
                 }
                 if (changed) {
@@ -433,5 +436,5 @@ class LocalKnowledgeStore @Inject constructor(
     }
 
     private fun String.containsAny(vararg words: String): Boolean =
-        words.any { this.contains(it) }
+        words.any { this.contains(it, ignoreCase = true) }
 }
