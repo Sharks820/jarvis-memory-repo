@@ -8,6 +8,7 @@ incoming content is classified by cosine similarity to those centroids.
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
@@ -17,8 +18,6 @@ try:
 
     _HAS_NUMPY = True
 except ImportError:
-    import math
-
     _HAS_NUMPY = False
 
 if TYPE_CHECKING:

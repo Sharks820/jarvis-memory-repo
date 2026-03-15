@@ -31,6 +31,18 @@
 - Follow existing patterns: CQRS handlers, lazy imports, dataclass commands
 - Security-first: validate inputs, mask PII, use existing security module patterns
 
+## Static Analysis Toolchain (Required on task completion)
+
+Run ALL of these before claiming work is done:
+
+  ruff check engine/src/                              # Linting (must be clean)
+  pylint --errors-only engine/src/jarvis_engine/      # Deep bug detection
+  vulture engine/src/jarvis_engine/ --min-confidence 80  # Dead code
+  pip-audit                                           # Dependency CVEs (must be 0)
+  bandit -r engine/src/jarvis_engine/ -ll -q          # Security (medium+ severity)
+
+Tools installed: ruff, mypy, pyright, pylint, flake8-bugbear, vulture, pip-audit, bandit, semgrep, crosshair-tool
+
 ## Workflow Enforcement (via Superpowers 5.0)
 
 - /superpowers:brainstorming before NEW features (skip for bug fixes)
