@@ -52,6 +52,7 @@ def test_learning_mission_create_and_run_with_verification(tmp_path: Path, monke
 
     monkeypatch.setattr(learning_missions, "_search_web", fake_search)
     monkeypatch.setattr(learning_missions, "_fetch_page_text", fake_fetch)
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", fake_fetch)
 
     report = learning_missions.run_learning_mission(tmp_path, mission_id=mission_id, max_search_results=4, max_pages=4)
     assert report["mission_id"] == mission_id
@@ -158,7 +159,7 @@ def test_mission_queries_basic() -> None:
     assert "Python async" in queries
     assert "Python async tutorial" in queries
     assert "Python async best practices" in queries
-    assert any("site:reddit.com" in q for q in queries)
+    assert any("site:old.reddit.com" in q for q in queries)
     assert any("official documentation" in q for q in queries)
 
 

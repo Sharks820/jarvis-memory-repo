@@ -391,6 +391,7 @@ class TestLearningMissionPerformance:
             return f"Content {fetch_count}"
 
         monkeypatch.setattr(learning_missions, "_fetch_page_text", counting_fetch)
+        monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", counting_fetch)
 
         # First call
         result1 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)

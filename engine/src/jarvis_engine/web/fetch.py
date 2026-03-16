@@ -26,6 +26,31 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 logger = logging.getLogger(__name__)
 
+# Complete Chrome UA — truncated UAs get blocked by many sites.
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
+# Minimum chars of cleaned text for a page to be considered useful.
+# Pages below this are JS-rendered shells or blocked responses.
+_MIN_USEFUL_TEXT = 100
+
+
+def _rewrite_reddit_url(url: str) -> str:
+    """Rewrite www.reddit.com URLs to old.reddit.com for server-rendered HTML.
+
+    Modern reddit.com is JS-rendered and returns ~34 chars via urllib.
+    old.reddit.com is server-rendered and returns full content.
+    """
+    parsed = urlparse(url)
+    if parsed.hostname in ("www.reddit.com", "reddit.com"):
+        return url.replace("://www.reddit.com", "://old.reddit.com", 1).replace(
+            "://reddit.com", "://old.reddit.com", 1
+        )
+    return url
+
 
 def is_safe_public_url(url: str) -> bool:
     """Check whether *url* points to a safe, non-private destination.
@@ -143,7 +168,9 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
 
     Performs SSRF safety checks and DNS rebinding prevention.
     Strips HTML tags, scripts, and styles. Returns empty string on any failure.
+    Rewrites reddit.com → old.reddit.com for server-rendered content.
     """
+    url = _rewrite_reddit_url(url)
     if not is_safe_public_url(url):
         return ""
     if not resolve_and_check_ip(url):
@@ -158,9 +185,7 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
     # exploitation difficult in practice.
     req = Request(
         url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
+        headers={"User-Agent": _USER_AGENT},
     )
     try:
         opener = build_opener(SafeRedirectHandler)
@@ -192,8 +217,54 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
         text = _STYLE_RE.sub(" ", text)
         text = _TAG_RE.sub(" ", text)
         text = html_mod.unescape(text)
-    text = _WHITESPACE_RE.sub(" ", text)
-    return text.strip()
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    if len(text) < _MIN_USEFUL_TEXT:
+        logger.debug(
+            "Page text too short (%d chars < %d minimum) for %s — likely JS-rendered shell",
+            len(text), _MIN_USEFUL_TEXT, url,
+        )
+        return ""
+    return text
+
+
+def fetch_page_text_with_fallbacks(url: str, *, max_bytes: int = 250_000) -> str:
+    """Fetch a URL with a 3-tier fallback chain.
+
+    1. Direct fetch via ``fetch_page_text``.
+    2. Google Webcache (``webcache.googleusercontent.com``).
+    3. Internet Archive Wayback Machine (``web.archive.org``).
+
+    Returns the first non-empty result, or empty string if all three fail.
+    All SSRF safety checks are applied internally by ``fetch_page_text``.
+    """
+    # Tier 1: direct fetch
+    logger.debug("fetch_page_text_with_fallbacks: trying direct fetch for %s", url)
+    result = fetch_page_text(url, max_bytes=max_bytes)
+    if result:
+        return result
+
+    # Tier 2: Google Webcache
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected
+    # SSRF safety is enforced inside fetch_page_text (is_safe_public_url + resolve_and_check_ip).
+    # The fallback URL prefix is a hardcoded public HTTPS host; only the path varies.
+    cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{url}"
+    logger.debug("fetch_page_text_with_fallbacks: direct fetch empty, trying Google Webcache for %s", url)
+    result = fetch_page_text(cache_url, max_bytes=max_bytes)
+    if result:
+        logger.info("fetch_page_text_with_fallbacks: Google Webcache succeeded for %s", url)
+        return result
+
+    # Tier 3: archive.org Wayback Machine
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected
+    archive_url = f"https://web.archive.org/web/{url}"
+    logger.debug("fetch_page_text_with_fallbacks: Webcache empty, trying archive.org for %s", url)
+    result = fetch_page_text(archive_url, max_bytes=max_bytes)
+    if result:
+        logger.info("fetch_page_text_with_fallbacks: archive.org succeeded for %s", url)
+        return result
+
+    logger.warning("fetch_page_text_with_fallbacks: all 3 fetch tiers failed for %s", url)
+    return ""
 
 
 def search_duckduckgo(query: str, *, limit: int) -> list[str]:
@@ -201,9 +272,7 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
     search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
     req = Request(
         search_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
+        headers={"User-Agent": _USER_AGENT},
     )
     try:
         opener = build_opener(SafeRedirectHandler)
@@ -265,7 +334,7 @@ def search_brave(query: str, *, limit: int) -> list[str]:
         },
     )
     try:
-        with urlopen(req, timeout=12) as resp:  # nosec B310
+        with urlopen(req, timeout=12) as resp:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             payload = resp.read(500_000)
     except (OSError, ValueError) as exc:
         logger.warning("Brave Search request failed: %s", exc)

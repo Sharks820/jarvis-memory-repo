@@ -12,7 +12,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 
 Phase: v5.0 COMPLETE
 Status: All 6 phases shipped, 50 requirements implemented, 5978 tests passing
-Last activity: 2026-03-14 (v5.0 milestone completed in single session: Phase 1 debt gate + Codex/Gemini review fixes, Phase 2 context continuity, Phase 3 learning missions + observability, Phase 4 voice accuracy, Phase 5 mobile tasking, Phase 6 security expansion)
+Last activity: 2026-03-16 - Completed quick task 1: Fix learning missions web access with smart fallback strategies
 
 Progress (v5.0): [██████████] 100%
 
@@ -144,6 +144,11 @@ Progress (v5.0): [██████████] 100%
   - context truncation/HTTP failures on long replies
   - stability degradation after short command sequences
   - high memory intensity and mission/activity trust gaps
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
 - New audit evidence (2026-03-12):
   - repo `desloppify status`: strict 76.8 / overall 76.9, with `Error consistency` the weakest subjective dimension (58.0)
   - Android audit surfaced concrete integrity/security risks:

@@ -14,7 +14,8 @@ from typing import Any, TypedDict
 from urllib.parse import urlparse
 
 from jarvis_engine.web.fetch import (
-    fetch_page_text as _fetch_page_text,
+    fetch_page_text as _fetch_page_text,  # noqa: F401  (used by test monkeypatch)
+    fetch_page_text_with_fallbacks as _fetch_page_text_with_fallbacks,
     search_web as _search_web,
 )
 from jarvis_engine.web.research import STOPWORDS
@@ -283,10 +284,16 @@ def create_learning_mission(
 
 
 def _mission_queries(topic: str, sources: list[str]) -> list[str]:
+    """Generate diverse search queries targeting reliably fetchable sources.
+
+    Produces 8-12 queries that target server-rendered, high-quality sites
+    (Wikipedia, StackOverflow, educational sites, official docs) rather than
+    JS-rendered shells.
+    """
     queries = [topic, f"{topic} tutorial", f"{topic} best practices"]
     lowered = {s.lower().strip() for s in sources}
     if "reddit" in lowered:
-        queries.append(f"site:reddit.com {topic}")
+        queries.append(f"site:old.reddit.com {topic}")
     if "google" in lowered:
         queries.append(f"{topic} guide")
     if "official_docs" in lowered:
@@ -294,6 +301,11 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
     if "wikipedia" in lowered:
         queries.append(f"site:en.wikipedia.org {topic}")
         queries.append(f"{topic} explained")
+    # Always target high-quality fetchable sources for diversity
+    queries.append(f"site:en.wikipedia.org {topic}")
+    queries.append(f"{topic} site:stackoverflow.com")
+    queries.append(f"{topic} overview")
+    queries.append(f"{topic} introduction beginner")
     return list(dict.fromkeys(q.strip() for q in queries if q.strip()))
 
 
@@ -309,7 +321,7 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             old = _PAGE_CACHE.pop(key, None)
             if old is not None:
                 _page_cache_bytes[0] -= len(old[1].encode("utf-8"))
-    value = _fetch_page_text(url, max_bytes=max_bytes)
+    value = _fetch_page_text_with_fallbacks(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
         # Adjust byte counter if key already exists (concurrent fetch or refresh)
         if key in _PAGE_CACHE:
@@ -459,11 +471,28 @@ def _fetch_mission_content(
     """
     urls: list[str] = []
     for query in queries:
-        urls.extend(_search_web(query, limit=max_search_results))
+        hits = _search_web(query, limit=max_search_results)
+        logger.info("Mission search '%s' → %d URLs", query, len(hits))
+        urls.extend(hits)
     urls = list(dict.fromkeys(urls))
 
+    if not urls:
+        logger.warning("Mission for '%s': all %d search queries returned 0 URLs", topic, len(queries))
+
+    # Domain diversity: max 3 pages per domain to spread sources for cross-referencing
+    max_per_domain = 3
+    domain_counts: dict[str, int] = {}
+    diverse_urls: list[str] = []
+    for url in urls:
+        domain = urlparse(url).netloc.lower()
+        if not domain:
+            continue
+        if domain_counts.get(domain, 0) < max_per_domain:
+            diverse_urls.append(url)
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+
     selected: list[tuple[str, str]] = []
-    for url in urls[: max(1, max_pages)]:
+    for url in diverse_urls[: max(1, max_pages)]:
         parsed = urlparse(url)
         domain = parsed.netloc.lower()
         if not domain:
@@ -473,6 +502,8 @@ def _fetch_mission_content(
     scanned_urls = [url for url, _domain in selected]
 
     candidate_rows: list[dict[str, str]] = []
+    fetched_ok = 0
+    fetched_empty = 0
     workers = max(1, min(4, len(selected)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {
@@ -487,11 +518,17 @@ def _fetch_mission_content(
                 logger.warning("Failed to fetch %s: %s", url, exc)
                 text = ""
             if not text:
+                fetched_empty += 1
                 continue
+            fetched_ok += 1
             candidates = _extract_candidates(text, topic=topic, max_candidates=8)
             for statement in candidates:
                 candidate_rows.append({"statement": statement, "url": url, "domain": domain})
 
+    logger.info(
+        "Mission '%s': %d/%d pages fetched OK, %d candidates extracted",
+        topic, fetched_ok, len(selected), len(candidate_rows),
+    )
     return scanned_urls, selected, candidate_rows
 
 

@@ -269,7 +269,8 @@ class TestFetchPageText:
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web.fetch.build_opener")
     def test_returns_stripped_text(self, mock_opener_fn, mock_safe, mock_resolve):
-        html = b"<html><body><p>Hello World</p></body></html>"
+        # Padding exceeds _MIN_USEFUL_TEXT (100 chars) after HTML cleaning
+        html = b"<html><body><p>Hello World</p><p>" + b"A" * 120 + b"</p></body></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
         mock_resp.headers = None
@@ -284,7 +285,7 @@ class TestFetchPageText:
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web.fetch.build_opener")
     def test_strips_script_tags(self, mock_opener_fn, mock_safe, mock_resolve):
-        html = b"<html><script>alert('xss')</script><p>Clean</p></html>"
+        html = b"<html><script>alert('xss')</script><p>Clean</p><p>" + b"B" * 120 + b"</p></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
         mock_resp.headers = None
@@ -300,7 +301,7 @@ class TestFetchPageText:
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web.fetch.build_opener")
     def test_strips_style_tags(self, mock_opener_fn, mock_safe, mock_resolve):
-        html = b"<html><style>.hide{display:none}</style><p>Visible</p></html>"
+        html = b"<html><style>.hide{display:none}</style><p>Visible</p><p>" + b"C" * 120 + b"</p></html>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
         mock_resp.headers = None
@@ -316,7 +317,7 @@ class TestFetchPageText:
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web.fetch.build_opener")
     def test_unescapes_html_entities(self, mock_opener_fn, mock_safe, mock_resolve):
-        html = b"<p>A &amp; B &lt; C</p>"
+        html = b"<p>A &amp; B &lt; C</p><p>" + b"D" * 120 + b"</p>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
         mock_resp.headers = None
@@ -354,7 +355,7 @@ class TestFetchPageText:
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web.fetch.build_opener")
     def test_collapses_whitespace(self, mock_opener_fn, mock_safe, mock_resolve):
-        html = b"<p>  lots   of    spaces  </p>"
+        html = b"<p>  lots   of    spaces  </p><p>" + b"E" * 120 + b"</p>"
         mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
         mock_resp.headers = None
