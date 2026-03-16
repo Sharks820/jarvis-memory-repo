@@ -149,6 +149,7 @@ Progress (v5.0): [██████████] 100%
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 1 | Fix learning missions web access with smart fallback strategies | 2026-03-16 | 26623e46 | [1-fix-learning-missions-web-access-with-sm](./quick/1-fix-learning-missions-web-access-with-sm/) |
 - New audit evidence (2026-03-12):
   - repo `desloppify status`: strict 76.8 / overall 76.9, with `Error consistency` the weakest subjective dimension (58.0)
   - Android audit surfaced concrete integrity/security risks:
