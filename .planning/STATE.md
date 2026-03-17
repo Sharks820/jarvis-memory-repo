@@ -3,6 +3,21 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-17T06:03:24.045Z"
+last_activity: 2026-03-17 — Phase 20 plans 01 and 02 complete
+progress:
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
 stopped_at: Completed 20-01-PLAN.md and 20-02-PLAN.md
 last_updated: "2026-03-17T06:00:00.000Z"
 last_activity: 2026-03-17 — Phase 20 plans 01 and 02 complete
