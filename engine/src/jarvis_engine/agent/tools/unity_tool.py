@@ -230,6 +230,16 @@ class UnityTool:
             logger.debug("UnityTool: waiting for bridge ready signal…")
             await asyncio.wait_for(self._ready_event.wait(), timeout=30.0)
 
+        return await self._send_rpc(method, params)
+
+    async def _send_rpc(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> Any:
+        """Low-level JSON-RPC send — no state checks (caller is responsible).
+
+        Increments request counter, serialises the request, sends over WS,
+        and parses the response.  Raises RuntimeError on JSON-RPC error.
+        """
         self._request_id += 1
         request = {
             "jsonrpc": "2.0",
@@ -264,10 +274,19 @@ class UnityTool:
         """
         _assert_in_jail(rel_path)
         _assert_safe_code(content)
+        # Send the command first (must be CONNECTED or it will raise).
+        # Then transition to WAITING_FOR_BRIDGE so subsequent calls block until
+        # the domain-reload heartbeat arrives.  We use _send_rpc directly to
+        # bypass the WAITING_FOR_BRIDGE guard in call().
+        if self._state == BridgeState.DISCONNECTED:
+            raise ConnectionError("UnityTool is not connected to the bridge.")
+        result = await self._send_rpc(
+            "WriteScript", {"path": rel_path, "content": content}
+        )
+        logger.info("UnityTool: script sent, entering WAITING_FOR_BRIDGE for %r", rel_path)
         self._state = BridgeState.WAITING_FOR_BRIDGE
         self._ready_event.clear()
-        logger.info("UnityTool: writing script %r, entering WAITING_FOR_BRIDGE", rel_path)
-        return await self.call("WriteScript", {"path": rel_path, "content": content})
+        return result
 
     async def compile(self) -> Any:
         """Trigger Unity compilation and return the result (errors + warnings)."""
