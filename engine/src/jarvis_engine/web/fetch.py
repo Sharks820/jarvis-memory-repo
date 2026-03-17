@@ -441,6 +441,10 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
         parsed = urlparse(candidate)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue
+        # Filter out DDG ad/tracking redirect URLs
+        host = parsed.netloc.lower()
+        if host.endswith(("duckduckgo.com", "bing.com")):
+            continue
         if not is_safe_public_url(candidate):
             continue
         urls.append(candidate)
