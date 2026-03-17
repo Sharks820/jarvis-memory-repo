@@ -190,7 +190,6 @@ _EXACT_HALLUCINATION_PHRASES: set[str] = {
     "...",
     "the end",
     "bye bye",
-    "bye",
 }
 
 # Phrases that indicate hallucination when found anywhere in the text (substring)
@@ -336,9 +335,13 @@ def strip_foreign_prefix(text: str) -> str:
 # Simple fillers: always remove
 _SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECASE)
 
-# Multi-word fillers
+# Multi-word fillers: only strip when at sentence start (beginning of text or
+# immediately after sentence-ending punctuation + whitespace).  This prevents
+# stripping semantically meaningful uses mid-sentence such as
+# "I mean the red one" or "do you know where my keys are".
 _MULTI_WORD_FILLERS = re.compile(
-    r"\b(?:you know|I mean|sort of|kind of)\b", re.IGNORECASE
+    r"(?:(?:^|(?<=[.!?,]\s))(?:you know|I mean|sort of|kind of)(?:\s*,\s*|\s+))",
+    re.IGNORECASE,
 )
 _SENTENCE_START_RE = re.compile(r"(^|[.!?]\s+)([a-z])")
 _FIRST_PERSON_RE = re.compile(r"\bi\b")

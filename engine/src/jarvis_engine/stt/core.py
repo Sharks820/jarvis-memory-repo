@@ -52,7 +52,7 @@ _GROQ_ERROR_BACKOFF_S = 1
 # Confidence scoring
 _FALLBACK_CONFIDENCE = 0.50  # when segments lack logprobs
 _NO_SPEECH_PENALTY_THRESHOLD = 0.5  # penalize confidence above this
-_PARAKEET_BASELINE_CONFIDENCE = 0.70  # conservative default when logprob extraction fails
+_PARAKEET_BASELINE_CONFIDENCE = 0.75  # above CONFIDENCE_RETRY_THRESHOLD (0.72) so logprob-less results are accepted
 
 # STT prompt limits
 _STT_PROMPT_MAX_CHARS = 1200
@@ -667,22 +667,22 @@ def _try_parakeet(
 def _try_local_emergency(
     audio: np.ndarray | str, *, language: str, prompt: str = ""
 ) -> TranscriptionResult | None:
-    """Attempt local faster-whisper transcription with large-v3 model.
+    """Attempt local faster-whisper transcription with small.en model.
 
-    This is the emergency fallback tier -- uses the highest-quality local
-    model (large-v3) for maximum accuracy when all other backends have
-    failed or returned low-confidence results.  A separate singleton is
-    used so the standard ``_try_local()`` path (small.en or JARVIS_STT_MODEL)
-    is unaffected.
+    This is the emergency fallback tier -- uses small.en for a practical
+    CPU-speed tradeoff when all other backends have failed or returned
+    low-confidence results.  A separate singleton is used so the standard
+    ``_try_local()`` path (small.en or JARVIS_STT_MODEL) is unaffected.
+    large-v3 on CPU takes 30+ seconds; small.en is far more practical here.
     """
     try:
         with _local_emergency_lock:
             if "local_emergency" not in _singletons:
-                _singletons["local_emergency"] = SpeechToText(model_size="large-v3")
+                _singletons["local_emergency"] = SpeechToText(model_size="small.en")
             instance = _singletons["local_emergency"]
         return instance.transcribe_audio(audio, language=language, prompt=prompt)
     except (RuntimeError, OSError, ValueError) as exc:
-        logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
+        logger.warning("Local emergency STT (small.en) attempt failed: %s", exc)
         return None
 
 

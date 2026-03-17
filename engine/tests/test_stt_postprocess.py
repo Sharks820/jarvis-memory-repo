@@ -155,12 +155,18 @@ def test_remove_fillers_basic() -> None:
 
 
 def test_remove_fillers_multi_word() -> None:
-    """Multi-word fillers like 'you know' and 'I mean' are removed."""
+    """Multi-word fillers at sentence boundaries are removed; mid-sentence uses are preserved."""
     from jarvis_engine.stt.postprocess import remove_fillers
 
-    result = remove_fillers("I mean you know it's like a good idea you know")
-    assert "you know" not in result
-    assert "I mean" not in result
+    # Sentence-start fillers should be stripped
+    assert "I mean" not in remove_fillers("I mean that was great")
+    assert "you know" not in remove_fillers("you know that is wrong")
+
+    # Mid-sentence uses are semantically meaningful and must be preserved
+    # "what I mean" — "I mean" is not at sentence start, must be kept
+    assert "mean" in remove_fillers("that is what I mean exactly")
+    # "do you know" — "you know" is part of a question, not a filler
+    assert "you know" in remove_fillers("do you know where my keys are")
 
 
 def test_remove_fillers_preserves_like_as_verb() -> None:

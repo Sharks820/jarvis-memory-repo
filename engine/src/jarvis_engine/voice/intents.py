@@ -847,10 +847,17 @@ _DISPATCH_RULES: list[_IntentRule] = [
      _handle_brain_status),
 
     # -- Missions & system status --
+    # Require explicit command intent to avoid intercepting normal conversation
+    # such as "I was doing some research on..." or "I know you study...".
     (_match_any("start a learning mission", "start learning mission",
                 "start a mission about", "start mission about",
-                "learn about", "learn everything about",
-                "research ", "study ", "investigate "),
+                "create a learning mission", "create learning mission",
+                "begin a learning mission", "begin learning mission",
+                "launch a learning mission", "launch learning mission",
+                "run a learning mission", "run learning mission",
+                "learning mission about",
+                "start researching", "start studying", "start investigating",
+                "learn everything about"),
      _handle_mission_create),
     (_match_any("cancel mission", "cancel the mission",
                 "stop mission", "abort mission"),

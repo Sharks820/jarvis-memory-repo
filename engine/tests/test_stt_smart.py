@@ -798,8 +798,8 @@ def test_fallback_chain_has_four_entries():
 # FC8. test_try_local_emergency_uses_large_v3
 # ---------------------------------------------------------------------------
 
-def test_try_local_emergency_uses_large_v3():
-    """_try_local_emergency creates SpeechToText with model_size='large-v3'."""
+def test_try_local_emergency_uses_small_en():
+    """_try_local_emergency creates SpeechToText with model_size='small.en' for fast CPU fallback."""
     import jarvis_engine.stt as stt_mod
 
     # Reset the singleton
@@ -819,8 +819,8 @@ def test_try_local_emergency_uses_large_v3():
                 np.zeros(16000, dtype=np.float32), language="en"
             )
 
-            # Verify large-v3 model was requested
-            mock_cls.assert_called_once_with(model_size="large-v3")
+            # Verify small.en model was requested (faster on CPU than large-v3)
+            mock_cls.assert_called_once_with(model_size="small.en")
     finally:
         if original is not None:
             stt_mod._singletons["local_emergency"] = original

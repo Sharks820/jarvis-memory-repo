@@ -149,7 +149,8 @@ def _get_daemon_bus() -> CommandBus:
 
 
 # Daemon cycle state for KG regression tracking
-_daemon_kg: dict[str, Any] = {"prev_metrics": None}
+# restore_cooldown_until: monotonic timestamp; regression detection is skipped until then
+_daemon_kg: dict[str, Any] = {"prev_metrics": None, "restore_cooldown_until": 0.0}
 _daemon_kg_prev_metrics_lock = threading.Lock()
 
 
@@ -162,7 +163,9 @@ def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_inge
         return result.return_code
 
     report = result.report if isinstance(result.report, dict) else {}
-    _emit("learning_mission_completed=true")
+    final_status = str(report.get("final_status", "completed")).lower()
+    _emit(f"learning_mission_completed={'true' if final_status == 'completed' else 'false'}")
+    _emit(f"learning_mission_status={final_status or 'completed'}")
     _emit(f"mission_id={report.get('mission_id', '')}")
     _emit(f"candidate_count={report.get('candidate_count', 0)}")
     _emit(f"verified_count={report.get('verified_count', 0)}")
@@ -197,16 +200,34 @@ def _run_next_pending_mission(*, max_results: int = 6, max_pages: int = 10) -> i
     return 0
 
 
+_WATCHDOG_RESTART_COOLDOWN_S = 60.0  # minimum seconds between watchdog restarts per service
+
 def _restart_mobile_api(service_name: str) -> None:
     """Watchdog callback: restart mobile_api if it crashed.
 
     Only handles ``mobile_api`` — daemon restart is circular and widget is
     optional, so those are intentionally ignored.
+
+    Enforces a per-service cooldown to prevent restart storms: if the service
+    was already restarted within the last 60 seconds the call is skipped.
     """
     import sys
 
     if service_name != "mobile_api":
         return
+
+    # Cooldown check — prevents restart storm if PID tracking is stale
+    cooldown_key = f"last_restart_{service_name}"
+    now_mono = time.monotonic()
+    last_restart = _daemon_state.get(cooldown_key, 0.0)
+    if now_mono - last_restart < _WATCHDOG_RESTART_COOLDOWN_S:
+        logger.debug(
+            "Watchdog: skipping restart of %s — cooldown active (%.0fs remaining)",
+            service_name,
+            _WATCHDOG_RESTART_COOLDOWN_S - (now_mono - last_restart),
+        )
+        return
+
     root = repo_root()
     config_path = root / ".planning" / "security" / "mobile_api.json"
     if not config_path.exists():
@@ -226,7 +247,7 @@ def _restart_mobile_api(service_name: str) -> None:
     try:
         if sys.platform == "win32":
             # Detach from parent console so it survives daemon restarts
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 cmd,
                 env=env,
                 cwd=str(root / "engine"),
@@ -235,7 +256,7 @@ def _restart_mobile_api(service_name: str) -> None:
                 stderr=subprocess.DEVNULL,
             )
         else:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 cmd,
                 env=env,
                 cwd=str(root / "engine"),
@@ -243,6 +264,22 @@ def _restart_mobile_api(service_name: str) -> None:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+        # Record restart timestamp for cooldown enforcement
+        _daemon_state[cooldown_key] = time.monotonic()
+        # Write the new PID file so the next watchdog check sees it as running
+        try:
+            from jarvis_engine.ops.process_manager import _pid_path
+            from jarvis_engine._shared import atomic_write_json, now_iso as _now_iso
+            pid_data = {
+                "pid": proc.pid,
+                "service": service_name,
+                "started_utc": _now_iso(),
+                "python": python,
+            }
+            atomic_write_json(_pid_path(service_name, root), pid_data)
+            logger.info("Watchdog: wrote PID file for %s (pid=%d)", service_name, proc.pid)
+        except Exception as pid_exc:  # noqa: BLE001
+            logger.warning("Watchdog: could not write PID file for %s: %s", service_name, pid_exc)
         logger.info("Watchdog: restarted mobile_api via subprocess.")
         _emit("watchdog_restart_mobile_api=ok")
     except (OSError, subprocess.SubprocessError) as exc:
@@ -363,6 +400,17 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
         _emit(f"mission_cycle_skipped=backoff_until_cycle_{_daemon_mission['backoff_until_cycle']}")
         return
     try:
+        from jarvis_engine.learning.missions import auto_generate_missions, retry_failed_missions
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
+        return
+    try:
+        retried = retry_failed_missions(root)
+        if retried:
+            _emit(f"mission_retried={retried}")
+    except SUBSYSTEM_ERRORS_DB as exc:
+        _emit_cycle_failure("mission_retry", exc, message="Daemon mission retry failed")
+    try:
         mission_rc = _run_next_pending_mission()
     except SUBSYSTEM_ERRORS_DB as exc:
         mission_rc = 2
@@ -377,16 +425,6 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
             _emit("mission_autogen_skipped=resource_pressure")
         else:
             try:
-                from jarvis_engine.learning.missions import (
-                    auto_generate_missions,
-                    retry_failed_missions,
-                )
-
-                # First, retry any failed missions
-                retried = retry_failed_missions(root)
-                if retried:
-                    _emit(f"mission_retried={retried}")
-                # Then auto-generate if still no pending
                 generated = auto_generate_missions(root, max_new=3)
                 if generated:
                     topics = ", ".join(m.get("topic", "") for m in generated)
@@ -526,6 +564,14 @@ def _run_kg_regression_cycle(root: Path) -> None:
         bus = _get_daemon_bus()
         kg = bus.ctx.kg
         if kg is not None:
+            # Skip regression detection during post-restore cooldown to prevent
+            # an infinite restore loop (stale prev_metrics would re-trigger fail).
+            with _daemon_kg_prev_metrics_lock:
+                cooldown_until = _daemon_kg["restore_cooldown_until"]
+            if time.monotonic() < cooldown_until:
+                _emit("kg_regression_skipped=restore_cooldown")
+                return
+
             rc_checker = RegressionChecker(kg)
             current_metrics = rc_checker.capture_metrics()
             with _daemon_kg_prev_metrics_lock:
@@ -555,6 +601,17 @@ def _run_kg_regression_cycle(root: Path) -> None:
                                 f"KG auto-restore {'succeeded' if restored else 'failed'}",
                                 {"backup": str(backups[-1]), "restored": restored},
                             )
+                            if restored:
+                                # Reset prev_metrics so next cycle treats restored graph
+                                # as fresh baseline, and apply a cooldown to prevent
+                                # immediately re-triggering another restore.
+                                _KG_RESTORE_COOLDOWN_S = 900  # 15 minutes
+                                with _daemon_kg_prev_metrics_lock:
+                                    _daemon_kg["prev_metrics"] = None
+                                    _daemon_kg["restore_cooldown_until"] = (
+                                        time.monotonic() + _KG_RESTORE_COOLDOWN_S
+                                    )
+                                _emit(f"kg_regression_cooldown_s={_KG_RESTORE_COOLDOWN_S}")
         else:
             _emit("kg_regression_skipped=kg_not_initialized")
     except SUBSYSTEM_ERRORS_DB as exc:
