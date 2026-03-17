@@ -8,9 +8,19 @@ A local-first, always-learning personal AI assistant inspired by Iron Man's J.A.
 
 Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
 
-## Current Milestone: v4.0 Intelligence Activation & Voice Overhaul
+## Current Milestone: v6.0 Jarvis Unity Agent
 
-**Goal:** Make Jarvis actually intelligent — close the learning feedback loop so collected data influences responses, completely overhaul voice-to-text for reliable speech understanding, fix UI live-updating, add activity visibility, and prepare for mobile deployment on S25 Ultra.
+**Goal:** Build an autonomous development agent that can create complete Unity games from text/voice instructions — planning, coding, modeling, testing, and debugging autonomously with user approval at milestones.
+
+**Target features:**
+- Agent Core: TaskPlanner + StepExecutor + ReflectionLoop for autonomous multi-step task execution
+- Pluggable Tool Layer: Unity, Blender, tripo.io, Shell, File, Web + dynamic tool registration
+- Unity Editor Plugin (C#): JarvisEditorBridge with reflection-based JSON-RPC covering full Unity API
+- Self-testing & debugging loop: compile → test → play mode → fix with 5-retry cap and error pattern learning
+- Deep Unity 6.3 knowledge seeding: API reference, patterns, common errors, best practices in KG
+- Smart approval: create=auto, destroy/spend=requires approval
+- Real-time progress streaming to widget and Unity Editor panel
+- Learn-as-you-go: successful patterns and error fixes accumulated in knowledge graph
 
 **Target features:**
 - Voice-to-text overhaul with best-in-class STT (Parakeet TDT / Deepgram Nova-3 / Silero VAD)

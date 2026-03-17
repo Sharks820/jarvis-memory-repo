@@ -3,18 +3,18 @@
 ## Project Reference
 
 See: .planning/PROJECT.md
-See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning)
+See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v5.0 COMPLETE — all 6 phases shipped, 50 requirements implemented.
+**Current focus:** v6.0 Jarvis Unity Agent — autonomous game development agent.
 
 ## Current Position
 
-Phase: v5.0 COMPLETE
-Status: All 6 phases shipped, 50 requirements implemented, 5978 tests passing
-Last activity: 2026-03-17 - Opus deep scan: fixed 8 bugs (SSRF, zombie missions, URL injection, race conditions)
+Phase: Not started (defining requirements)
+Status: Defining requirements for v6.0
+Last activity: 2026-03-17 — Milestone v6.0 started
 
-Progress (v5.0): [██████████] 100%
+Progress (v6.0): [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -128,6 +128,8 @@ Progress (v5.0): [██████████] 100%
 - 2026-03-12: completed the voice-auth read-only alignment follow-up. `_check_voice_auth()` now classifies read-only requests using the expanded natural-command alias surface before auth gates run, while `voice_extractors.py` now explicitly keeps sync/connect-style spoken requests mutating so phrases like `sync my calendar and inbox` still require voice auth. Added regression coverage in `test_voice_extractors.py`, `test_main_helpers.py`, `test_main_security.py`, and `test_voice_intents.py`. Verification snapshot: focused `ruff` clean; focused pytest gates green for the extractor/main-security/voice-intent slice; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5609 passed, 15 skipped, 15 warnings` in 5m39s.
 - 2026-03-12: completed the additive voice utterance-sidecar tranche. `stt_contracts.py` now defines a shared `VoiceUtterance` contract, `VoiceListenHandler` now preserves raw text/language/backend/confidence/segments in `VoiceListenResult.utterance`, `cmd_voice_listen()` and `VoiceRunCommand` now carry that metadata through execution without changing the existing text/stdout contract, `WakeWordStartHandler` now preserves both raw wakeword follow-up speech and stripped command text, and `voice_intents.py` now records STT backend/confidence/raw text into the post-dispatch learning trail while keeping routing/auth text-based. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_main_voice.py`, `test_voice_handlers.py`, `test_proactive_handlers.py`, `test_voice_intents.py`, and `test_stt_core.py`; focused `mypy --follow-imports=silent` clean on the touched voice/STT files; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5611 passed, 15 skipped, 15 warnings` in 6m16s; repo-wide `mypy engine/src` improved from `105 errors / 29 files` to `94 errors / 26 files`.
 - 2026-03-12: completed the follow-on voice-context contract tranche. `command_bus.py` now points `AppContext` at the real learning subsystem types (`ConversationLearningEngine`, `ResponseFeedbackTracker`, `UsagePatternTracker`), `gateway/models.py` now treats optional activity logging as an explicitly optional callable instead of leaking an invalid `None` assignment into import-time typing, `voice_context.py` now uses concrete `MemoryEngine` / `EmbeddingService` / `KnowledgeGraph` types instead of generic `object` surfaces for memory, KG, cross-branch, and preference assembly, and `voice_pipeline.py` now types its web-research payload and command-bus dispatch path without changing stdout/mobile contracts. Verification snapshot: focused `ruff` clean; focused pytest gates green for `test_voice_context.py`, `test_main_voice.py`, and `test_voice_pipeline_orchestration.py`; focused `mypy --follow-imports=silent` clean on `command_bus.py`, `gateway/models.py`, `voice_context.py`, and `voice_pipeline.py`; full repo `ruff check engine/src engine/tests` clean; full suite via `python run_tests.py` green at `5611 passed, 15 skipped, 15 warnings` in 6m38s; repo-wide `mypy engine/src` improved from `94 errors / 26 files` to `77 errors / 22 files`.
+- 2026-03-16: completed a focused learning-mission + web-research reliability scan and fix tranche. `web/research.py` now uses `fetch_page_text_with_fallbacks()` so normal task/voice web searches benefit from the same cache/archive bypass path as learning missions; `web/fetch.py` fixed the dead regex HTML-cleanup fallback and now falls back to DuckDuckGo on unexpected Brave exceptions; `learning/missions.py` no longer memoizes empty fetch failures, respects `paused` / `blocked` mission state during progress updates, and will open a fresh mission DB path instead of skipping on `db_path.exists()`; `handlers/ops_handlers.py` now re-checks final mission status before auto-ingesting findings so paused/cancelled runs do not keep mutating memory. Added regression coverage for fallback fetch use in web research, non-`lxml` HTML cleanup, empty-fetch cache retries, paused mission progress protection, Brave exception fallback, and mission auto-ingest gating. Verification snapshot: focused live smoke for `run_web_research('OpenAI GPT-5 latest release')` returned findings after the change; focused pytest slice across `test_web_research.py`, `test_web_fetch.py`, `test_ops_handlers.py`, `test_mission_transparency.py`, and `test_daemon_reliability.py` green.
+- 2026-03-16: completed the follow-on mission lifecycle hardening tranche. `learning/missions.py` now preserves checkpoint state across pause/resume, splits search/fetch/verify into resumable stages with stored checkpoint artifacts, stops before report finalization when a mission is paused/cancelled/blocked mid-run, resets stale steps/checkpoints on retry/restart, and corrects search-step telemetry so progress reflects real stage execution. `daemon_loop.py` now retries failed missions every cycle instead of only every 50 cycles, and both `cli/ops.py` and `daemon_loop.py` emit `learning_mission_status` plus a truthful `learning_mission_completed` flag when a run ends paused/blocked/cancelled. Added regression coverage for pause-during-verify no-report behavior, retry reset semantics, checkpoint resume without rerunning search, per-cycle daemon retries, and paused mission daemon output. Verification snapshot: expanded pytest slice across mission/web/daemon/handler tests green; `ruff check engine/src engine/tests` clean; focused `pylint --errors-only` clean for touched web/learning/handlers/cli/daemon modules.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
