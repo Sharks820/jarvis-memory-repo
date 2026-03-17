@@ -690,3 +690,273 @@ class TestSearchWeb:
         urls = search_web("test", limit=5)
         assert isinstance(urls, list)
         assert all(isinstance(u, str) for u in urls)
+
+
+# ── _fetch_with_curl_cffi ────────────────────────────────────────────────
+
+
+class TestFetchWithCurlCffi:
+    """Unit tests for the curl_cffi fetch tier."""
+
+    def _make_mock_response(
+        self,
+        *,
+        status_code: int = 200,
+        content: bytes = b"<html><body>" + b"A" * 200 + b"</body></html>",
+        content_type: str = "text/html; charset=utf-8",
+        url: str = "https://example.com/",
+    ) -> MagicMock:
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        mock_resp.content = content
+        mock_resp.url = url
+        mock_resp.headers = {"Content-Type": content_type}
+        return mock_resp
+
+    def test_returns_content_on_success(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        mock_resp = self._make_mock_response(url="https://example.com/")
+        mock_module = MagicMock()
+        mock_module.requests.get.return_value = mock_resp
+
+        with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
+            result = _fetch_with_curl_cffi("https://example.com/", 250_000)
+
+        assert len(result) > 0
+
+    def test_returns_empty_on_import_error(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        with patch.dict("sys.modules", {"curl_cffi": None}):
+            result = _fetch_with_curl_cffi("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_returns_empty_on_403(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        mock_resp = self._make_mock_response(status_code=403)
+        mock_module = MagicMock()
+        mock_module.requests.get.return_value = mock_resp
+
+        with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
+            result = _fetch_with_curl_cffi("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_returns_empty_on_exception(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        mock_module = MagicMock()
+        mock_module.requests.get.side_effect = RuntimeError("connection error")
+
+        with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
+            result = _fetch_with_curl_cffi("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_rejects_redirect_to_private_ip(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        # response.url differs from original and points to private IP
+        mock_resp = self._make_mock_response(url="http://192.168.1.1/admin")
+        mock_module = MagicMock()
+        mock_module.requests.get.return_value = mock_resp
+
+        with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
+            result = _fetch_with_curl_cffi("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_respects_max_bytes(self):
+        from jarvis_engine.web.fetch import _fetch_with_curl_cffi
+
+        big_content = b"<html>" + b"X" * 600_000 + b"</html>"
+        mock_resp = self._make_mock_response(content=big_content, url="https://example.com/")
+        mock_module = MagicMock()
+        mock_module.requests.get.return_value = mock_resp
+
+        with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
+            result = _fetch_with_curl_cffi("https://example.com/", 100)
+
+        assert len(result) == 100
+
+
+# ── _fetch_with_httpx ────────────────────────────────────────────────────
+
+
+class TestFetchWithHttpx:
+    """Unit tests for the httpx fetch tier."""
+
+    def _make_mock_client_and_response(
+        self,
+        *,
+        status_code: int = 200,
+        content: bytes = b"<html><body>" + b"B" * 200 + b"</body></html>",
+        content_type: str = "text/html; charset=utf-8",
+        url: str = "https://example.com/",
+    ) -> tuple[MagicMock, MagicMock]:
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        mock_resp.content = content
+        mock_resp.url = url
+        mock_resp.headers = {"content-type": content_type}
+
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        return mock_client, mock_resp
+
+    def test_returns_content_on_success(self):
+        from jarvis_engine.web.fetch import _fetch_with_httpx
+
+        mock_client, _ = self._make_mock_client_and_response(url="https://example.com/")
+        mock_httpx = MagicMock()
+        mock_httpx.Client.return_value = mock_client
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}):
+            result = _fetch_with_httpx("https://example.com/", 250_000)
+
+        assert len(result) > 0
+
+    def test_returns_empty_on_import_error(self):
+        from jarvis_engine.web.fetch import _fetch_with_httpx
+
+        with patch.dict("sys.modules", {"httpx": None}):
+            result = _fetch_with_httpx("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_returns_empty_on_http_error(self):
+        from jarvis_engine.web.fetch import _fetch_with_httpx
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        # Make HTTPError a real subclass of OSError so the except clause catches it
+        mock_httpx.HTTPError = OSError
+        mock_client.get.side_effect = OSError("HTTP error")
+        mock_httpx.Client.return_value = mock_client
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}):
+            result = _fetch_with_httpx("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_rejects_redirect_to_private_ip(self):
+        from jarvis_engine.web.fetch import _fetch_with_httpx
+
+        mock_client, _ = self._make_mock_client_and_response(url="http://192.168.1.1/admin")
+        mock_httpx = MagicMock()
+        mock_httpx.Client.return_value = mock_client
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}):
+            result = _fetch_with_httpx("https://example.com/", 250_000)
+
+        assert result == b""
+
+    def test_uses_http2(self):
+        from jarvis_engine.web.fetch import _fetch_with_httpx
+
+        mock_client, _ = self._make_mock_client_and_response(url="https://example.com/")
+        mock_httpx = MagicMock()
+        mock_httpx.Client.return_value = mock_client
+
+        with patch.dict("sys.modules", {"httpx": mock_httpx}):
+            _fetch_with_httpx("https://example.com/", 250_000)
+
+        mock_httpx.Client.assert_called_once_with(http2=True, follow_redirects=True, timeout=15.0)
+
+
+# ── TestFetchPageTextMultiTier ────────────────────────────────────────────
+
+
+class TestFetchPageTextMultiTier:
+    """Integration tests for the 3-tier curl_cffi -> httpx -> urllib chain."""
+
+    _GOOD_HTML = b"<html><body><p>Real content here.</p><p>" + b"X" * 200 + b"</p></body></html>"
+
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch._fetch_with_httpx")
+    @patch("jarvis_engine.web.fetch._fetch_with_curl_cffi")
+    @patch("jarvis_engine.web.fetch.build_opener")
+    def test_curl_cffi_success_skips_other_tiers(
+        self, mock_opener, mock_curl, mock_httpx, mock_safe, mock_resolve
+    ):
+        mock_curl.return_value = self._GOOD_HTML
+        result = fetch_page_text("https://example.com/")
+        assert "Real content here" in result
+        mock_httpx.assert_not_called()
+        mock_opener.assert_not_called()
+
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch._fetch_with_httpx")
+    @patch("jarvis_engine.web.fetch._fetch_with_curl_cffi")
+    @patch("jarvis_engine.web.fetch.build_opener")
+    def test_curl_cffi_empty_falls_to_httpx(
+        self, mock_opener, mock_curl, mock_httpx, mock_safe, mock_resolve
+    ):
+        mock_curl.return_value = b""
+        mock_httpx.return_value = self._GOOD_HTML
+        result = fetch_page_text("https://example.com/")
+        assert "Real content here" in result
+        mock_opener.assert_not_called()
+
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch._fetch_with_httpx")
+    @patch("jarvis_engine.web.fetch._fetch_with_curl_cffi")
+    @patch("jarvis_engine.web.fetch.build_opener")
+    def test_both_empty_falls_to_urllib(
+        self, mock_opener_fn, mock_curl, mock_httpx, mock_safe, mock_resolve
+    ):
+        mock_curl.return_value = b""
+        mock_httpx.return_value = b""
+
+        import http.client as _hc
+        mock_resp = MagicMock(spec=_hc.HTTPResponse)
+        mock_resp.read.return_value = self._GOOD_HTML
+        mock_resp.headers = None
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_opener_fn.return_value.open.return_value = mock_resp
+
+        result = fetch_page_text("https://example.com/")
+        assert "Real content here" in result
+        mock_opener_fn.assert_called_once()
+
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch._fetch_with_httpx")
+    @patch("jarvis_engine.web.fetch._fetch_with_curl_cffi")
+    @patch("jarvis_engine.web.fetch.build_opener")
+    def test_all_tiers_fail_returns_empty(
+        self, mock_opener_fn, mock_curl, mock_httpx, mock_safe, mock_resolve
+    ):
+        mock_curl.return_value = b""
+        mock_httpx.return_value = b""
+        mock_opener_fn.return_value.open.side_effect = OSError("network down")
+        result = fetch_page_text("https://example.com/")
+        assert result == ""
+
+    @patch("jarvis_engine.web.fetch.resolve_and_check_ip", return_value=True)
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
+    @patch("jarvis_engine.web.fetch._fetch_with_httpx")
+    @patch("jarvis_engine.web.fetch._fetch_with_curl_cffi")
+    @patch("jarvis_engine.web.fetch.build_opener")
+    def test_curl_cffi_short_text_falls_through(
+        self, mock_opener_fn, mock_curl, mock_httpx, mock_safe, mock_resolve
+    ):
+        # curl_cffi returns valid HTML but with < _MIN_USEFUL_TEXT chars after cleaning
+        short_html = b"<html><body><p>Too short</p></body></html>"
+        mock_curl.return_value = short_html
+        mock_httpx.return_value = self._GOOD_HTML
+        result = fetch_page_text("https://example.com/")
+        assert "Real content here" in result
+        # httpx was called because curl_cffi result was too short
+        mock_httpx.assert_called_once()
