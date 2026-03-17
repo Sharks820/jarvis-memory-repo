@@ -350,6 +350,7 @@ class TestLearningMissionPerformance:
             return f"Content from {url}"
 
         monkeypatch.setattr(learning_missions, "_fetch_page_text", mock_fetch)
+        monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", mock_fetch)
         monkeypatch.setattr(
             learning_missions,
             "_search_web",
