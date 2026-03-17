@@ -894,6 +894,39 @@ def _register_agent_handlers(
         except SUBSYSTEM_ERRORS as exc:
             logger.debug("WebTool registration skipped: %s", exc)
 
+        # Register asset pipeline tools (optional deps)
+        tripo_tool_instance = None
+        blender_tool_instance = None
+        try:
+            from jarvis_engine.agent.tools.tripo_tool import TripoTool
+
+            tripo_tool_instance = TripoTool(output_dir=root / "agent_assets")
+            registry.register(tripo_tool_instance.get_tool_spec())
+        except SUBSYSTEM_ERRORS as exc:
+            logger.debug("TripoTool registration skipped: %s", exc)
+
+        try:
+            from jarvis_engine.agent.tools.blender_tool import BlenderTool
+
+            blender_tool_instance = BlenderTool()
+            registry.register(blender_tool_instance.get_tool_spec())
+        except SUBSYSTEM_ERRORS as exc:
+            logger.debug("BlenderTool registration skipped: %s", exc)
+
+        try:
+            from jarvis_engine.agent.tools.asset_tool import AssetTool
+            from jarvis_engine.agent.tools.unity_tool import UnityTool
+
+            unity_tool_ref = UnityTool()
+            asset_tool = AssetTool(
+                unity_tool=unity_tool_ref,
+                tripo_tool=tripo_tool_instance,
+                blender_tool=blender_tool_instance,
+            )
+            registry.register(asset_tool.get_tool_spec())
+        except SUBSYSTEM_ERRORS as exc:
+            logger.debug("AssetTool registration skipped: %s", exc)
+
         # Build or reuse AgentStateStore
         if db is not None:
             store = AgentStateStore(db)
