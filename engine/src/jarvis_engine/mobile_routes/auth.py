@@ -223,7 +223,7 @@ class AuthRoutesMixin:
             return
         client_ip = str(self.client_address[0]).strip()
         server = self.server
-        token = owner_session.authenticate(password)
+        token = owner_session.authenticate(password, client_ip=client_ip)
         if token is None:
             # Check master-password rate limit BEFORE attempting verification
             if server.check_master_pw_rate(client_ip):

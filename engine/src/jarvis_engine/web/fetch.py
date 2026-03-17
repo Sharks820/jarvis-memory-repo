@@ -200,10 +200,10 @@ def _html_to_text(raw: bytes) -> str:
     if _lxml_ok:
         return _WHITESPACE_RE.sub(" ", text).strip()
     # Fallback to regex if lxml not available or failed
-        text = _SCRIPT_RE.sub(" ", text)
-        text = _STYLE_RE.sub(" ", text)
-        text = _TAG_RE.sub(" ", text)
-        text = html_mod.unescape(text)
+    text = _SCRIPT_RE.sub(" ", text)
+    text = _STYLE_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html_mod.unescape(text)
     return _WHITESPACE_RE.sub(" ", text).strip()
 
 
@@ -228,13 +228,19 @@ def _fetch_with_curl_cffi(url: str, max_bytes: int) -> bytes:
         )
         # Manually follow redirects with SSRF safety checks (max 10 hops)
         hops = 0
+        current_url = url
         while response.status_code in (301, 302, 303, 307, 308) and hops < 10:
             redirect_url = response.headers.get("Location", "")
             if not redirect_url:
                 break
+            # Resolve relative redirects (e.g. Location: /login)
+            if not redirect_url.startswith(("http://", "https://")):
+                from urllib.parse import urljoin
+                redirect_url = urljoin(current_url, redirect_url)
             if not is_safe_public_url(redirect_url):
                 logger.warning("curl_cffi: redirect to unsafe URL blocked: %s -> %s", url, redirect_url)
                 return b""
+            current_url = redirect_url
             response = curl_requests.get(
                 redirect_url,
                 headers=_BROWSER_HEADERS,
@@ -506,16 +512,70 @@ def search_brave(query: str, *, limit: int) -> list[str]:
     return list(dict.fromkeys(urls))[: max(1, limit)]
 
 
+def search_google_scrape(query: str, *, limit: int) -> list[str]:
+    """Scrape Google search results as a fallback when DDG is rate-limited.
+
+    Uses curl_cffi for TLS fingerprinting to avoid bot detection.
+    Returns up to *limit* safe result URLs.
+    """
+    try:
+        from curl_cffi import requests as curl_requests  # type: ignore[import-untyped]
+    except ImportError:
+        return []
+    search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={max(1, limit) + 5}"
+    try:
+        response = curl_requests.get(
+            search_url,
+            headers=_BROWSER_HEADERS,
+            timeout=12,
+            impersonate="chrome",
+            allow_redirects=True,
+        )
+        if response.status_code != 200:
+            logger.debug("Google scrape: status %d", response.status_code)
+            return []
+    except Exception as exc:
+        logger.debug("Google scrape failed: %s", exc)
+        return []
+    text = response.text
+    urls: list[str] = []
+    from urllib.parse import unquote
+    # Google wraps results in /url?q=<url>&sa= patterns
+    for match in re.findall(r'/url\?q=(https?://[^&"]+)', text):
+        candidate = html_mod.unescape(unquote(match)).strip()
+        parsed = urlparse(candidate)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        # Skip Google's own domains
+        host = parsed.netloc.lower()
+        if any(g in host for g in ("google.", "googleapis.", "gstatic.", "youtube.")):
+            continue
+        if not is_safe_public_url(candidate):
+            continue
+        urls.append(candidate)
+    # Also try direct href extraction
+    if not urls:
+        for match in re.findall(r'href="(https?://[^"]+)"', text):
+            candidate = html_mod.unescape(match).strip()
+            parsed = urlparse(candidate)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
+            host = parsed.netloc.lower()
+            if any(g in host for g in ("google.", "googleapis.", "gstatic.", "youtube.")):
+                continue
+            if not is_safe_public_url(candidate):
+                continue
+            urls.append(candidate)
+    result = list(dict.fromkeys(urls))[: max(1, limit)]
+    if result:
+        logger.info("Google scrape: %d results for '%s'", len(result), query[:50])
+    return result
+
+
 def search_web(query: str, *, limit: int) -> list[str]:
-    """Unified web search: tries Brave first, falls back to DuckDuckGo.
+    """Unified web search with 3-engine fallback: Brave → DuckDuckGo → Google scrape.
 
-    Returns up to *limit* safe result URLs using the same format as
-    ``search_duckduckgo()`` and ``search_brave()``.
-
-    Engine selection:
-    - If ``BRAVE_SEARCH_API_KEY`` is set, Brave is tried first.
-    - If Brave returns results, they are used directly.
-    - Otherwise (no key, empty results, or error), DuckDuckGo is used.
+    Returns up to *limit* safe result URLs.
     """
     # Try Brave first if an API key is available
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
@@ -528,12 +588,19 @@ def search_web(query: str, *, limit: int) -> list[str]:
             logger.info(
                 "search_web: Brave returned no results, falling back to DuckDuckGo"
             )
-        except (OSError, ValueError, TimeoutError) as exc:
+        except Exception as exc:
             logger.warning(
                 "search_web: Brave Search failed (%s), falling back to DuckDuckGo", exc
             )
 
-    # Fallback to DuckDuckGo
+    # Try DuckDuckGo
     urls = search_duckduckgo(query, limit=limit)
-    logger.info("search_web: used DuckDuckGo (%d results)", len(urls))
+    if urls:
+        logger.info("search_web: used DuckDuckGo (%d results)", len(urls))
+        return urls
+
+    # Final fallback: Google scrape via curl_cffi
+    logger.info("search_web: DuckDuckGo returned 0 results, trying Google scrape")
+    urls = search_google_scrape(query, limit=limit)
+    logger.info("search_web: used Google scrape (%d results)", len(urls))
     return urls

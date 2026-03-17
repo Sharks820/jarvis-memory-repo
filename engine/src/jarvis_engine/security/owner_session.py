@@ -157,11 +157,12 @@ class OwnerSessionManager:
 
     # Authentication
 
-    def authenticate(self, password: str) -> str | None:
+    def authenticate(self, password: str, client_ip: str = "") -> str | None:
         """Verify *password* and return a 64-char hex session token.
 
         Returns ``None`` if the password is wrong, no password has been
-        set, or the account is locked out.
+        set, or the account is locked out.  *client_ip* binds the token
+        to the caller's IP for replay protection.
         """
         with self._lock:
             if self._password_hash is None:
@@ -210,8 +211,8 @@ class OwnerSessionManager:
             ):
                 self._lockout_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = (time.time() + self._session_timeout, "")
-            logger.info("Owner authenticated, session ...%s created", token[-4:])
+            self._sessions[token] = (time.time() + self._session_timeout, client_ip)
+            logger.info("Owner authenticated, session ...%s created (IP-bound: %s)", token[-4:], bool(client_ip))
             return token
 
     # Session management

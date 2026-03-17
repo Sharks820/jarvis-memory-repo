@@ -340,7 +340,7 @@ _SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECAS
 # stripping semantically meaningful uses mid-sentence such as
 # "I mean the red one" or "do you know where my keys are".
 _MULTI_WORD_FILLERS = re.compile(
-    r"(?:(?:^|(?<=[.!?,]\s))(?:you know|I mean|sort of|kind of)(?:\s*,\s*|\s+))",
+    r"(?:(?:^|(?<=[.!?]\s))(?:you know|I mean|sort of|kind of)(?:\s*,\s*|\s+))",
     re.IGNORECASE,
 )
 _SENTENCE_START_RE = re.compile(r"(^|[.!?]\s+)([a-z])")
