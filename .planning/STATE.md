@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-17T14:01:18.433Z"
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-03-17T14:16:53.543Z"
 last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 65
 ---
 
@@ -201,6 +201,9 @@ Progress (v6.0): [███████░░░] 73%
 - [Phase 24-asset-pipeline]: All three asset tools registered in _register_agent_handlers() with SUBSYSTEM_ERRORS try/except isolation
 - [Phase 25]: LearnAccumulator uses query_relevant_facts (keyword-based) not semantic -- no EmbeddingService dependency
 - [Phase 25]: Accumulator optional param (None default) in CompileFixLoop and UnityPromptBuilder -- full backward compat
+- [Phase 25]: [Phase 25-02]: AgentRegisterToolCommand.parameters is JSON string (not dict) -- frozen dataclass cannot hold mutable default dict
+- [Phase 25]: [Phase 25-02]: ToolRegistry.__len__ makes empty registry falsy -- always use 'if x is None' not 'x or default' when x has __len__
+- [Phase 25]: [Phase 25-02]: ReflectionLoop emits task_summary before task_done -- summary failure is silent (try/except) to not block task_done
 
 ### Blockers/Concerns
 
@@ -215,6 +218,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T14:01:18.429Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-03-17T14:16:53.539Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None

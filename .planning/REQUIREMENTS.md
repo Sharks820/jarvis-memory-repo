@@ -21,7 +21,7 @@
 - [x] **TOOL-03**: FileTool reads/writes project files confined to project directory
 - [x] **TOOL-04**: ShellTool executes commands via subprocess with policy gate and timeout
 - [x] **TOOL-05**: WebTool integrates with existing web fetch pipeline for research
-- [ ] **TOOL-06**: User can register new tools at runtime ("use Mixamo for animations")
+- [x] **TOOL-06**: User can register new tools at runtime ("use Mixamo for animations")
 
 ### Unity Integration
 
@@ -95,7 +95,7 @@
 | TOOL-03 | Phase 22 | Complete |
 | TOOL-04 | Phase 22 | Complete |
 | TOOL-05 | Phase 22 | Complete |
-| TOOL-06 | Phase 25 | Pending |
+| TOOL-06 | Phase 25 | Complete |
 | UNITY-01 | Phase 21 | Complete |
 | UNITY-02 | Phase 21 | Complete |
 | UNITY-03 | Phase 21 | Complete |
