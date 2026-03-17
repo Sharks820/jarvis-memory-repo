@@ -51,7 +51,7 @@ See archived plans in `.planning/phases/`.
   3. Unity 6.3 API reference, breaking changes, and common error patterns are queryable in the knowledge graph
   4. AgentStateStore persists task plans and checkpoints to SQLite — task survives simulated crash and resumes from last checkpoint
   5. ToolRegistry accepts tool registrations with JSON Schema descriptors and approval flags; registered tools are discoverable
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 20-01: VRAM coordinator, Unity process manager, CQRS agent command stubs
