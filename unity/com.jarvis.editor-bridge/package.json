@@ -1,0 +1,22 @@
+{
+  "name": "com.jarvis.editor-bridge",
+  "version": "0.1.0",
+  "displayName": "Jarvis Editor Bridge",
+  "description": "WebSocket JSON-RPC bridge for Jarvis AI agent — hosts a WebSocket server on localhost:8091 and dispatches commands to the Unity Editor API via reflection.",
+  "unity": "6000.3",
+  "author": {
+    "name": "Conner McCarthy",
+    "email": "mccarthy.conner82@yahoo.com"
+  },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.1"
+  },
+  "keywords": [
+    "jarvis",
+    "ai",
+    "bridge",
+    "websocket",
+    "editor"
+  ],
+  "type": "tool"
+}
