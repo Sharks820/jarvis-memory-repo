@@ -3,11 +3,27 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
+stopped_at: Completed 22-03-PLAN.md
+last_updated: "2026-03-17T08:38:15.614Z"
+last_activity: 2026-03-17 -- Phase 22 plan 02 complete (TaskPlanner + StepExecutor + ReflectionLoop)
+progress:
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
+  percent: 63
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
 stopped_at: Completed 22-02-PLAN.md
 last_updated: "2026-03-17T08:08:59.807Z"
 last_activity: 2026-03-17 -- Phase 22 plan 01 complete (FileTool + ShellTool + WebTool + ApprovalGate + ProgressEventBus)
 progress:
-  total_phases: 6
+  [██████░░░░] 63%
   completed_phases: 2
   total_plans: 7
   completed_plans: 6
@@ -124,6 +140,8 @@ Progress (v6.0): [██████░░░░] 61%
 - [Phase 22-core-agent-loop]: WebTool wraps jarvis_engine.web.fetch.fetch_page_text (SSRF-safe) rather than reimplementing fetch
 - [Phase 22-core-agent-loop]: ProgressEventBus singleton uses module-level _bus, created on first get_progress_bus() call
 - [Phase 22-core-agent-loop]: TaskPlanner keeps plan() synchronous; token tracking uses input_tokens + output_tokens from GatewayResponse; ReflectionLoop uses MD5 for consecutive-error dedup; StepExecutor uses inspect.isawaitable() for sync/async tool compat
+- [Phase 22]: AgentRunHandler uses asyncio.new_event_loop per background thread for agent loop isolation
+- [Phase 22]: _register_agent_handlers wires store/gate/bus/registry/gateway with fallback to stubs on import failure
 
 ### Blockers/Concerns
 
@@ -138,6 +156,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T08:08:59.803Z
-Stopped at: Completed 22-02-PLAN.md
+Last session: 2026-03-17T08:38:15.610Z
+Stopped at: Completed 22-03-PLAN.md
 Resume file: None

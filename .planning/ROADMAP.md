@@ -34,7 +34,7 @@ See archived plans in `.planning/phases/`.
 
 - [x] **Phase 20: Infrastructure Foundations** - VRAM coordinator, process manager, KG seeding, AgentStateStore, ToolRegistry (completed 2026-03-17)
 - [x] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail (completed 2026-03-17)
-- [ ] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming
+- [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
 - [ ] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI
 - [ ] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import
 - [ ] **Phase 25: Polish and Integration** - Runtime tool registration, learn-as-you-go accumulation, voice intake, completion summaries
@@ -145,7 +145,7 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 20. Infrastructure Foundations | 2/2 | Complete    | 2026-03-17 | - |
 | 21. Unity Editor Bridge | 2/2 | Complete    | 2026-03-17 | - |
-| 22. Core Agent Loop | 2/3 | In Progress|  | - |
+| 22. Core Agent Loop | 3/3 | Complete   | 2026-03-17 | - |
 | 23. C# Code Generation | v6.0 | 0/3 | Not started | - |
 | 24. Asset Pipeline | v6.0 | 0/2 | Not started | - |
 | 25. Polish and Integration | v6.0 | 0/2 | Not started | - |
