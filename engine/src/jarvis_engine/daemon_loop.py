@@ -893,6 +893,10 @@ def _run_periodic_subsystems(
             "diagnostic_scan", lambda: _run_diagnostic_scan_cycle(root),
             lambda c: c % 50 == 0,
         ),
+        _SubsystemEntry(
+            "proactive_triggers", lambda: _run_proactive_trigger_cycle(root),
+            lambda c: c % 5 == 0,
+        ),
     ]
 
     for entry in schedule:
@@ -934,6 +938,32 @@ def _run_diagnostic_scan_cycle(root: Path) -> None:
             logger.debug("Failed to write diagnostics history: %s", exc)
     except SUBSYSTEM_ERRORS as exc:
         logger.debug("Diagnostic scan cycle failed: %s", exc)
+
+
+def _run_proactive_trigger_cycle(root: Path) -> None:
+    """Evaluate proactive trigger rules and enqueue alerts for the phone."""
+    try:
+        from jarvis_engine.proactive import DEFAULT_TRIGGER_RULES, ProactiveEngine
+        from jarvis_engine.proactive.alert_queue import enqueue_alert
+        from jarvis_engine.proactive.engine import Notifier
+
+        class _DaemonNotifier(Notifier):
+            def send(self, alert: dict) -> None:
+                enqueue_alert(root, alert)
+
+        engine = ProactiveEngine(DEFAULT_TRIGGER_RULES, _DaemonNotifier(), root=root)
+        # Build a minimal snapshot from runtime state
+        snapshot: dict = {}
+        try:
+            from jarvis_engine.ops.runtime_control import read_control_state
+            snapshot.update(read_control_state(root))
+        except Exception:
+            pass
+        alerts = engine.evaluate(snapshot)
+        if alerts:
+            _emit(f"proactive_alerts_fired={len(alerts)}")
+    except SUBSYSTEM_ERRORS as exc:
+        logger.debug("Proactive trigger cycle failed: %s", exc)
 
 
 def _run_core_autopilot(

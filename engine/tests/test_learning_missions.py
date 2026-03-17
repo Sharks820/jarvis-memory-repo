@@ -275,7 +275,8 @@ def test_run_mission_not_found(tmp_path: Path) -> None:
 def test_run_mission_empty_search_results(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Obscure topic", objective="learn")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     assert report["verified_count"] == 0
     assert report["candidate_count"] == 0
@@ -287,7 +288,8 @@ def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
         learning_missions, "_search_web",
         lambda query, limit: ["https://example.com/page"],
     )
-    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     assert report["candidate_count"] == 0
 
@@ -295,7 +297,8 @@ def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
 def test_run_mission_zero_results_marks_failed(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Quick topic", objective="learn fast")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
     run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     missions = load_missions(tmp_path)
     target = [m for m in missions if m["mission_id"] == mission["mission_id"]][0]
@@ -306,13 +309,50 @@ def test_run_mission_zero_results_marks_failed(tmp_path: Path, monkeypatch) -> N
 def test_run_mission_writes_report_file(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Report test", objective="verify file")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     mid = mission["mission_id"]
     report_path = tmp_path / ".planning" / "missions" / f"{mid}.report.json"
     assert report_path.exists()
     raw = json.loads(report_path.read_text(encoding="utf-8"))
     assert raw["mission_id"] == mid
+
+
+def test_run_mission_pause_during_verify_stops_before_report_write(tmp_path: Path, monkeypatch) -> None:
+    mission = create_learning_mission(tmp_path, topic="Pause verify", objective="pause mid-run")
+    mission_id = str(mission["mission_id"])
+
+    monkeypatch.setattr(
+        learning_missions,
+        "_search_mission_urls",
+        lambda topic, queries, max_search_results, max_pages: (
+            ["https://example.com/a"],
+            [("https://example.com/a", "example.com")],
+        ),
+    )
+    monkeypatch.setattr(
+        learning_missions,
+        "_fetch_selected_content",
+        lambda topic, selected: [
+            {"statement": "Python packaging uses wheels and virtual environments.", "url": "https://example.com/a", "domain": "example.com"},
+        ],
+    )
+
+    def pause_then_verify(candidates):
+        learning_missions.pause_mission(tmp_path, mission_id=mission_id)
+        return [{"statement": "Python packaging uses wheels and virtual environments.", "source_urls": ["https://example.com/a"], "source_domains": ["example.com"], "confidence": 0.3}]
+
+    monkeypatch.setattr(learning_missions, "_verify_candidates", pause_then_verify)
+
+    report = run_learning_mission(tmp_path, mission_id=mission_id)
+
+    assert report.get("final_status") == "paused"
+    final = next(m for m in load_missions(tmp_path) if m["mission_id"] == mission_id)
+    assert final["status"] == "paused"
+    safe_id = mission_id[:80]
+    report_path = tmp_path / ".planning" / "missions" / f"{safe_id}.report.json"
+    assert not report_path.exists()
 
 
 # ── retry_failed_missions tests ──────────────────────────────────────────
@@ -357,6 +397,25 @@ def test_retry_skips_non_failed(tmp_path: Path) -> None:
     create_learning_mission(tmp_path, topic="Pending topic", objective="test")
     retried = retry_failed_missions(tmp_path)
     assert retried == 0
+
+
+def test_retry_failed_missions_resets_steps_and_checkpoint(tmp_path: Path) -> None:
+    mission = create_learning_mission(tmp_path, topic="Retry reset", objective="test")
+    missions = load_missions(tmp_path)
+    missions[0]["status"] = "failed"
+    missions[0]["retries"] = 0
+    missions[0]["steps"] = learning_missions._init_mission_steps()
+    missions[0]["steps"][0]["status"] = "completed"
+    missions[0]["checkpoint"] = {"queries": ["cached query"], "candidate_rows": [{"statement": "stale"}]}
+    (tmp_path / ".planning" / "missions.json").write_text(json.dumps(missions), encoding="utf-8")
+
+    retried = retry_failed_missions(tmp_path)
+
+    assert retried == 1
+    refreshed = load_missions(tmp_path)[0]
+    assert refreshed["status"] == "pending"
+    assert refreshed["steps"][0]["status"] == "pending"
+    assert "checkpoint" not in refreshed
 
 
 # ── auto_generate_missions tests ──────────────────────────────────────────
@@ -471,7 +530,8 @@ def test_verify_cross_domain_higher_confidence() -> None:
 def test_full_retry_cycle(tmp_path: Path, monkeypatch) -> None:
     """Mission fails → retry → fails again → retry → fails → exhausted."""
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
 
     mission = create_learning_mission(tmp_path, topic="Hard topic", objective="learn")
     mid = mission["mission_id"]
