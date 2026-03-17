@@ -3,11 +3,27 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-17T08:08:59.807Z"
+last_activity: 2026-03-17 -- Phase 22 plan 01 complete (FileTool + ShellTool + WebTool + ApprovalGate + ProgressEventBus)
+progress:
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 6
+  percent: 61
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
 stopped_at: Completed 22-01-PLAN.md
 last_updated: "2026-03-17T07:36:49.241Z"
 last_activity: 2026-03-17 -- Phase 21 plan 02 complete (UnityTool + BridgeState + path jail + static analysis)
 progress:
-  total_phases: 6
+  [██████░░░░] 61%
   completed_phases: 2
   total_plans: 7
   completed_plans: 5
@@ -41,11 +57,11 @@ See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 ## Current Position
 
 Phase: 22 of 25 (Core Agent Loop)
-Plan: 1 of 3 in current phase
-Status: Phase 22 plan 01 complete
-Last activity: 2026-03-17 -- Phase 22 plan 01 complete (FileTool + ShellTool + WebTool + ApprovalGate + ProgressEventBus)
+Plan: 2 of 3 in current phase
+Status: Phase 22 plan 02 complete
+Last activity: 2026-03-17 -- Phase 22 plan 02 complete (TaskPlanner + StepExecutor + ReflectionLoop)
 
-Progress (v6.0): [██████░░░░] 59%
+Progress (v6.0): [██████░░░░] 61%
 
 ## Performance Metrics
 
@@ -79,6 +95,12 @@ Progress (v6.0): [██████░░░░] 59%
 - 50 new tests added (29 tool tests + 21 gate/bus tests)
 - Duration: ~16 minutes
 
+**v6.0 Phase 22-02 results (2026-03-17):**
+- pytest: 6185 passing, 10 skipped, 0 failures
+- ruff: clean
+- 56 new tests added (25 planner + 13 executor + 18 reflection)
+- Duration: ~27 minutes
+
 ## Accumulated Context
 
 ### Decisions
@@ -101,6 +123,7 @@ Progress (v6.0): [██████░░░░] 59%
 - [Phase 21]: C# StaticAnalysisGuard is defense-in-depth; Python _assert_safe_code() is the authoritative pre-write gate
 - [Phase 22-core-agent-loop]: WebTool wraps jarvis_engine.web.fetch.fetch_page_text (SSRF-safe) rather than reimplementing fetch
 - [Phase 22-core-agent-loop]: ProgressEventBus singleton uses module-level _bus, created on first get_progress_bus() call
+- [Phase 22-core-agent-loop]: TaskPlanner keeps plan() synchronous; token tracking uses input_tokens + output_tokens from GatewayResponse; ReflectionLoop uses MD5 for consecutive-error dedup; StepExecutor uses inspect.isawaitable() for sync/async tool compat
 
 ### Blockers/Concerns
 
@@ -115,6 +138,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T07:36:49.237Z
-Stopped at: Completed 22-01-PLAN.md
+Last session: 2026-03-17T08:08:59.803Z
+Stopped at: Completed 22-02-PLAN.md
 Resume file: None

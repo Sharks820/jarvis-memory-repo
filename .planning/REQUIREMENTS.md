@@ -7,11 +7,11 @@
 
 ### Agent Core
 
-- [ ] **AGENT-01**: User can give a high-level task via text/voice and Jarvis breaks it into executable steps
-- [ ] **AGENT-02**: Agent executes steps sequentially using registered tools with error handling
-- [ ] **AGENT-03**: Agent reflects on step results and replans when outcomes differ from expectations
+- [x] **AGENT-01**: User can give a high-level task via text/voice and Jarvis breaks it into executable steps
+- [x] **AGENT-02**: Agent executes steps sequentially using registered tools with error handling
+- [x] **AGENT-03**: Agent reflects on step results and replans when outcomes differ from expectations
 - [x] **AGENT-04**: Agent checkpoints state to SQLite before each tool call for crash recovery
-- [ ] **AGENT-05**: Agent respects task-level token budget and escalates after 3 consecutive same-error failures
+- [x] **AGENT-05**: Agent respects task-level token budget and escalates after 3 consecutive same-error failures
 - [x] **AGENT-06**: Agent streams real-time progress events to widget and Unity Editor panel via SSE
 
 ### Tool Layer
@@ -84,11 +84,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGENT-01 | Phase 22 | Pending |
-| AGENT-02 | Phase 22 | Pending |
-| AGENT-03 | Phase 22 | Pending |
+| AGENT-01 | Phase 22 | Complete |
+| AGENT-02 | Phase 22 | Complete |
+| AGENT-03 | Phase 22 | Complete |
 | AGENT-04 | Phase 20 | Complete |
-| AGENT-05 | Phase 22 | Pending |
+| AGENT-05 | Phase 22 | Complete |
 | AGENT-06 | Phase 22 | Complete |
 | TOOL-01 | Phase 20 | Complete |
 | TOOL-02 | Phase 22 | Complete |
