@@ -12,7 +12,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 
 Phase: v5.0 COMPLETE
 Status: All 6 phases shipped, 50 requirements implemented, 5978 tests passing
-Last activity: 2026-03-16 - Completed quick task 2: Comprehensive bot-bypass web fetching with curl_cffi + httpx tiers
+Last activity: 2026-03-17 - Opus deep scan: fixed 8 bugs (SSRF, zombie missions, URL injection, race conditions)
 
 Progress (v5.0): [██████████] 100%
 
