@@ -232,7 +232,7 @@ def _fetch_with_curl_cffi(url: str, max_bytes: int) -> bytes:
             logger.debug("curl_cffi: non-HTML content-type %r for %s", content_type, url)
             return b""
         return response.content[:max_bytes]
-    except Exception as exc:  # nosec B110
+    except Exception as exc:
         logger.debug("curl_cffi fetch failed for %s: %s", url, exc)
         return b""
 
@@ -267,7 +267,7 @@ def _fetch_with_httpx(url: str, max_bytes: int) -> bytes:
     except (OSError, ValueError) as exc:
         logger.debug("httpx fetch failed for %s: %s", url, exc)
         return b""
-    except Exception as exc:  # nosec B110
+    except Exception as exc:
         logger.debug("httpx fetch failed for %s: %s", url, exc)
         return b""
 
