@@ -36,7 +36,7 @@ See archived plans in `.planning/phases/`.
 - [x] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail (completed 2026-03-17)
 - [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
 - [x] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI (completed 2026-03-17)
-- [x] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import (completed 2026-03-17)
+- [x] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import (completed 2026-03-17)
 - [ ] **Phase 25: Polish and Integration** - Runtime tool registration, learn-as-you-go accumulation, voice intake, completion summaries
 
 ## Phase Details
@@ -131,11 +131,11 @@ Plans:
   2. User says "use Mixamo for animations" and Jarvis registers that tool for the current session without restarting
   3. Voice command routes to AgentRunCommand — user can assign Unity tasks hands-free
   4. Completed task produces a summary: files created, steps taken, tokens used, errors encountered
-**Plans**: 3 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] 25-01: Learn-as-you-go KG accumulation, successful pattern and error-fix storage
-- [ ] 25-02: Runtime tool registration (TOOL-06), voice intake wiring, task completion summaries, context trim strategy
+- [ ] 25-01-PLAN.md — Learn-as-you-go KG accumulation, pattern and error-fix storage, prompt injection
+- [ ] 25-02-PLAN.md — Runtime tool registration (TOOL-06), voice intake wiring, task completion summaries
 
 ## Progress
 
