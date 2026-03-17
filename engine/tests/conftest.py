@@ -163,7 +163,14 @@ def http_request(
     body: bytes | None = None,
     headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes]:
-    req = Request(url=url, method=method, data=body, headers=headers or {})
+    merged: dict[str, str] = {}
+    # Automatically set Content-Type for POST/PUT/PATCH requests with a body
+    # so tests pass the new Content-Type validation check on do_POST.
+    if method in ("POST", "PUT", "PATCH") and body is not None:
+        merged["Content-Type"] = "application/json"
+    if headers:
+        merged.update(headers)
+    req = Request(url=url, method=method, data=body, headers=merged)
     try:
         with urlopen(req, timeout=15) as resp:
             return resp.getcode(), resp.read()

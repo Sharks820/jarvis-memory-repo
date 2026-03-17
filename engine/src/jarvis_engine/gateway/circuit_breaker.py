@@ -112,6 +112,9 @@ class ProviderHealthTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._providers: dict[str, ProviderHealth] = {}
+        # Tracks providers currently serving a HALF_OPEN probe request.
+        # Only one probe at a time is allowed; concurrent callers see OPEN.
+        self._probe_in_flight: set[str] = set()
 
     def _ensure(self, provider: str) -> ProviderHealth:
         """Get or create a ProviderHealth entry (must hold lock)."""
@@ -145,6 +148,7 @@ class ProviderHealthTracker:
             if h.circuit_state == CircuitState.HALF_OPEN:
                 h.circuit_state = CircuitState.CLOSED
                 h.cooldown_until = 0.0
+                self._probe_in_flight.discard(provider)
                 logger.info(
                     "Circuit breaker for %s: HALF_OPEN -> CLOSED (recovered)", provider
                 )
@@ -174,6 +178,7 @@ class ProviderHealthTracker:
                 h.circuit_state = CircuitState.OPEN
                 new_cooldown = _cooldown_for_failures(h.consecutive_failures)
                 h.cooldown_until = time.monotonic() + max(new_cooldown, 30.0)
+                self._probe_in_flight.discard(provider)
                 logger.warning(
                     "Circuit breaker for %s: HALF_OPEN -> OPEN (probe failed)",
                     provider,
@@ -183,7 +188,9 @@ class ProviderHealthTracker:
         """Return True if the provider should be skipped (circuit is OPEN).
 
         Automatically transitions OPEN -> HALF_OPEN when cooldown expires
-        to allow a single probe request.
+        to allow a single probe request.  In HALF_OPEN state only one
+        concurrent probe is permitted — subsequent callers are treated as
+        OPEN until the probe completes (call ``release_probe`` after).
         """
         with self._lock:
             h = self._providers.get(provider)
@@ -194,7 +201,11 @@ class ProviderHealthTracker:
                 return False
 
             if h.circuit_state == CircuitState.HALF_OPEN:
-                return False  # Allow one probe
+                # Allow the probe only if no other probe is in flight
+                if provider not in self._probe_in_flight:
+                    self._probe_in_flight.add(provider)
+                    return False  # This caller is the probe
+                return True  # Another probe is in flight — treat as OPEN
 
             # OPEN: check if cooldown has expired
             if time.monotonic() >= h.cooldown_until:
@@ -204,9 +215,21 @@ class ProviderHealthTracker:
                     "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired, stats reset)",
                     provider,
                 )
+                # Register this caller as the probe
+                self._probe_in_flight.add(provider)
                 return False  # Allow one probe
 
             return True  # Still in cooldown
+
+    def release_probe(self, provider: str) -> None:
+        """Release the HALF_OPEN probe lock for *provider*.
+
+        Must be called after a probe request completes (success or failure)
+        so the next caller can attempt a probe if the circuit is still HALF_OPEN.
+        ``record_success`` and ``record_failure`` call this automatically.
+        """
+        with self._lock:
+            self._probe_in_flight.discard(provider)
 
     def is_healthy(self, provider: str) -> bool:
         """Return True if a provider is healthy enough for routing.

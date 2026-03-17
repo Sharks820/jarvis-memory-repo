@@ -221,12 +221,23 @@ class AuthRoutesMixin:
                 "error": "Missing required field: password.",
             })
             return
+        client_ip = str(self.client_address[0]).strip()
+        server = self.server
         token = owner_session.authenticate(password)
         if token is None:
+            # Check master-password rate limit BEFORE attempting verification
+            if server.check_master_pw_rate(client_ip):
+                self._write_json(
+                    HTTPStatus.TOO_MANY_REQUESTS,
+                    {"ok": False, "error": "Too many master password attempts. Try again later."},
+                )
+                return
             if verify_master_password(self._root, password):
-                token = owner_session.create_external_session()
+                token = owner_session.create_external_session(client_ip)
                 if token is not None:
                     logger.info("Owner authenticated via master password, session ...%s created", token[-4:])
+            else:
+                server.record_master_pw_attempt(client_ip)
         if token is None:
             self._write_json(HTTPStatus.UNAUTHORIZED, {
                 "ok": False,

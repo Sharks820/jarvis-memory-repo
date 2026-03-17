@@ -92,8 +92,9 @@ class OwnerSessionManager:
         self._password_salt: bytes | None = None  # PBKDF2 only
         self._hash_algo: str = ""  # "argon2" or "pbkdf2"
 
-        # Session state — token -> expiry timestamp
-        self._sessions: dict[str, float] = {}
+        # Session state — token -> (expiry timestamp, bound client IP)
+        # The bound IP is "" when IP binding is not used (e.g. legacy callers).
+        self._sessions: dict[str, tuple[float, str]] = {}
 
         # Lockout state
         self._failure_count: int = 0
@@ -110,7 +111,7 @@ class OwnerSessionManager:
     def _purge_expired(self) -> None:
         """Remove expired sessions from ``_sessions``.  Caller must hold lock."""
         now = time.time()
-        expired = [t for t, exp in self._sessions.items() if now > exp]
+        expired = [t for t, (exp, _ip) in self._sessions.items() if now > exp]
         for t in expired:
             del self._sessions[t]
 
@@ -209,7 +210,7 @@ class OwnerSessionManager:
             ):
                 self._lockout_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = time.time() + self._session_timeout
+            self._sessions[token] = (time.time() + self._session_timeout, "")
             logger.info("Owner authenticated, session ...%s created", token[-4:])
             return token
 
@@ -219,17 +220,48 @@ class OwnerSessionManager:
         """Return ``True`` if *token* is a valid active session.
 
         On success the idle timeout is extended (sliding window).
+        IP binding is not checked here; use ``validate_session_for_ip`` for
+        IP-bound validation.
         """
         with self._lock:
-            expiry = self._sessions.get(token)
-            if expiry is None:
+            entry = self._sessions.get(token)
+            if entry is None:
                 return False
+            expiry, _bound_ip = entry
             if time.time() > expiry:
                 # Expired — remove it
                 self._sessions.pop(token, None)
                 return False
-            # Extend idle timeout
-            self._sessions[token] = time.time() + self._session_timeout
+            # Extend idle timeout (preserve bound IP)
+            self._sessions[token] = (time.time() + self._session_timeout, _bound_ip)
+            return True
+
+    def validate_session_for_ip(self, token: str, client_ip: str) -> bool:
+        """Return ``True`` if *token* is valid AND bound to *client_ip*.
+
+        If the session was created without IP binding (bound_ip == ""), any
+        IP is accepted (backward compatibility).  This provides defense-in-depth
+        against stolen session tokens being replayed from a different host.
+        """
+        with self._lock:
+            entry = self._sessions.get(token)
+            if entry is None:
+                return False
+            expiry, bound_ip = entry
+            if time.time() > expiry:
+                self._sessions.pop(token, None)
+                return False
+            # Enforce IP binding when a bound IP was recorded
+            if bound_ip and bound_ip != client_ip:
+                logger.warning(
+                    "Session ...%s IP mismatch: bound=%s request=%s",
+                    token[-4:],
+                    bound_ip,
+                    client_ip,
+                )
+                return False
+            # Extend idle timeout (preserve bound IP)
+            self._sessions[token] = (time.time() + self._session_timeout, bound_ip)
             return True
 
     def logout(self, token: str) -> None:
@@ -287,13 +319,16 @@ class OwnerSessionManager:
 
     # Internal helpers
 
-    def create_external_session(self) -> str | None:
+    def create_external_session(self, client_ip: str = "") -> str | None:
         """Create a session token for an externally-verified owner.
 
         Use this when the owner has been authenticated through an
         alternative mechanism (e.g. master password verification) and
         needs a session token without going through the internal
         password check.
+
+        *client_ip* is stored alongside the token for IP binding.  Pass ""
+        to create an unbound session (backward compatible).
 
         Returns ``None`` if the session cap has been reached.
         """
@@ -307,7 +342,7 @@ class OwnerSessionManager:
                 return None
             self._failure_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = time.time() + self._session_timeout
+            self._sessions[token] = (time.time() + self._session_timeout, client_ip)
             logger.info("External session ...%s created", token[-4:])
             return token
 

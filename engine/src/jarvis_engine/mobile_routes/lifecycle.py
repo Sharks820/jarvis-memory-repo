@@ -241,6 +241,13 @@ def _start_bus_prewarm(repo_root: Path) -> None:
 
 def _shutdown_server(server: object, store: object) -> None:
     """Shut down the server and close all open DB connections."""
+    # Persist nonces before shutdown so replay protection survives restarts
+    # within the 120s replay window.
+    try:
+        server._persist_nonces()  # type: ignore[attr-defined]
+        logger.info("Nonce cache persisted on shutdown")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to persist nonce cache on shutdown: %s", exc)
     server.shutdown()  # type: ignore[attr-defined]
     # Close sync DB connections to prevent SQLite connection leaks
     sync_engine = getattr(server, "_sync_engine", None)

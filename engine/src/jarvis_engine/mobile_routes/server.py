@@ -1135,7 +1135,8 @@ class MobileIngestHandler(
 
         session_token = self.headers.get("X-Jarvis-Session", "").strip()
         owner_session = getattr(self.server, "owner_session", None)
-        if session_token and owner_session and owner_session.validate_session(session_token):
+        client_ip = str(self.client_address[0]).strip()
+        if session_token and owner_session and owner_session.validate_session_for_ip(session_token, client_ip):
             # Session token is valid — now enforce device trust
             owner_guard = read_owner_guard(self._root)
             if bool(owner_guard.get("enabled", False)):
@@ -1317,6 +1318,11 @@ class MobileIngestHandler(
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        # Require application/json Content-Type to prevent CSRF from HTML forms.
+        content_type = self.headers.get("Content-Type", "").strip()
+        if not content_type.startswith("application/json"):
+            self._write_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type must be application/json.")
+            return
         if not self._check_rate_limit(path):
             return
         # Pre-read POST body so security pipeline can inspect it.
