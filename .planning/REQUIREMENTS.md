@@ -84,13 +84,43 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated during roadmap creation) | | |
+| AGENT-01 | Phase 22 | Pending |
+| AGENT-02 | Phase 22 | Pending |
+| AGENT-03 | Phase 22 | Pending |
+| AGENT-04 | Phase 20 | Pending |
+| AGENT-05 | Phase 22 | Pending |
+| AGENT-06 | Phase 22 | Pending |
+| TOOL-01 | Phase 20 | Pending |
+| TOOL-02 | Phase 22 | Pending |
+| TOOL-03 | Phase 22 | Pending |
+| TOOL-04 | Phase 22 | Pending |
+| TOOL-05 | Phase 22 | Pending |
+| TOOL-06 | Phase 25 | Pending |
+| UNITY-01 | Phase 21 | Pending |
+| UNITY-02 | Phase 21 | Pending |
+| UNITY-03 | Phase 21 | Pending |
+| UNITY-04 | Phase 21 | Pending |
+| UNITY-05 | Phase 23 | Pending |
+| UNITY-06 | Phase 20 | Pending |
+| CODE-01 | Phase 23 | Pending |
+| CODE-02 | Phase 23 | Pending |
+| CODE-03 | Phase 23 | Pending |
+| CODE-04 | Phase 21 | Pending |
+| CODE-05 | Phase 21 | Pending |
+| ASSET-01 | Phase 24 | Pending |
+| ASSET-02 | Phase 24 | Pending |
+| ASSET-03 | Phase 24 | Pending |
+| ASSET-04 | Phase 24 | Pending |
+| KNOW-01 | Phase 20 | Pending |
+| KNOW-02 | Phase 25 | Pending |
+| KNOW-03 | Phase 23 | Pending |
+| KNOW-04 | Phase 23 | Pending |
 
 **Coverage:**
 - v6.0 requirements: 27 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 27
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 — traceability populated after roadmap creation*
