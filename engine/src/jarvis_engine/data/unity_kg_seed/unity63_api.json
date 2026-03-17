@@ -1,0 +1,322 @@
+[
+  {
+    "node_id": "unity63_api_GameObject_AddComponent",
+    "label": "GameObject.AddComponent<T>() - Adds and returns a component of type T to the GameObject",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_GameObject_GetComponent",
+    "label": "GameObject.GetComponent<T>() - Returns the component of type T attached to this GameObject, or null",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_GameObject_GetComponentInChildren",
+    "label": "GameObject.GetComponentInChildren<T>() - Returns component T in this GameObject or any of its children",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_GameObject_SetActive",
+    "label": "GameObject.SetActive(bool value) - Activates or deactivates the GameObject",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_GameObject_Find",
+    "label": "GameObject.Find(string name) - Finds a GameObject by name; avoid in Update() for performance",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Object_Instantiate",
+    "label": "Object.Instantiate(Object original, Vector3 position, Quaternion rotation) - Clones the object",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Object_Destroy",
+    "label": "Object.Destroy(Object obj, float t = 0) - Removes a GameObject, component or asset after optional delay",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Object_FindObjectOfType",
+    "label": "Object.FindObjectOfType<T>() - Returns first active loaded object of type T (slow, avoid in Update)",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_Awake",
+    "label": "MonoBehaviour.Awake() - Called once when script instance is loaded; use for initialization before Start()",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_Start",
+    "label": "MonoBehaviour.Start() - Called before the first frame update; use for initialization after Awake()",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_Update",
+    "label": "MonoBehaviour.Update() - Called once per frame; use for logic that must run every frame",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_FixedUpdate",
+    "label": "MonoBehaviour.FixedUpdate() - Called at fixed intervals; use for physics calculations",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_LateUpdate",
+    "label": "MonoBehaviour.LateUpdate() - Called after all Update() calls; use for camera follow logic",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_OnDestroy",
+    "label": "MonoBehaviour.OnDestroy() - Called when the MonoBehaviour is destroyed; cleanup resources here",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_OnEnable",
+    "label": "MonoBehaviour.OnEnable() - Called when object becomes enabled and active",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_MonoBehaviour_OnDisable",
+    "label": "MonoBehaviour.OnDisable() - Called when object becomes disabled or inactive",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "lifecycle"]
+  },
+  {
+    "node_id": "unity63_api_Transform_position",
+    "label": "Transform.position - World-space position of the Transform as Vector3",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Transform_localPosition",
+    "label": "Transform.localPosition - Position of Transform relative to parent as Vector3",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Transform_rotation",
+    "label": "Transform.rotation - World-space rotation as Quaternion",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Transform_Translate",
+    "label": "Transform.Translate(Vector3 translation) - Moves the transform in the direction and distance of translation",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Rigidbody_AddForce",
+    "label": "Rigidbody.AddForce(Vector3 force, ForceMode mode = ForceMode.Force) - Adds a force to the Rigidbody",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "Physics"]
+  },
+  {
+    "node_id": "unity63_api_Rigidbody_velocity",
+    "label": "Rigidbody.velocity - Linear velocity of the Rigidbody; prefer AddForce over direct assignment",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "Physics"]
+  },
+  {
+    "node_id": "unity63_api_Collider_OnTriggerEnter",
+    "label": "MonoBehaviour.OnTriggerEnter(Collider other) - Called when a Collider enters the trigger",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "Physics"]
+  },
+  {
+    "node_id": "unity63_api_Collider_OnCollisionEnter",
+    "label": "MonoBehaviour.OnCollisionEnter(Collision collision) - Called when collision begins",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "Physics"]
+  },
+  {
+    "node_id": "unity63_api_Camera_main",
+    "label": "Camera.main - Returns the first enabled Camera tagged MainCamera (cached in 6.x)",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Light_intensity",
+    "label": "Light.intensity - Brightness of the light; range 0-8 for real-time lights in 6.x",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Material_SetColor",
+    "label": "Material.SetColor(string name, Color value) - Sets a named color value in the shader",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Renderer_material",
+    "label": "Renderer.material - Returns the first instantiated Material assigned to the renderer",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Input_GetAxis",
+    "label": "Input.GetAxis(string axisName) - Returns smoothed axis value; deprecated in favor of InputSystem in 6.x",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "deprecated"]
+  },
+  {
+    "node_id": "unity63_api_InputSystem_ReadValue",
+    "label": "InputAction.ReadValue<T>() - Reads the current value of the action using new InputSystem",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine.InputSystem"]
+  },
+  {
+    "node_id": "unity63_api_SceneManager_LoadScene",
+    "label": "SceneManager.LoadScene(string sceneName, LoadSceneMode mode) - Loads scene by name",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine.SceneManagement"]
+  },
+  {
+    "node_id": "unity63_api_SceneManager_LoadSceneAsync",
+    "label": "SceneManager.LoadSceneAsync(string sceneName) - Loads scene asynchronously; returns AsyncOperation",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine.SceneManagement"]
+  },
+  {
+    "node_id": "unity63_api_Resources_Load",
+    "label": "Resources.Load<T>(string path) - Loads asset from Resources folder; prefer Addressables in 6.x",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Coroutine_StartCoroutine",
+    "label": "MonoBehaviour.StartCoroutine(IEnumerator routine) - Starts a coroutine",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  },
+  {
+    "node_id": "unity63_api_Attribute_SerializeField",
+    "label": "[SerializeField] - Marks private field for Unity Inspector serialization",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "attributes"]
+  },
+  {
+    "node_id": "unity63_api_Attribute_RequireComponent",
+    "label": "[RequireComponent(typeof(T))] - Automatically adds required component; prevents removal",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "attributes"]
+  },
+  {
+    "node_id": "unity63_api_AssetDatabase_Refresh",
+    "label": "AssetDatabase.Refresh(ImportAssetOptions options) - Imports any changed assets (Editor only)",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEditor"]
+  },
+  {
+    "node_id": "unity63_api_EditorWindow_GetWindow",
+    "label": "EditorWindow.GetWindow<T>() - Returns existing or creates new EditorWindow of type T",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEditor"]
+  },
+  {
+    "node_id": "unity63_api_Physics_Raycast",
+    "label": "Physics.Raycast(Vector3 origin, Vector3 direction, out RaycastHit hit, float maxDistance) - Casts ray",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine", "Physics"]
+  },
+  {
+    "node_id": "unity63_api_Vector3_Lerp",
+    "label": "Vector3.Lerp(Vector3 a, Vector3 b, float t) - Linearly interpolates between a and b by t",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_api",
+    "tags": ["unity63", "api_reference", "UnityEngine"]
+  }
+]

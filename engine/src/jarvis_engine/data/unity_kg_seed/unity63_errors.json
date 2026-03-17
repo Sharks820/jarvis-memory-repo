@@ -1,0 +1,98 @@
+[
+  {
+    "node_id": "unity63_error_CS0117",
+    "label": "CS0117: Member not found -- check KG for correct Unity 6.3 API name; often caused by renamed methods",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0117"]
+  },
+  {
+    "node_id": "unity63_error_CS0619",
+    "label": "CS0619: Obsolete member used -- KG lookup for replacement API; check unity63_breaking entries",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0619"]
+  },
+  {
+    "node_id": "unity63_error_CS0246",
+    "label": "CS0246: Type or namespace not found -- check unity63_breaking for removed namespaces (Experimental.*)",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0246"]
+  },
+  {
+    "node_id": "unity63_error_CS0103",
+    "label": "CS0103: Name not in scope -- add missing using directive; check UnityEngine.SceneManagement, UnityEngine.InputSystem",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0103"]
+  },
+  {
+    "node_id": "unity63_error_CS0029",
+    "label": "CS0029: Cannot implicitly convert type -- use explicit Unity type casts; e.g., (RigidbodyConstraints) or as T",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0029"]
+  },
+  {
+    "node_id": "unity63_error_CS1061",
+    "label": "CS1061: Member not defined on type -- API may have been renamed in Unity 6.x; query KG for correct method",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS1061"]
+  },
+  {
+    "node_id": "unity63_error_CS0428",
+    "label": "CS0428: Cannot convert method group -- Unity callback pattern requires void return and correct parameter signature",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0428"]
+  },
+  {
+    "node_id": "unity63_error_CS0234",
+    "label": "CS0234: Namespace member missing -- UnityEngine.Experimental.* removed in 6.3; check non-Experimental equivalents",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0234"]
+  },
+  {
+    "node_id": "unity63_error_CS0120",
+    "label": "CS0120: Object reference required for non-static field -- Unity 6.3 changed some helpers to instance methods",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0120"]
+  },
+  {
+    "node_id": "unity63_error_CS0535",
+    "label": "CS0535: Interface not implemented -- Unity 6.x updated IJobEntity and ISystem interfaces; implement new required methods",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0535"]
+  },
+  {
+    "node_id": "unity63_error_CS0115",
+    "label": "CS0115: Method marked override but no base method found -- MonoBehaviour callback signature may have changed in 6.3",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS0115"]
+  },
+  {
+    "node_id": "unity63_error_CS7036",
+    "label": "CS7036: Required formal parameter missing -- method signature changed; check unity63_breaking for updated APIs",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_error",
+    "tags": ["unity63", "compile_error", "CS7036"]
+  }
+]

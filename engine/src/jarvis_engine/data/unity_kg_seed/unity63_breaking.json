@@ -1,0 +1,98 @@
+[
+  {
+    "node_id": "unity63_breaking_experimental_namespaces_removed",
+    "label": "Unity 6.3 breaking: UnityEngine.Experimental.* namespaces removed -- move to non-Experimental equivalents",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "namespaces"]
+  },
+  {
+    "node_id": "unity63_breaking_serializefield_on_properties",
+    "label": "Unity 6.3 breaking: [SerializeField] on auto-properties now requires [field: SerializeField] syntax",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "serialization"]
+  },
+  {
+    "node_id": "unity63_breaking_render_graph_compat_removed",
+    "label": "Unity 6.3 breaking: URP compatibility mode render graph calls removed -- migrate to full render graph API",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "URP", "rendering"]
+  },
+  {
+    "node_id": "unity63_breaking_urp_compat_apis_removed",
+    "label": "Unity 6.3 breaking: UnityEngine.Rendering.Universal compatibility-mode APIs removed -- use ScriptableRenderPass",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "UnityEngine.Rendering.Universal"]
+  },
+  {
+    "node_id": "unity63_breaking_physics_callback_signatures",
+    "label": "Unity 6.3 breaking: OnTriggerEnter/OnCollisionEnter signatures unified -- use Collider and Collision overloads",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "Physics"]
+  },
+  {
+    "node_id": "unity63_breaking_input_getaxis_deprecated",
+    "label": "Unity 6.3 breaking: Input.GetAxis and legacy Input system deprecated -- migrate to InputSystem package",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "Input"]
+  },
+  {
+    "node_id": "unity63_breaking_www_class_removed",
+    "label": "Unity 6.3 breaking: WWW class fully removed -- use UnityWebRequest or UnityWebRequestTexture",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "networking"]
+  },
+  {
+    "node_id": "unity63_breaking_editorguilayout_signatures",
+    "label": "Unity 6.3 breaking: Several EditorGUILayout.* methods have new optional parameters; calls missing args may break",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "UnityEditor"]
+  },
+  {
+    "node_id": "unity63_breaking_mesh_vertices_deprecated",
+    "label": "Unity 6.3 breaking: Direct Mesh.vertices assignment deprecated -- use Mesh.SetVertices(List<Vector3>) instead",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "Mesh"]
+  },
+  {
+    "node_id": "unity63_breaking_assetdatabase_refresh_options",
+    "label": "Unity 6.3 breaking: AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate) behavior changed -- Default is now preferred",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "UnityEditor", "AssetDatabase"]
+  },
+  {
+    "node_id": "unity63_breaking_physics2d_callbacks",
+    "label": "Unity 6.3 breaking: Physics2D OnTriggerEnter2D/OnCollisionEnter2D now require non-null Collider2D checks",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "Physics2D"]
+  },
+  {
+    "node_id": "unity63_breaking_shader_graph_nodes",
+    "label": "Unity 6.3 breaking: Several ShaderGraph nodes renamed or removed -- check migration guide in Package Manager",
+    "confidence": 0.95,
+    "source_record": "unity63_kg_seed_v1",
+    "node_type": "unity_breaking",
+    "tags": ["unity63", "breaking_change", "ShaderGraph"]
+  }
+]
