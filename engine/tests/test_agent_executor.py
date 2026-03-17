@@ -233,11 +233,15 @@ class TestStepExecutorApproval:
         task = _make_task()
         step = _make_step(tool_name="shell", params={"command": "ls"})
 
+        captured_statuses: list[str] = []
+
+        def _capture_status(t: Any) -> None:
+            captured_statuses.append(t.status)
+
+        store.checkpoint.side_effect = _capture_status
         asyncio.run(executor.execute_step(step, task))
-        # After approval + execution, task.approval_needed was set True at some point
-        # Check store.checkpoint was called with blocked state
-        checkpoint_statuses = [call.args[0].status for call in store.checkpoint.call_args_list]
-        assert "blocked" in checkpoint_statuses
+        # The first checkpoint should occur while status is "blocked"
+        assert "blocked" in captured_statuses
 
     def test_approval_rejected_returns_failure(self):
         from jarvis_engine.agent.approval_gate import ApprovalDecision
