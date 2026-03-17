@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
+import threading
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -40,23 +41,30 @@ class VRAMCoordinator:
     Both share ``_gpu_mutex`` — only one may be held at a time.
     """
 
-    _gpu_mutex: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    # Lazily created to avoid binding to the wrong event loop at import time.
+    _gpu_mutex: asyncio.Lock | None = field(default=None, init=False)
     _generation_active: bool = field(default=False, init=False)
     _playmode_active: bool = field(default=False, init=False)
+
+    def _get_mutex(self) -> asyncio.Lock:
+        """Return the asyncio.Lock, creating it lazily in the current event loop."""
+        if self._gpu_mutex is None:
+            self._gpu_mutex = asyncio.Lock()
+        return self._gpu_mutex
 
     async def acquire_generation(self) -> None:
         """Acquire the GPU mutex for an Ollama generation call.
 
         Blocks until no Unity play-mode is active.
         """
-        await self._gpu_mutex.acquire()
+        await self._get_mutex().acquire()
         self._generation_active = True
         logger.debug("VRAMCoordinator: generation_active=True")
 
     def release_generation(self) -> None:
         """Release the GPU mutex after generation completes."""
+        self._get_mutex().release()
         self._generation_active = False
-        self._gpu_mutex.release()
         logger.debug("VRAMCoordinator: generation_active=False")
 
     async def acquire_playmode(self) -> None:
@@ -64,14 +72,14 @@ class VRAMCoordinator:
 
         Blocks until no Ollama generation is active.
         """
-        await self._gpu_mutex.acquire()
+        await self._get_mutex().acquire()
         self._playmode_active = True
         logger.debug("VRAMCoordinator: unity_playmode_active=True")
 
     def release_playmode(self) -> None:
         """Release the GPU mutex after Unity play-mode exits."""
+        self._get_mutex().release()
         self._playmode_active = False
-        self._gpu_mutex.release()
         logger.debug("VRAMCoordinator: unity_playmode_active=False")
 
     @property
@@ -80,7 +88,7 @@ class VRAMCoordinator:
         return {
             "generation_active": self._generation_active,
             "playmode_active": self._playmode_active,
-            "locked": self._gpu_mutex.locked(),
+            "locked": self._gpu_mutex.locked() if self._gpu_mutex else False,
         }
 
 
@@ -112,15 +120,17 @@ def read_vram_used_mb() -> int | None:
 # ---------------------------------------------------------------------------
 
 _COORDINATOR: VRAMCoordinator | None = None
+_COORDINATOR_LOCK = threading.Lock()
 
 
 def get_coordinator() -> VRAMCoordinator:
     """Return the process-wide VRAMCoordinator singleton.
 
-    Creates a new instance on first call.  Thread-safe for reads; callers
-    must not reset ``_COORDINATOR`` from outside this module.
+    Creates a new instance on first call.  Thread-safe via double-checked locking.
     """
     global _COORDINATOR  # noqa: PLW0603
     if _COORDINATOR is None:
-        _COORDINATOR = VRAMCoordinator()
+        with _COORDINATOR_LOCK:
+            if _COORDINATOR is None:
+                _COORDINATOR = VRAMCoordinator()
     return _COORDINATOR

@@ -51,7 +51,7 @@ def kill_unity_tree(pid: int) -> bool:
         try:
             os.killpg(os.getpgid(pid), signal.SIGKILL)
             success = True
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError, OSError):
             success = False
 
     if success:
