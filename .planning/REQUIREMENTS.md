@@ -34,7 +34,7 @@
 
 ### Code Generation
 
-- [ ] **CODE-01**: Agent generates valid Unity 6.3 C# scripts with correct API usage
+- [x] **CODE-01**: Agent generates valid Unity 6.3 C# scripts with correct API usage
 - [ ] **CODE-02**: Agent compiles, runs tests, enters play mode, and fixes errors in a verify-fix loop
 - [ ] **CODE-03**: Agent writes NUnit tests alongside game scripts
 - [ ] **CODE-04**: Pre-compilation static analysis blocks dangerous APIs (Process.Start, File.Delete outside jail)
@@ -51,8 +51,8 @@
 
 - [x] **KNOW-01**: Unity 6.3 API reference, patterns, and common errors seeded into knowledge graph
 - [ ] **KNOW-02**: Successful code patterns and error fixes accumulated via learn-as-you-go
-- [ ] **KNOW-03**: Agent queries KG during planning for Unity-specific guidance
-- [ ] **KNOW-04**: Breaking changes from Unity 6.3 upgrade guide flagged during code generation
+- [x] **KNOW-03**: Agent queries KG during planning for Unity-specific guidance
+- [x] **KNOW-04**: Breaking changes from Unity 6.3 upgrade guide flagged during code generation
 
 ## Future Requirements
 
@@ -102,7 +102,7 @@
 | UNITY-04 | Phase 21 | Pending |
 | UNITY-05 | Phase 23 | Pending |
 | UNITY-06 | Phase 20 | Pending |
-| CODE-01 | Phase 23 | Pending |
+| CODE-01 | Phase 23 | Complete |
 | CODE-02 | Phase 23 | Pending |
 | CODE-03 | Phase 23 | Pending |
 | CODE-04 | Phase 21 | Pending |
@@ -113,8 +113,8 @@
 | ASSET-04 | Phase 24 | Pending |
 | KNOW-01 | Phase 20 | Complete |
 | KNOW-02 | Phase 25 | Pending |
-| KNOW-03 | Phase 23 | Pending |
-| KNOW-04 | Phase 23 | Pending |
+| KNOW-03 | Phase 23 | Complete |
+| KNOW-04 | Phase 23 | Complete |
 
 **Coverage:**
 - v6.0 requirements: 27 total

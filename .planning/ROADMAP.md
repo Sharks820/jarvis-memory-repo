@@ -103,7 +103,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 23-01-PLAN.md — Unity-domain system prompt builder, API validation pre-compilation pass, KG query integration
+- [x] 23-01-PLAN.md — Unity-domain system prompt builder, API validation pre-compilation pass, KG query integration
 - [ ] 23-02-PLAN.md — NUnit test generation, compile-test-fix loop with VRAM coordinator interlock
 - [ ] 23-03-PLAN.md — JarvisPanel.cs EditorWindow with progress UI, approve/reject dialogs
 
@@ -146,6 +146,6 @@ Plans:
 | 20. Infrastructure Foundations | 2/2 | Complete    | 2026-03-17 | - |
 | 21. Unity Editor Bridge | 2/2 | Complete    | 2026-03-17 | - |
 | 22. Core Agent Loop | 3/3 | Complete    | 2026-03-17 | - |
-| 23. C# Code Generation | v6.0 | 0/3 | Not started | - |
+| 23. C# Code Generation | v6.0 | 1/3 | In progress | - |
 | 24. Asset Pipeline | v6.0 | 0/2 | Not started | - |
 | 25. Polish and Integration | v6.0 | 0/2 | Not started | - |

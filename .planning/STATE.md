@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-03-17T08:59:08.329Z"
-last_activity: 2026-03-17 -- Phase 22 plan 02 complete (TaskPlanner + StepExecutor + ReflectionLoop)
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-17T09:20:00Z"
+last_activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 10
-  completed_plans: 7
-  percent: 63
+  completed_plans: 8
+  percent: 70
 ---
 
 ---
@@ -68,16 +68,16 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v6.0 Jarvis Unity Agent -- Phase 22: Core Agent Loop
+**Current focus:** v6.0 Jarvis Unity Agent -- Phase 23: C# Code Generation
 
 ## Current Position
 
-Phase: 22 of 25 (Core Agent Loop)
-Plan: 2 of 3 in current phase
-Status: Phase 22 plan 02 complete
-Last activity: 2026-03-17 -- Phase 22 plan 02 complete (TaskPlanner + StepExecutor + ReflectionLoop)
+Phase: 23 of 25 (C# Code Generation)
+Plan: 1 of 1 in current phase (complete)
+Status: Phase 23 plan 01 complete
+Last activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
 
-Progress (v6.0): [██████░░░░] 61%
+Progress (v6.0): [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -117,6 +117,12 @@ Progress (v6.0): [██████░░░░] 61%
 - 56 new tests added (25 planner + 13 executor + 18 reflection)
 - Duration: ~27 minutes
 
+**v6.0 Phase 23-01 results (2026-03-17):**
+- pytest: 6277 passing, 10 skipped, 0 failures
+- ruff: clean
+- 42 new tests added (20 prompt_builder + 22 api_validator)
+- Duration: ~20 minutes
+
 ## Accumulated Context
 
 ### Decisions
@@ -142,6 +148,9 @@ Progress (v6.0): [██████░░░░] 61%
 - [Phase 22-core-agent-loop]: TaskPlanner keeps plan() synchronous; token tracking uses input_tokens + output_tokens from GatewayResponse; ReflectionLoop uses MD5 for consecutive-error dedup; StepExecutor uses inspect.isawaitable() for sync/async tool compat
 - [Phase 22]: AgentRunHandler uses asyncio.new_event_loop per background thread for agent loop isolation
 - [Phase 22]: _register_agent_handlers wires store/gate/bus/registry/gateway with fallback to stubs on import failure
+- [Phase 23]: UnityPromptBuilder queries KG twice -- unity_api facts for API section, unity_breaking facts for warnings section; separate calls allow filtering by node_type
+- [Phase 23]: ApiValidator produces soft warnings for unknown APIs (not hard blocks) -- KG coverage is intentionally incomplete
+- [Phase 23]: Baseline prompt rules hardcoded (SerializeField, Experimental namespaces, URP, path) -- stable Unity 6.3 invariants, not KG-dependent
 
 ### Blockers/Concerns
 
@@ -156,6 +165,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T08:38:15.610Z
-Stopped at: Completed 22-03-PLAN.md
+Last session: 2026-03-17T09:20:00Z
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None
