@@ -44,8 +44,8 @@
 
 - [x] **ASSET-01**: TripoTool generates 3D models via tripo.io API from text descriptions
 - [x] **ASSET-02**: BlenderTool runs headless Python scripts for modeling, rigging, UV, LOD, export
-- [ ] **ASSET-03**: AssetTool imports models/textures/audio into Unity with correct import settings
-- [ ] **ASSET-04**: Agent uses tripo.io for organic models and Blender for architecture/terrain
+- [x] **ASSET-03**: AssetTool imports models/textures/audio into Unity with correct import settings
+- [x] **ASSET-04**: Agent uses tripo.io for organic models and Blender for architecture/terrain
 
 ### Knowledge
 
@@ -109,8 +109,8 @@
 | CODE-05 | Phase 21 | Pending |
 | ASSET-01 | Phase 24 | Complete |
 | ASSET-02 | Phase 24 | Complete |
-| ASSET-03 | Phase 24 | Pending |
-| ASSET-04 | Phase 24 | Pending |
+| ASSET-03 | Phase 24 | Complete |
+| ASSET-04 | Phase 24 | Complete |
 | KNOW-01 | Phase 20 | Complete |
 | KNOW-02 | Phase 25 | Pending |
 | KNOW-03 | Phase 23 | Complete |

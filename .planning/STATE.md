@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 24-01-PLAN.md
-last_updated: "2026-03-17T13:18:45.186Z"
+stopped_at: Completed 24-02-PLAN.md
+last_updated: "2026-03-17T13:30:35.902Z"
 last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 65
 ---
 
@@ -196,6 +196,9 @@ Progress (v6.0): [███████░░░] 73%
 - [Phase 23]: JarvisPanel approval section hidden entirely (not disabled) when no approval is pending
 - [Phase 24-asset-pipeline]: TripoTool lazy-imports tripo3d inside execute() to avoid ImportError when SDK not installed
 - [Phase 24-asset-pipeline]: BlenderTool path discovery: constructor arg > BLENDER_PATH env > default Windows path (not validated at init)
+- [Phase 24-asset-pipeline]: AssetTool delegates all Unity bridge calls to UnityTool.call() -- no direct WebSocket usage
+- [Phase 24-asset-pipeline]: route() checks BLENDER_KEYWORDS first (then TRIPO_KEYWORDS) to handle mixed descriptions; default is tripo
+- [Phase 24-asset-pipeline]: All three asset tools registered in _register_agent_handlers() with SUBSYSTEM_ERRORS try/except isolation
 
 ### Blockers/Concerns
 
@@ -210,6 +213,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T13:18:45.183Z
-Stopped at: Completed 24-01-PLAN.md
+Last session: 2026-03-17T13:30:35.898Z
+Stopped at: Completed 24-02-PLAN.md
 Resume file: None

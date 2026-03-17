@@ -36,7 +36,7 @@ See archived plans in `.planning/phases/`.
 - [x] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail (completed 2026-03-17)
 - [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
 - [x] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI (completed 2026-03-17)
-- [ ] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import
+- [x] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import (completed 2026-03-17)
 - [ ] **Phase 25: Polish and Integration** - Runtime tool registration, learn-as-you-go accumulation, voice intake, completion summaries
 
 ## Phase Details
@@ -147,5 +147,5 @@ Plans:
 | 21. Unity Editor Bridge | 2/2 | Complete    | 2026-03-17 | - |
 | 22. Core Agent Loop | 3/3 | Complete    | 2026-03-17 | - |
 | 23. C# Code Generation | 3/3 | Complete    | 2026-03-17 | - |
-| 24. Asset Pipeline | 1/2 | In Progress|  | - |
+| 24. Asset Pipeline | 2/2 | Complete   | 2026-03-17 | - |
 | 25. Polish and Integration | v6.0 | 0/2 | Not started | - |
