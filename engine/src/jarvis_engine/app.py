@@ -119,6 +119,11 @@ from jarvis_engine.commands.sync_commands import (
     SyncPushCommand,
     SyncStatusCommand,
 )
+from jarvis_engine.commands.agent_commands import (
+    AgentApproveCommand,
+    AgentRunCommand,
+    AgentStatusCommand,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -848,6 +853,19 @@ def _init_proactive_subsystem(
     )
 
 
+def _register_agent_handlers(bus: CommandBus, root: Path) -> None:
+    """Register stub agent CQRS handlers on the bus (Phase 20 infrastructure)."""
+    from jarvis_engine.handlers.agent_handlers import (
+        AgentApproveHandler,
+        AgentRunHandler,
+        AgentStatusHandler,
+    )
+
+    bus.register(AgentRunCommand, AgentRunHandler(root).handle)
+    bus.register(AgentStatusCommand, AgentStatusHandler(root).handle)
+    bus.register(AgentApproveCommand, AgentApproveHandler(root).handle)
+
+
 def create_app(root: Path) -> CommandBus:
     """Build and wire the full Command Bus.  This is the DI composition root."""
     bus = CommandBus()
@@ -887,6 +905,7 @@ def create_app(root: Path) -> CommandBus:
     _register_ops_handlers(bus, root, gateway, pipeline, engine=engine)
     _register_security_handlers(bus, root)
     _register_knowledge_handlers(bus, root, kg)
+    _register_agent_handlers(bus, root)
 
     # Subsystems with internal state
     _init_learning_subsystem(

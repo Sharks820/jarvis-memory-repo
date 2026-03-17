@@ -161,16 +161,16 @@ def test_agent_commands_registered_on_bus(tmp_path: Path) -> None:
         bus = create_app(tmp_path)
 
     # AgentRunCommand
-    run_result = bus.execute(AgentRunCommand(goal="build a unity scene"))
+    run_result = bus.dispatch(AgentRunCommand(goal="build a unity scene"))
     assert run_result is not None
     assert run_result.return_code == 0
 
     # AgentStatusCommand
-    status_result = bus.execute(AgentStatusCommand(task_id="t-001"))
+    status_result = bus.dispatch(AgentStatusCommand(task_id="t-001"))
     assert status_result is not None
     assert status_result.return_code == 0
 
     # AgentApproveCommand
-    approve_result = bus.execute(AgentApproveCommand(task_id="t-001", approved=True))
+    approve_result = bus.dispatch(AgentApproveCommand(task_id="t-001", approved=True))
     assert approve_result is not None
     assert approve_result.return_code == 0
