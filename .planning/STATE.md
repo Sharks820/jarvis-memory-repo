@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 23-03-PLAN.md
-last_updated: "2026-03-17T12:50:30.135Z"
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-17T13:18:45.186Z"
 last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
   percent: 65
 ---
 
@@ -194,6 +194,8 @@ Progress (v6.0): [███████░░░] 73%
 - [Phase 23]: _strip_code_fences returns original text unchanged when no fences present -- preserves trailing newlines in LLM responses
 - [Phase 23]: OnAgentMessage event raised via EditorApplication.delayCall to marshal WebSocket thread to Unity main thread
 - [Phase 23]: JarvisPanel approval section hidden entirely (not disabled) when no approval is pending
+- [Phase 24-asset-pipeline]: TripoTool lazy-imports tripo3d inside execute() to avoid ImportError when SDK not installed
+- [Phase 24-asset-pipeline]: BlenderTool path discovery: constructor arg > BLENDER_PATH env > default Windows path (not validated at init)
 
 ### Blockers/Concerns
 
@@ -208,6 +210,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T12:47:40.776Z
-Stopped at: Completed 23-03-PLAN.md
+Last session: 2026-03-17T13:18:45.183Z
+Stopped at: Completed 24-01-PLAN.md
 Resume file: None
