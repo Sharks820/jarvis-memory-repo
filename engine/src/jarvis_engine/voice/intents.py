@@ -599,6 +599,70 @@ def _handle_system_status(ctx: _DispatchCtx) -> tuple[str, int]:
     return "system_status", rc
 
 
+def _handle_agent_task(ctx: _DispatchCtx) -> tuple[str, int]:
+    """Route a voice command to an AgentRunCommand for Unity/game-dev tasks.
+
+    Strips recognized trigger prefixes and uses the remaining text as the
+    goal.  Dispatches via the shared bus.
+    """
+    goal = ctx.text
+    for prefix in (
+        "build a unity ", "build a unity",
+        "create a unity ", "create a unity",
+        "make a unity ", "make a unity",
+        "generate a unity ", "generate a unity",
+        "build a ", "create a ", "make a ", "generate a ",
+    ):
+        if ctx.lowered.startswith(prefix):
+            goal = ctx.text[len(prefix):].strip()
+            break
+
+    if not goal:
+        goal = ctx.text
+
+    try:
+        from jarvis_engine.commands.agent_commands import AgentRunCommand
+
+        get_bus().dispatch(AgentRunCommand(goal=goal))
+        ctx._respond(f"Starting agent task: {goal[:80]}")
+        return "agent_task", 0
+    except Exception:  # noqa: BLE001
+        logger.exception("_handle_agent_task: failed to dispatch AgentRunCommand")
+        return "agent_task", 1
+
+
+def _handle_register_tool(ctx: _DispatchCtx) -> tuple[str, int]:
+    """Register a new tool at runtime from a 'use X for Y' voice command.
+
+    Parses tool name and description from the phrase.
+    Example: "use Mixamo for animations" -> name="mixamo", description="Mixamo for animations"
+    """
+    # Parse "use <name> for <description>"
+    lowered = ctx.lowered
+    # Strip leading "use "
+    rest = lowered[4:].strip() if lowered.startswith("use ") else lowered
+    # Split on " for "
+    if " for " in rest:
+        parts = rest.split(" for ", 1)
+        tool_name = parts[0].strip()
+        description = f"{parts[0].strip().title()} for {parts[1].strip()}"
+    else:
+        tool_name = rest.strip()
+        description = ctx.text.strip()
+
+    try:
+        from jarvis_engine.commands.agent_commands import AgentRegisterToolCommand
+
+        get_bus().dispatch(
+            AgentRegisterToolCommand(name=tool_name, description=description)
+        )
+        ctx._respond(f"Registered {tool_name} for this session.")
+        return "register_tool", 0
+    except Exception:  # noqa: BLE001
+        logger.exception("_handle_register_tool: failed to dispatch AgentRegisterToolCommand")
+        return "register_tool", 1
+
+
 # Fuzzy matching helpers for voice command recognition
 
 def _fuzzy_match(text: str, target: str, threshold: float = 0.80) -> bool:
@@ -869,6 +933,15 @@ _DISPATCH_RULES: list[_IntentRule] = [
                 "status report", "health check",
                 "are you working", "are you running"),
      _handle_system_status),
+
+    # -- Agent tasks (Unity / game dev) --
+    (_match_any("build a unity", "create a unity", "make a unity", "generate a unity",
+                "unity project", "unity scene", "unity game"),
+     _handle_agent_task),
+
+    # -- Runtime tool registration --
+    (lambda low: low.startswith("use ") and " for " in low,
+     _handle_register_tool),
 ]
 
 # Populate fuzzy targets for critical commands (pause, resume, safe mode,

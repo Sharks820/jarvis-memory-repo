@@ -211,6 +211,22 @@ class ReflectionLoop:
         # All steps completed
         task.status = "done"
         self._store.checkpoint(task)
+
+        # Emit structured task summary before the generic task_done event
+        try:
+            from jarvis_engine.agent.task_summary import generate_task_summary
+
+            summary = generate_task_summary(task)
+            await self._bus.emit(
+                {
+                    "type": "task_summary",
+                    "task_id": task.task_id,
+                    **{k: v for k, v in summary.__dict__.items() if k != "task_id"},
+                }
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Task summary generation failed for %s", task.task_id)
+
         await self._bus.emit(
             {
                 "type": "task_done",
@@ -235,4 +251,7 @@ class ReflectionLoop:
 
         Not used for security -- only for detecting repeated identical errors.
         """
-        return hashlib.md5(error.encode("utf-8", errors="replace")).hexdigest()  # noqa: S324
+        return hashlib.md5(  # noqa: S324
+            error.encode("utf-8", errors="replace"),
+            usedforsecurity=False,
+        ).hexdigest()
