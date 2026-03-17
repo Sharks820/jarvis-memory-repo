@@ -853,17 +853,74 @@ def _init_proactive_subsystem(
     )
 
 
-def _register_agent_handlers(bus: CommandBus, root: Path) -> None:
-    """Register stub agent CQRS handlers on the bus (Phase 20 infrastructure)."""
+def _register_agent_handlers(
+    bus: CommandBus,
+    root: Path,
+    gateway: Any = None,
+    db: Any = None,
+) -> None:
+    """Register real agent CQRS handlers on the bus (Phase 22 wiring)."""
     from jarvis_engine.handlers.agent_handlers import (
         AgentApproveHandler,
         AgentRunHandler,
         AgentStatusHandler,
     )
 
-    bus.register(AgentRunCommand, AgentRunHandler(root).handle)
-    bus.register(AgentStatusCommand, AgentStatusHandler(root).handle)
-    bus.register(AgentApproveCommand, AgentApproveHandler(root).handle)
+    try:
+        from jarvis_engine.agent.approval_gate import ApprovalGate
+        from jarvis_engine.agent.progress_bus import get_progress_bus
+        from jarvis_engine.agent.state_store import AgentStateStore
+        from jarvis_engine.agent.tool_registry import ToolRegistry
+        from jarvis_engine.agent.tools.file_tool import FileTool
+        from jarvis_engine.agent.tools.shell_tool import ShellTool
+
+        progress_bus = get_progress_bus()
+        gate = ApprovalGate(progress_bus)
+        registry = ToolRegistry()
+
+        # Register built-in tools
+        project_dir = root
+        file_tool = FileTool(project_dir)
+        registry.register(file_tool.get_tool_spec())
+        shell_tool = ShellTool(project_dir)
+        registry.register(shell_tool.get_tool_spec())
+
+        # Try to register web tool (optional dep)
+        try:
+            from jarvis_engine.agent.tools.web_tool import WebTool
+
+            web_tool = WebTool()
+            registry.register(web_tool.get_tool_spec())
+        except SUBSYSTEM_ERRORS as exc:
+            logger.debug("WebTool registration skipped: %s", exc)
+
+        # Build or reuse AgentStateStore
+        if db is not None:
+            store = AgentStateStore(db)
+        else:
+            # Fallback: create an in-process connection for tests/lightweight mode
+            import sqlite3 as _sqlite3
+
+            from jarvis_engine._shared import memory_db_path
+
+            _db_path = memory_db_path(root)
+            _agent_db = _sqlite3.connect(str(_db_path), check_same_thread=False)
+            _agent_db.row_factory = _sqlite3.Row
+            store = AgentStateStore(_agent_db)
+
+        bus.register(
+            AgentRunCommand,
+            AgentRunHandler(
+                root, gateway=gateway, registry=registry, store=store, gate=gate, bus=progress_bus
+            ).handle,
+        )
+        bus.register(AgentStatusCommand, AgentStatusHandler(root, store=store).handle)
+        bus.register(AgentApproveCommand, AgentApproveHandler(root, gate=gate).handle)
+    except SUBSYSTEM_ERRORS as exc:
+        logger.warning("Agent handler wiring failed, using stub handlers: %s", exc)
+        bus.register(AgentRunCommand, AgentRunHandler(root).handle)
+        bus.register(AgentStatusCommand, AgentStatusHandler(root).handle)
+        bus.register(AgentApproveCommand, AgentApproveHandler(root).handle)
 
 
 def create_app(root: Path) -> CommandBus:
@@ -905,7 +962,7 @@ def create_app(root: Path) -> CommandBus:
     _register_ops_handlers(bus, root, gateway, pipeline, engine=engine)
     _register_security_handlers(bus, root)
     _register_knowledge_handlers(bus, root, kg)
-    _register_agent_handlers(bus, root)
+    _register_agent_handlers(bus, root, gateway=gateway, db=engine.db if engine is not None else None)
 
     # Subsystems with internal state
     _init_learning_subsystem(

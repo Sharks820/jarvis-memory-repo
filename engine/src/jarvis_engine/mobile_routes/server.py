@@ -43,6 +43,7 @@ from jarvis_engine._shared import memory_db_path, runtime_dir
 from jarvis_engine.memory.basic_ingest import IngestionPipeline
 from jarvis_engine.security.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
+    AgentRoutesMixin,
     AuthRoutesMixin,
     CommandRoutesMixin,
     DataRoutesMixin,
@@ -616,6 +617,7 @@ class MobileIngestServer(ThreadingHTTPServer):
 
 
 class MobileIngestHandler(
+    AgentRoutesMixin,
     HealthRoutesMixin,
     AuthRoutesMixin,
     SyncRoutesMixin,
