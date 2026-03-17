@@ -29,6 +29,12 @@ PRICING: dict[str, tuple[float, float]] = {
     # Z.ai GLM (free tier available) — longer prefix first for startswith() matching
     "glm-4.7-flash": (0.14, 0.14),
     "glm-4.7": (0.60, 2.50),
+    # Google Gemini — longer prefix first for startswith() matching
+    "gemini-2.5-pro": (1.25, 10.0),
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-1.5-pro": (1.25, 5.0),
+    "gemini-1.5-flash": (0.075, 0.30),
 }
 
 # Pre-sorted by descending prefix length for correct startswith() matching.

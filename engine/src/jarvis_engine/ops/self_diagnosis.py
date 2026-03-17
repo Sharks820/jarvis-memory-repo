@@ -593,7 +593,7 @@ class DiagnosticEngine:
             return {"applied": False, "result": f"WAL checkpoint failed: {exc}"}
 
     def _fix_clear_stuck_missions(self) -> dict[str, Any]:
-        """Cancel missions running > 30 minutes."""
+        """Cancel missions running > _STUCK_MISSION_MINUTES."""
         try:
             from jarvis_engine.learning.missions import load_missions, cancel_mission
             from jarvis_engine._compat import UTC
@@ -616,7 +616,7 @@ class DiagnosticEngine:
                 if started is None:
                     continue
                 delta_minutes = (now - started).total_seconds() / 60.0
-                if delta_minutes > 30.0:
+                if delta_minutes > _STUCK_MISSION_MINUTES:
                     mid = str(mission.get("mission_id", ""))
                     try:
                         cancel_mission(self._root, mission_id=mid)

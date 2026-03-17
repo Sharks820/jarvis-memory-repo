@@ -61,7 +61,7 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
         print("error: query is required for web research.")
         return 2
     result = _get_bus().dispatch(WebResearchCommand(
-        query=query, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
+        query=cleaned, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
     ))
     if result.return_code != 0:
         print("error: web research failed")

@@ -555,9 +555,9 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
                 # Include the server's error body so the user sees what happened.
                 server_msg = ""
                 try:
-                    body = exc.read().decode("utf-8", errors="replace")[:500]
+                    error_body = exc.read().decode("utf-8", errors="replace")[:500]
                     import json as _json
-                    parsed_err = _json.loads(body)
+                    parsed_err = _json.loads(error_body)
                     server_msg = str(parsed_err.get("error", parsed_err.get("reason", "")))
                 except Exception:
                     server_msg = str(exc.reason)
