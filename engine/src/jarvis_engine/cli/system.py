@@ -438,14 +438,23 @@ def cmd_weather(location: str) -> int:
         print("error: weather lookup failed")
         return result.return_code
 
+    c = result.current
     print("weather_report")
     print(f"location={result.location}")
-    print(f"temperature_f={result.current.get('temp_F', '')}")
-    print(f"temperature_c={result.current.get('temp_C', '')}")
-    print(f"feels_like_f={result.current.get('FeelsLikeF', '')}")
-    print(f"humidity={result.current.get('humidity', '')}")
     if result.description:
         print(f"conditions={result.description}")
+    print(f"temperature_f={c.get('temp_F', '')}°F")
+    print(f"temperature_c={c.get('temp_C', '')}°C")
+    print(f"feels_like_f={c.get('FeelsLikeF', '')}°F")
+    print(f"feels_like_c={c.get('FeelsLikeC', '')}°C")
+    print(f"humidity={c.get('humidity', '')}%")
+    print(f"wind_speed_mph={c.get('windspeedMiles', '')}")
+    print(f"wind_direction={c.get('winddir16Point', '')}")
+    print(f"visibility_miles={c.get('visibilityMiles', '')}")
+    print(f"uv_index={c.get('uvIndex', '')}")
+    print(f"pressure_mb={c.get('pressure', '')}")
+    print(f"precipitation_mm={c.get('precipMM', '')}")
+    print(f"cloud_cover={c.get('cloudcover', '')}%")
     return 0
 
 
