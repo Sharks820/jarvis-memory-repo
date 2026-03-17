@@ -1,3 +1,18 @@
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
+stopped_at: Completed 20-01-PLAN.md and 20-02-PLAN.md
+last_updated: "2026-03-17T06:00:00.000Z"
+last_activity: 2026-03-17 — Phase 20 plans 01 and 02 complete
+progress:
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+---
+
 # Project State
 
 ## Project Reference
@@ -11,11 +26,11 @@ See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 ## Current Position
 
 Phase: 20 of 25 (Infrastructure Foundations)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-03-17 — v6.0 roadmap created, phases 20–25 defined
+Plan: 2 of 2 in current phase
+Status: Phase 20 complete
+Last activity: 2026-03-17 — Phase 20 plans 01 and 02 complete
 
-Progress (v6.0): [░░░░░░░░░░] 0%
+Progress (v6.0): [██░░░░░░░░] 8%
 
 ## Performance Metrics
 
@@ -32,6 +47,11 @@ Progress (v6.0): [░░░░░░░░░░] 0%
 - mypy: 77 errors / 22 files
 - bandit: 0 high, 9 medium, 57 low
 
+**v6.0 Phase 20 results (2026-03-17):**
+- pytest: 6073 passing, 9 skipped, 0 failures
+- ruff: clean
+- 94 new tests added across 3 test files
+
 ## Accumulated Context
 
 ### Decisions
@@ -43,6 +63,10 @@ Progress (v6.0): [░░░░░░░░░░] 0%
 - VRAM budget: Ollama qwen3.5 uses 5.5–6.5GB; Unity play-mode 1–3GB; 8GB RTX 4060 Ti requires hard mutex
 - Phase order rationale: infrastructure blockers (VRAM OOM, orphaned processes, API hallucination) must be resolved before bridge or code-gen work begins
 - Phases 23 and 24 can be executed in parallel (no direct dependency between them)
+- VRAMCoordinator uses asyncio.Lock (not threading.Lock) — sits on async gateway call path
+- taskkill /f /t on Windows required for Unity tree kill (children orphan otherwise)
+- Agent CQRS stub commands: frozen dataclasses, Phase 22 fills in handler logic only
+- AgentStateStore accepts existing sqlite3.Connection (never opens its own) — consistent with MemoryEngine shared-connection pattern
 
 ### Blockers/Concerns
 
@@ -58,5 +82,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-17
-Stopped at: Roadmap created and approved. Ready to begin Phase 20 planning.
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None

@@ -32,7 +32,7 @@ See archived plans in `.planning/phases/`.
 
 ### Phases
 
-- [ ] **Phase 20: Infrastructure Foundations** - VRAM coordinator, process manager, KG seeding, AgentStateStore, ToolRegistry
+- [x] **Phase 20: Infrastructure Foundations** - VRAM coordinator, process manager, KG seeding, AgentStateStore, ToolRegistry (completed 2026-03-17)
 - [ ] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail
 - [ ] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming
 - [ ] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI
@@ -143,7 +143,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 20. Infrastructure Foundations | v6.0 | 0/2 | Not started | - |
+| 20. Infrastructure Foundations | 2/2 | Complete   | 2026-03-17 | - |
 | 21. Unity Editor Bridge | v6.0 | 0/2 | Not started | - |
 | 22. Core Agent Loop | v6.0 | 0/3 | Not started | - |
 | 23. C# Code Generation | v6.0 | 0/3 | Not started | - |

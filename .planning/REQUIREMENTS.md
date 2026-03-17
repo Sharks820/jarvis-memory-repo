@@ -10,13 +10,13 @@
 - [ ] **AGENT-01**: User can give a high-level task via text/voice and Jarvis breaks it into executable steps
 - [ ] **AGENT-02**: Agent executes steps sequentially using registered tools with error handling
 - [ ] **AGENT-03**: Agent reflects on step results and replans when outcomes differ from expectations
-- [ ] **AGENT-04**: Agent checkpoints state to SQLite before each tool call for crash recovery
+- [x] **AGENT-04**: Agent checkpoints state to SQLite before each tool call for crash recovery
 - [ ] **AGENT-05**: Agent respects task-level token budget and escalates after 3 consecutive same-error failures
 - [ ] **AGENT-06**: Agent streams real-time progress events to widget and Unity Editor panel via SSE
 
 ### Tool Layer
 
-- [ ] **TOOL-01**: Pluggable tool registry with standard interface (execute, validate, estimate_cost)
+- [x] **TOOL-01**: Pluggable tool registry with standard interface (execute, validate, estimate_cost)
 - [ ] **TOOL-02**: Smart approval gate: safe=auto, destructive=approve, costly=approve+estimate
 - [ ] **TOOL-03**: FileTool reads/writes project files confined to project directory
 - [ ] **TOOL-04**: ShellTool executes commands via subprocess with policy gate and timeout
@@ -49,7 +49,7 @@
 
 ### Knowledge
 
-- [ ] **KNOW-01**: Unity 6.3 API reference, patterns, and common errors seeded into knowledge graph
+- [x] **KNOW-01**: Unity 6.3 API reference, patterns, and common errors seeded into knowledge graph
 - [ ] **KNOW-02**: Successful code patterns and error fixes accumulated via learn-as-you-go
 - [ ] **KNOW-03**: Agent queries KG during planning for Unity-specific guidance
 - [ ] **KNOW-04**: Breaking changes from Unity 6.3 upgrade guide flagged during code generation
@@ -87,10 +87,10 @@
 | AGENT-01 | Phase 22 | Pending |
 | AGENT-02 | Phase 22 | Pending |
 | AGENT-03 | Phase 22 | Pending |
-| AGENT-04 | Phase 20 | Pending |
+| AGENT-04 | Phase 20 | Complete |
 | AGENT-05 | Phase 22 | Pending |
 | AGENT-06 | Phase 22 | Pending |
-| TOOL-01 | Phase 20 | Pending |
+| TOOL-01 | Phase 20 | Complete |
 | TOOL-02 | Phase 22 | Pending |
 | TOOL-03 | Phase 22 | Pending |
 | TOOL-04 | Phase 22 | Pending |
@@ -111,7 +111,7 @@
 | ASSET-02 | Phase 24 | Pending |
 | ASSET-03 | Phase 24 | Pending |
 | ASSET-04 | Phase 24 | Pending |
-| KNOW-01 | Phase 20 | Pending |
+| KNOW-01 | Phase 20 | Complete |
 | KNOW-02 | Phase 25 | Pending |
 | KNOW-03 | Phase 23 | Pending |
 | KNOW-04 | Phase 23 | Pending |
