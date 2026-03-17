@@ -3,11 +3,27 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
+stopped_at: Completed 23-02-PLAN.md
+last_updated: "2026-03-17T12:43:17.945Z"
+last_activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
+progress:
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 9
+  percent: 63
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
 stopped_at: Completed 23-01-PLAN.md
 last_updated: "2026-03-17T09:20:00Z"
 last_activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
 progress:
-  total_phases: 6
+  [██████░░░░] 63%
   completed_phases: 3
   total_plans: 10
   completed_plans: 8
@@ -73,11 +89,11 @@ See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 ## Current Position
 
 Phase: 23 of 25 (C# Code Generation)
-Plan: 1 of 1 in current phase (complete)
-Status: Phase 23 plan 01 complete
-Last activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
+Plan: 2 of 2 in current phase (complete)
+Status: Phase 23 plan 02 complete
+Last activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
 
-Progress (v6.0): [███████░░░] 70%
+Progress (v6.0): [███████░░░] 73%
 
 ## Performance Metrics
 
@@ -123,6 +139,12 @@ Progress (v6.0): [███████░░░] 70%
 - 42 new tests added (20 prompt_builder + 22 api_validator)
 - Duration: ~20 minutes
 
+**v6.0 Phase 23-02 results (2026-03-17):**
+- pytest: 6347 passing, 10 skipped, 0 failures
+- ruff: clean
+- 70 new tests added (36 nunit_generator + 34 compile_fix_loop)
+- Duration: ~14 minutes
+
 ## Accumulated Context
 
 ### Decisions
@@ -151,6 +173,9 @@ Progress (v6.0): [███████░░░] 70%
 - [Phase 23]: UnityPromptBuilder queries KG twice -- unity_api facts for API section, unity_breaking facts for warnings section; separate calls allow filtering by node_type
 - [Phase 23]: ApiValidator produces soft warnings for unknown APIs (not hard blocks) -- KG coverage is intentionally incomplete
 - [Phase 23]: Baseline prompt rules hardcoded (SerializeField, Experimental namespaces, URP, path) -- stable Unity 6.3 invariants, not KG-dependent
+- [Phase 23]: NUnitGenerator falls back to structural scaffold when LLM response is empty -- avoids silent failures
+- [Phase 23]: CompileFixLoop releases playmode in finally block even on EnterPlayMode error -- GPU mutex cannot leak
+- [Phase 23]: _strip_code_fences returns original text unchanged when no fences present -- preserves trailing newlines in LLM responses
 
 ### Blockers/Concerns
 
@@ -165,6 +190,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T09:20:00Z
-Stopped at: Completed 23-01-PLAN.md
+Last session: 2026-03-17T12:43:17.940Z
+Stopped at: Completed 23-02-PLAN.md
 Resume file: None

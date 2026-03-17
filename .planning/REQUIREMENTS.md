@@ -35,8 +35,8 @@
 ### Code Generation
 
 - [x] **CODE-01**: Agent generates valid Unity 6.3 C# scripts with correct API usage
-- [ ] **CODE-02**: Agent compiles, runs tests, enters play mode, and fixes errors in a verify-fix loop
-- [ ] **CODE-03**: Agent writes NUnit tests alongside game scripts
+- [x] **CODE-02**: Agent compiles, runs tests, enters play mode, and fixes errors in a verify-fix loop
+- [x] **CODE-03**: Agent writes NUnit tests alongside game scripts
 - [ ] **CODE-04**: Pre-compilation static analysis blocks dangerous APIs (Process.Start, File.Delete outside jail)
 - [ ] **CODE-05**: Generated code confined to Assets/JarvisGenerated/ path jail
 
@@ -103,8 +103,8 @@
 | UNITY-05 | Phase 23 | Pending |
 | UNITY-06 | Phase 20 | Pending |
 | CODE-01 | Phase 23 | Complete |
-| CODE-02 | Phase 23 | Pending |
-| CODE-03 | Phase 23 | Pending |
+| CODE-02 | Phase 23 | Complete |
+| CODE-03 | Phase 23 | Complete |
 | CODE-04 | Phase 21 | Pending |
 | CODE-05 | Phase 21 | Pending |
 | ASSET-01 | Phase 24 | Pending |
