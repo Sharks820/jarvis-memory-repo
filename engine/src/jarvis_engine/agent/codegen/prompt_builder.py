@@ -7,10 +7,14 @@ hallucinated legacy APIs.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from jarvis_engine.agent.learn_accumulator import LearnAccumulator
     from jarvis_engine.knowledge.graph import KnowledgeGraph
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -46,8 +50,13 @@ class UnityPromptBuilder:
         kg: A KnowledgeGraph instance used to retrieve Unity 6.3 facts.
     """
 
-    def __init__(self, kg: "KnowledgeGraph") -> None:
+    def __init__(
+        self,
+        kg: "KnowledgeGraph",
+        accumulator: "LearnAccumulator | None" = None,
+    ) -> None:
         self._kg = kg
+        self._accumulator = accumulator
 
     def build_unity_system_prompt(
         self,
@@ -104,6 +113,20 @@ class UnityPromptBuilder:
 
         # Baseline rules (always present)
         parts.append(_BASELINE_RULES)
+
+        # Learned patterns from accumulator (injected before extra context)
+        if self._accumulator is not None:
+            try:
+                patterns = self._accumulator.query_patterns(task_context, limit=5)
+                if patterns:
+                    parts.append("## Learned Patterns")
+                    for pattern in patterns:
+                        parts.append(f"- {pattern}")
+                    parts.append("")
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "UnityPromptBuilder: accumulator query failed (non-fatal)", exc_info=True
+                )
 
         # Optional extra context
         if extra_context:

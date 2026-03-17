@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from jarvis_engine.agent.codegen.api_validator import ApiValidator
     from jarvis_engine.agent.codegen.prompt_builder import UnityPromptBuilder
+    from jarvis_engine.agent.learn_accumulator import LearnAccumulator
     from jarvis_engine.agent.tools.unity_tool import UnityTool
     from jarvis_engine.agent.vram_coordinator import VRAMCoordinator
     from jarvis_engine.gateway.models import ModelGateway
@@ -126,6 +127,7 @@ class CompileFixLoop:
         coordinator: "VRAMCoordinator",
         prompt_builder: "UnityPromptBuilder",
         max_retries: int = 5,
+        accumulator: "LearnAccumulator | None" = None,
     ) -> None:
         self._unity_tool = unity_tool
         self._gateway = gateway
@@ -133,6 +135,7 @@ class CompileFixLoop:
         self._coordinator = coordinator
         self._prompt_builder = prompt_builder
         self._max_retries = max_retries
+        self._accumulator = accumulator
 
     async def run(
         self,
@@ -208,6 +211,28 @@ class CompileFixLoop:
 
             # --- Step 6: Enter play mode with VRAM coordination ---
             await self._enter_play_mode()
+
+            # --- Step 7: Accumulate learned patterns (non-fatal) ---
+            if self._accumulator is not None:
+                try:
+                    # Save error-fix pair if fixes were applied (iterations > 1)
+                    if iterations > 1:
+                        self._accumulator.save_error_fix(
+                            error_message=all_errors[-1] if all_errors else "",
+                            fix_description=f"Fixed after {iterations} iterations",
+                            code_before="",
+                            code_after=current_code[:500],
+                        )
+                    # Always save the final working pattern
+                    self._accumulator.save_pattern(
+                        script_path=str(script_path),
+                        code_snippet=current_code[:500],
+                        description=f"Working Unity script: {script_path.rsplit('/', 1)[-1].replace('.cs', '')}",
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "CompileFixLoop: accumulator save failed (non-fatal)", exc_info=True
+                    )
 
             return CompileFixResult(
                 success=True,
