@@ -83,12 +83,12 @@ Plans:
   3. Destructive or costly tool calls are blocked until the user approves — safe operations run automatically
   4. Agent escalates to the user after 3 consecutive same-error failures rather than looping indefinitely
   5. Live progress events appear in the Jarvis widget as each step starts and completes
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 22-01: TaskPlanner, StepExecutor, ReflectionLoop, ApprovalGate
-- [ ] 22-02: ProgressEventBus, SSE /agent/stream endpoint, ShellTool, FileTool, WebTool, KGTool
-- [ ] 22-03: End-to-end test — rotating cube task executes autonomously
+- [ ] 22-01-PLAN.md — Built-in tools (FileTool, ShellTool, WebTool), ApprovalGate, ProgressEventBus
+- [ ] 22-02-PLAN.md — TaskPlanner, StepExecutor, ReflectionLoop (core agent loop logic)
+- [ ] 22-03-PLAN.md — Wire real handlers, SSE endpoint, end-to-end integration test
 
 ### Phase 23: C# Code Generation
 **Goal**: Agent-generated C# scripts compile correctly against Unity 6.3 APIs on the first or second attempt — domain-specific prompting, API validation, NUnit tests, and an in-Editor progress panel make the loop visible and reliable
@@ -100,7 +100,7 @@ Plans:
   3. Generated scripts include a paired NUnit test file under Assets/JarvisGenerated/Tests/
   4. Unity Editor panel shows the agent's current step, recent log entries, and approve/reject buttons inside Unity
   5. Unity 6.3 breaking change warnings (removed namespaces, deprecated APIs) surface during code generation before compilation
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [ ] 23-01: Unity-domain system prompt, API validation pre-compilation pass, KG query integration
@@ -116,7 +116,7 @@ Plans:
   2. Blender headless pipeline optimizes raw tripo.io meshes (LOD, UV, normals) without manual intervention
   3. Imported assets appear in Unity with correct TextureImporter, ModelImporter, and AudioImporter settings applied automatically
   4. Agent selects tripo.io for organic/character models and Blender for geometry/terrain based on asset type
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [ ] 24-01: TripoTool, BlenderTool, Blender bpy scripts library
@@ -131,7 +131,7 @@ Plans:
   2. User says "use Mixamo for animations" and Jarvis registers that tool for the current session without restarting
   3. Voice command routes to AgentRunCommand — user can assign Unity tasks hands-free
   4. Completed task produces a summary: files created, steps taken, tokens used, errors encountered
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [ ] 25-01: Learn-as-you-go KG accumulation, successful pattern and error-fix storage
