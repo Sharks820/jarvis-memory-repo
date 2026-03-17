@@ -147,5 +147,5 @@ Plans:
 | 21. Unity Editor Bridge | 2/2 | Complete    | 2026-03-17 | - |
 | 22. Core Agent Loop | 3/3 | Complete    | 2026-03-17 | - |
 | 23. C# Code Generation | 3/3 | Complete    | 2026-03-17 | - |
-| 24. Asset Pipeline | 2/2 | Complete   | 2026-03-17 | - |
+| 24. Asset Pipeline | 2/2 | Complete    | 2026-03-17 | - |
 | 25. Polish and Integration | v6.0 | 0/2 | Not started | - |
