@@ -25,9 +25,9 @@
 
 ### Unity Integration
 
-- [ ] **UNITY-01**: JarvisEditorBridge C# plugin communicates via WebSocket JSON-RPC on localhost:8091
-- [ ] **UNITY-02**: Bridge uses reflection-based command dispatch covering full Unity Editor API
-- [ ] **UNITY-03**: Bridge handles domain reload gracefully (heartbeat + reconnect + WAITING_FOR_BRIDGE state)
+- [x] **UNITY-01**: JarvisEditorBridge C# plugin communicates via WebSocket JSON-RPC on localhost:8091
+- [x] **UNITY-02**: Bridge uses reflection-based command dispatch covering full Unity Editor API
+- [x] **UNITY-03**: Bridge handles domain reload gracefully (heartbeat + reconnect + WAITING_FOR_BRIDGE state)
 - [ ] **UNITY-04**: UnityTool creates projects, writes C# scripts, compiles, builds via bridge
 - [ ] **UNITY-05**: Unity Editor panel shows agent progress, approval dialogs, console streaming
 - [ ] **UNITY-06**: VRAM coordinator prevents OOM when Ollama and Unity share 8GB GPU
@@ -96,9 +96,9 @@
 | TOOL-04 | Phase 22 | Pending |
 | TOOL-05 | Phase 22 | Pending |
 | TOOL-06 | Phase 25 | Pending |
-| UNITY-01 | Phase 21 | Pending |
-| UNITY-02 | Phase 21 | Pending |
-| UNITY-03 | Phase 21 | Pending |
+| UNITY-01 | Phase 21 | Complete |
+| UNITY-02 | Phase 21 | Complete |
+| UNITY-03 | Phase 21 | Complete |
 | UNITY-04 | Phase 21 | Pending |
 | UNITY-05 | Phase 23 | Pending |
 | UNITY-06 | Phase 20 | Pending |
