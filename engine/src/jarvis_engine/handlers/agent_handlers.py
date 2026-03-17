@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Any
 from jarvis_engine.commands.agent_commands import (
     AgentApproveCommand,
     AgentApproveResult,
+    AgentRegisterToolCommand,
+    AgentRegisterToolResult,
     AgentRunCommand,
     AgentRunResult,
     AgentStatusCommand,
@@ -186,6 +188,75 @@ class AgentStatusHandler:
             step_index=task.step_index,
             tokens_used=task.tokens_used,
             last_error=task.last_error,
+        )
+
+
+class AgentRegisterToolHandler:
+    """Handle AgentRegisterToolCommand -- registers a new tool in ToolRegistry at runtime."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        registry: "ToolRegistry | None" = None,
+    ) -> None:
+        self._root = root
+        self._registry = registry
+
+    def handle(self, cmd: AgentRegisterToolCommand) -> AgentRegisterToolResult:
+        import json as _json
+
+        if self._registry is None:
+            return AgentRegisterToolResult(
+                return_code=1,
+                message="ToolRegistry not configured",
+                tool_name=cmd.name,
+                registered=False,
+            )
+
+        if not cmd.name:
+            return AgentRegisterToolResult(
+                return_code=1,
+                message="Tool name must be non-empty",
+                tool_name="",
+                registered=False,
+            )
+
+        try:
+            params_dict = _json.loads(cmd.parameters)
+        except _json.JSONDecodeError as exc:
+            return AgentRegisterToolResult(
+                return_code=1,
+                message=f"Invalid parameters JSON: {exc}",
+                tool_name=cmd.name,
+                registered=False,
+            )
+
+        from jarvis_engine.agent.tool_registry import ToolSpec
+
+        _tool_name = cmd.name  # capture for closure
+
+        def _placeholder_execute(**_kwargs: object) -> str:
+            return f"Tool {_tool_name} invoked (runtime-registered, no execute implementation)"
+
+        spec = ToolSpec(
+            name=cmd.name,
+            description=cmd.description,
+            parameters=params_dict,
+            execute=_placeholder_execute,
+            requires_approval=cmd.requires_approval,
+        )
+        self._registry.register(spec)
+
+        logger.info(
+            "AgentRegisterToolHandler: registered tool %r at runtime",
+            cmd.name,
+        )
+        return AgentRegisterToolResult(
+            return_code=0,
+            message=f"Tool '{cmd.name}' registered",
+            tool_name=cmd.name,
+            registered=True,
         )
 
 

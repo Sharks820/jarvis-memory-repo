@@ -121,6 +121,7 @@ from jarvis_engine.commands.sync_commands import (
 )
 from jarvis_engine.commands.agent_commands import (
     AgentApproveCommand,
+    AgentRegisterToolCommand,
     AgentRunCommand,
     AgentStatusCommand,
 )
@@ -862,6 +863,7 @@ def _register_agent_handlers(
     """Register real agent CQRS handlers on the bus (Phase 22 wiring)."""
     from jarvis_engine.handlers.agent_handlers import (
         AgentApproveHandler,
+        AgentRegisterToolHandler,
         AgentRunHandler,
         AgentStatusHandler,
     )
@@ -949,11 +951,16 @@ def _register_agent_handlers(
         )
         bus.register(AgentStatusCommand, AgentStatusHandler(root, store=store).handle)
         bus.register(AgentApproveCommand, AgentApproveHandler(root, gate=gate).handle)
+        bus.register(
+            AgentRegisterToolCommand,
+            AgentRegisterToolHandler(root, registry=registry).handle,
+        )
     except SUBSYSTEM_ERRORS as exc:
         logger.warning("Agent handler wiring failed, using stub handlers: %s", exc)
         bus.register(AgentRunCommand, AgentRunHandler(root).handle)
         bus.register(AgentStatusCommand, AgentStatusHandler(root).handle)
         bus.register(AgentApproveCommand, AgentApproveHandler(root).handle)
+        bus.register(AgentRegisterToolCommand, AgentRegisterToolHandler(root).handle)
 
 
 def create_app(root: Path) -> CommandBus:

@@ -7,9 +7,10 @@ not change in later phases -- only the handler implementations change.
 
 Commands::
 
-    AgentRunCommand     -- Submit a new agent task goal for execution
-    AgentStatusCommand  -- Query the status of an in-progress task
-    AgentApproveCommand -- Approve or reject a task that is waiting for human approval
+    AgentRunCommand            -- Submit a new agent task goal for execution
+    AgentStatusCommand         -- Query the status of an in-progress task
+    AgentApproveCommand        -- Approve or reject a task waiting for human approval
+    AgentRegisterToolCommand   -- Register a new tool in ToolRegistry at runtime
 """
 
 from __future__ import annotations
@@ -120,3 +121,38 @@ class AgentApproveResult(ResultBase):
 
     task_id: str = ""
     action_taken: str = ""
+
+
+# ---------------------------------------------------------------------------
+# AgentRegisterToolCommand
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AgentRegisterToolCommand:
+    """Register a new tool in ToolRegistry at runtime.
+
+    Attributes:
+        name:             Unique tool identifier (e.g. "mixamo").
+        description:      Human-readable description of what the tool does.
+        parameters:       JSON string of parameter schema (e.g. '{"url": "string"}').
+        requires_approval: If True the tool invocation always requires human approval.
+    """
+
+    name: str = ""
+    description: str = ""
+    parameters: str = "{}"  # JSON string of parameter schema
+    requires_approval: bool = False
+
+
+@dataclass
+class AgentRegisterToolResult(ResultBase):
+    """Result of AgentRegisterToolCommand.
+
+    Attributes:
+        tool_name:  The name of the tool that was (or was not) registered.
+        registered: True when the tool was successfully added to the registry.
+    """
+
+    tool_name: str = ""
+    registered: bool = False

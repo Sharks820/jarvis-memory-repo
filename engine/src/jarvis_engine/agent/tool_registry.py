@@ -70,6 +70,17 @@ class ToolRegistry:
             )
         self._tools[spec.name] = spec
 
+    def unregister(self, name: str) -> bool:
+        """Remove the tool with *name* from the registry.
+
+        Returns True if the tool was found and removed, False otherwise.
+        """
+        if name in self._tools:
+            del self._tools[name]
+            logger.info("ToolRegistry: unregistered tool %r", name)
+            return True
+        return False
+
     # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
