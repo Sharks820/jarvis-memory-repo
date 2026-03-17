@@ -29,7 +29,7 @@
 - [x] **UNITY-02**: Bridge uses reflection-based command dispatch covering full Unity Editor API
 - [x] **UNITY-03**: Bridge handles domain reload gracefully (heartbeat + reconnect + WAITING_FOR_BRIDGE state)
 - [ ] **UNITY-04**: UnityTool creates projects, writes C# scripts, compiles, builds via bridge
-- [ ] **UNITY-05**: Unity Editor panel shows agent progress, approval dialogs, console streaming
+- [x] **UNITY-05**: Unity Editor panel shows agent progress, approval dialogs, console streaming
 - [ ] **UNITY-06**: VRAM coordinator prevents OOM when Ollama and Unity share 8GB GPU
 
 ### Code Generation
@@ -100,7 +100,7 @@
 | UNITY-02 | Phase 21 | Complete |
 | UNITY-03 | Phase 21 | Complete |
 | UNITY-04 | Phase 21 | Pending |
-| UNITY-05 | Phase 23 | Pending |
+| UNITY-05 | Phase 23 | Complete |
 | UNITY-06 | Phase 20 | Pending |
 | CODE-01 | Phase 23 | Complete |
 | CODE-02 | Phase 23 | Complete |

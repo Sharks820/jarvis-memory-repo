@@ -3,11 +3,27 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
+stopped_at: Completed 23-03-PLAN.md
+last_updated: "2026-03-17T12:47:40.780Z"
+last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
+progress:
+  total_phases: 6
+  completed_phases: 4
+  total_plans: 10
+  completed_plans: 10
+  percent: 65
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
 stopped_at: Completed 23-02-PLAN.md
 last_updated: "2026-03-17T12:43:17.945Z"
 last_activity: 2026-03-17 -- Phase 23 plan 01 complete (UnityPromptBuilder + ApiValidator)
 progress:
-  total_phases: 6
+  [███████░░░] 65%
   completed_phases: 3
   total_plans: 10
   completed_plans: 9
@@ -176,6 +192,8 @@ Progress (v6.0): [███████░░░] 73%
 - [Phase 23]: NUnitGenerator falls back to structural scaffold when LLM response is empty -- avoids silent failures
 - [Phase 23]: CompileFixLoop releases playmode in finally block even on EnterPlayMode error -- GPU mutex cannot leak
 - [Phase 23]: _strip_code_fences returns original text unchanged when no fences present -- preserves trailing newlines in LLM responses
+- [Phase 23]: OnAgentMessage event raised via EditorApplication.delayCall to marshal WebSocket thread to Unity main thread
+- [Phase 23]: JarvisPanel approval section hidden entirely (not disabled) when no approval is pending
 
 ### Blockers/Concerns
 
@@ -190,6 +208,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T12:43:17.940Z
-Stopped at: Completed 23-02-PLAN.md
+Last session: 2026-03-17T12:47:40.776Z
+Stopped at: Completed 23-03-PLAN.md
 Resume file: None
