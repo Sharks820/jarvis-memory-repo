@@ -329,8 +329,6 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             _page_cache_bytes[0] -= len(old_val.encode("utf-8"))
         _PAGE_CACHE[key] = (now, value)
         _page_cache_bytes[0] += len(value.encode("utf-8"))
-        # Recompute byte total from actual cache to prevent counter drift
-        _page_cache_bytes[0] = sum(len(v.encode("utf-8")) for _, (_, v) in _PAGE_CACHE.items())
         if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes[0] > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:_PAGE_CACHE_EVICT_BATCH]
@@ -726,6 +724,38 @@ def run_learning_mission(
                 _save_missions(root, missions)
                 break
 
+    try:
+        return _run_learning_mission_inner(
+            root, mission_id=mission_id,
+            max_search_results=max_search_results, max_pages=max_pages,
+        )
+    except Exception as exc:
+        # CRITICAL: Never leave a mission stuck in "running" on unhandled errors.
+        logger.error("Mission %s failed with unhandled error: %s", mission_id, exc)
+        try:
+            with _MISSIONS_LOCK:
+                missions = load_missions(root)
+                for m in missions:
+                    if str(m.get("mission_id", "")) == mission_id:
+                        if m.get("status") == "running":
+                            m["status"] = "failed"
+                            m["updated_utc"] = now_iso()
+                            m["status_detail"] = f"Unhandled error: {type(exc).__name__}"
+                            _save_missions(root, missions)
+                        break
+        except Exception as cleanup_exc:
+            logger.error("Failed to mark mission %s as failed: %s", mission_id, cleanup_exc)
+        raise
+
+
+def _run_learning_mission_inner(
+    root: Path,
+    *,
+    mission_id: str,
+    max_search_results: int = 8,
+    max_pages: int = 12,
+) -> MissionReport:
+    """Inner implementation of run_learning_mission, wrapped by error handler."""
     _t0 = _now_ms()
     _update_step(root, mission_id, "init", status="running")
     topic, objective, sources = _start_mission(root, mission_id)
@@ -1070,20 +1100,21 @@ def auto_generate_missions(
 
     Returns list of newly created mission dicts.
     """
-    missions = load_missions(root)
-    pending_count = sum(
-        1 for m in missions
-        if str(m.get("status", "")).lower() == "pending"
-    )
-    if pending_count > 0:
-        logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
-        return []
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        pending_count = sum(
+            1 for m in missions
+            if str(m.get("status", "")).lower() == "pending"
+        )
+        if pending_count > 0:
+            logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
+            return []
 
-    existing_topics = {
-        str(m.get("topic", "")).lower().strip()
-        for m in missions
-        if str(m.get("status", "")).lower() in ("pending", "completed", "running")
-    }
+        existing_topics = {
+            str(m.get("topic", "")).lower().strip()
+            for m in missions
+            if str(m.get("status", "")).lower() in ("pending", "completed", "running")
+        }
 
     collector = _TopicCollector(max_new, existing_topics)
 

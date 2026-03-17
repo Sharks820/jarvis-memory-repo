@@ -22,7 +22,7 @@ import socket
 from ipaddress import ip_address
 from typing import IO
 from urllib.parse import quote_plus, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +183,7 @@ def _html_to_text(raw: bytes) -> str:
     """Convert raw HTML bytes to plain text with tag/script/style stripping."""
     text = raw.decode("utf-8", errors="replace")
     # Prefer proper HTML parser over regex for tag stripping (security)
+    _lxml_ok = False
     try:
         from lxml.html.clean import Cleaner  # type: ignore[import-untyped]
         from lxml.html import fromstring as _lxml_parse  # type: ignore[import-untyped]
@@ -191,8 +192,14 @@ def _html_to_text(raw: bytes) -> str:
         doc = _lxml_parse(text)
         cleaned = cleaner.clean_html(doc)
         text = cleaned.text_content()
-    except (ImportError, Exception):
-        # Fallback to regex if lxml not available
+        _lxml_ok = True
+    except ImportError:
+        pass  # lxml not installed — use regex fallback
+    except (ValueError, TypeError) as exc:
+        logger.debug("lxml HTML cleaning failed, falling back to regex: %s", exc)
+    if _lxml_ok:
+        return _WHITESPACE_RE.sub(" ", text).strip()
+    # Fallback to regex if lxml not available or failed
         text = _SCRIPT_RE.sub(" ", text)
         text = _STYLE_RE.sub(" ", text)
         text = _TAG_RE.sub(" ", text)
@@ -211,18 +218,31 @@ def _fetch_with_curl_cffi(url: str, max_bytes: int) -> bytes:
     except ImportError:
         return b""
     try:
+        # Disable auto-redirects so we can check each hop BEFORE connecting
         response = curl_requests.get(
             url,
             headers=_BROWSER_HEADERS,
             timeout=15,
             impersonate="chrome",
-            allow_redirects=True,
+            allow_redirects=False,
         )
-        # Check for redirect to unsafe destination
-        final_url = str(response.url) if response.url else url
-        if final_url != url and not is_safe_public_url(final_url):
-            logger.warning("curl_cffi: redirect to unsafe URL blocked: %s -> %s", url, final_url)
-            return b""
+        # Manually follow redirects with SSRF safety checks (max 10 hops)
+        hops = 0
+        while response.status_code in (301, 302, 303, 307, 308) and hops < 10:
+            redirect_url = response.headers.get("Location", "")
+            if not redirect_url:
+                break
+            if not is_safe_public_url(redirect_url):
+                logger.warning("curl_cffi: redirect to unsafe URL blocked: %s -> %s", url, redirect_url)
+                return b""
+            response = curl_requests.get(
+                redirect_url,
+                headers=_BROWSER_HEADERS,
+                timeout=15,
+                impersonate="chrome",
+                allow_redirects=False,
+            )
+            hops += 1
         if response.status_code != 200:
             logger.debug("curl_cffi: non-200 status %d for %s", response.status_code, url)
             return b""
@@ -248,13 +268,23 @@ def _fetch_with_httpx(url: str, max_bytes: int) -> bytes:
     except ImportError:
         return b""
     try:
-        with httpx.Client(http2=True, follow_redirects=True, timeout=15.0) as client:
+        with httpx.Client(http2=True, follow_redirects=False, timeout=15.0) as client:
             response = client.get(url, headers=_BROWSER_HEADERS)
-            # Check for redirect to unsafe destination
-            final_url = str(response.url) if response.url else url
-            if final_url != url and not is_safe_public_url(final_url):
-                logger.warning("httpx: redirect to unsafe URL blocked: %s -> %s", url, final_url)
-                return b""
+            # Manually follow redirects with SSRF safety checks (max 10 hops)
+            hops = 0
+            while response.is_redirect and hops < 10:
+                redirect_url = response.headers.get("location", "")
+                if not redirect_url:
+                    break
+                # Resolve relative redirects
+                if not redirect_url.startswith(("http://", "https://")):
+                    from urllib.parse import urljoin
+                    redirect_url = urljoin(str(response.url), redirect_url)
+                if not is_safe_public_url(redirect_url):
+                    logger.warning("httpx: redirect to unsafe URL blocked: %s -> %s", url, redirect_url)
+                    return b""
+                response = client.get(redirect_url, headers=_BROWSER_HEADERS)
+                hops += 1
             if response.status_code != 200:
                 logger.debug("httpx: non-200 status %d for %s", response.status_code, url)
                 return b""
@@ -268,7 +298,7 @@ def _fetch_with_httpx(url: str, max_bytes: int) -> bytes:
         logger.debug("httpx fetch failed for %s: %s", url, exc)
         return b""
     except Exception as exc:
-        logger.debug("httpx fetch failed for %s: %s", url, exc)
+        logger.warning("httpx unexpected error for %s: %s: %s", url, type(exc).__name__, exc)
         return b""
 
 
@@ -360,7 +390,7 @@ def fetch_page_text_with_fallbacks(url: str, *, max_bytes: int = 250_000) -> str
     # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected
     # SSRF safety is enforced inside fetch_page_text (is_safe_public_url + resolve_and_check_ip).
     # The fallback URL prefix is a hardcoded public HTTPS host; only the path varies.
-    cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{url}"
+    cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{quote_plus(url)}"
     logger.debug("fetch_page_text_with_fallbacks: direct fetch empty, trying Google Webcache for %s", url)
     result = fetch_page_text(cache_url, max_bytes=max_bytes)
     if result:
@@ -447,7 +477,8 @@ def search_brave(query: str, *, limit: int) -> list[str]:
         },
     )
     try:
-        with urlopen(req, timeout=12) as resp:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        opener = build_opener(SafeRedirectHandler)
+        with opener.open(req, timeout=12) as resp:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             payload = resp.read(500_000)
     except (OSError, ValueError) as exc:
         logger.warning("Brave Search request failed: %s", exc)

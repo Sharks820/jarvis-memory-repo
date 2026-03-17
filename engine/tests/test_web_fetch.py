@@ -493,6 +493,14 @@ def _mock_urlopen_cm(payload: bytes):
     return mock_resp
 
 
+def _mock_brave_opener(payload: bytes):
+    """Return a mock build_opener that returns a response CM for Brave tests."""
+    mock_resp = _mock_urlopen_cm(payload)
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+    return mock_opener
+
+
 class TestSearchBrave:
     """Brave Search API integration (all HTTP mocked)."""
 
@@ -502,14 +510,14 @@ class TestSearchBrave:
         assert urls == []
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_extracts_urls_from_json(self, mock_urlopen, mock_safe):
+    def test_extracts_urls_from_json(self, mock_opener_fn, mock_safe):
         payload = _brave_json_response([
             {"title": "Result 1", "url": "https://example.com/page1"},
             {"title": "Result 2", "url": "https://example.org/page2"},
         ])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         urls = search_brave("test query", limit=5)
         assert "https://example.com/page1" in urls
@@ -517,38 +525,38 @@ class TestSearchBrave:
         assert len(urls) == 2
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_respects_limit(self, mock_urlopen, mock_safe):
+    def test_respects_limit(self, mock_opener_fn, mock_safe):
         payload = _brave_json_response([
             {"title": f"R{i}", "url": f"https://site{i}.com/"}
             for i in range(10)
         ])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         urls = search_brave("test", limit=3)
         assert len(urls) <= 3
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_sends_auth_header(self, mock_urlopen, mock_safe):
+    def test_sends_auth_header(self, mock_opener_fn, mock_safe):
         payload = _brave_json_response([])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         search_brave("test", limit=5)
-        call_args = mock_urlopen.call_args
+        call_args = mock_opener_fn.return_value.open.call_args
         req = call_args[0][0]
         assert req.get_header("X-subscription-token") == "test-key-123"
 
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_filters_unsafe_urls(self, mock_urlopen):
+    def test_filters_unsafe_urls(self, mock_opener_fn):
         payload = _brave_json_response([
             {"title": "Private", "url": "http://192.168.1.1/admin"},
             {"title": "Safe", "url": "https://safe.example.com/page"},
         ])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         def _safe_check(url):
             return "192.168" not in url
@@ -558,53 +566,54 @@ class TestSearchBrave:
         assert all("192.168" not in u for u in urls)
         assert "https://safe.example.com/page" in urls
 
-    @patch("jarvis_engine.web.fetch.urlopen", side_effect=OSError("connection refused"))
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_network_error_returns_empty(self, mock_urlopen):
+    def test_network_error_returns_empty(self, mock_opener_fn):
+        mock_opener_fn.return_value.open.side_effect = OSError("connection refused")
         urls = search_brave("test", limit=5)
         assert urls == []
 
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_invalid_json_returns_empty(self, mock_urlopen):
-        mock_urlopen.return_value = _mock_urlopen_cm(b"not json at all")
+    def test_invalid_json_returns_empty(self, mock_opener_fn):
+        mock_opener_fn.return_value = _mock_brave_opener(b"not json at all")
         urls = search_brave("test", limit=5)
         assert urls == []
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_deduplicates_urls(self, mock_urlopen, mock_safe):
+    def test_deduplicates_urls(self, mock_opener_fn, mock_safe):
         payload = _brave_json_response([
             {"title": "First", "url": "https://example.com/page"},
             {"title": "Dup", "url": "https://example.com/page"},
             {"title": "Other", "url": "https://other.com/page"},
         ])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         urls = search_brave("test", limit=10)
         assert len(urls) == len(set(urls))
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_skips_results_without_url(self, mock_urlopen, mock_safe):
+    def test_skips_results_without_url(self, mock_opener_fn, mock_safe):
         payload = _brave_json_response([
             {"title": "No URL"},
             {"title": "Has URL", "url": "https://example.com/real"},
         ])
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         urls = search_brave("test", limit=5)
         assert urls == ["https://example.com/real"]
 
     @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web.fetch.urlopen")
+    @patch("jarvis_engine.web.fetch.build_opener")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
-    def test_missing_web_key_returns_empty(self, mock_urlopen, mock_safe):
+    def test_missing_web_key_returns_empty(self, mock_opener_fn, mock_safe):
         """API returns valid JSON but no 'web' key."""
         payload = json.dumps({"query": {"original": "test"}}).encode()
-        mock_urlopen.return_value = _mock_urlopen_cm(payload)
+        mock_opener_fn.return_value = _mock_brave_opener(payload)
 
         urls = search_brave("test", limit=5)
         assert urls == []
@@ -756,13 +765,15 @@ class TestFetchWithCurlCffi:
 
         assert result == b""
 
-    def test_rejects_redirect_to_private_ip(self):
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=False)
+    def test_rejects_redirect_to_private_ip(self, mock_safe):
         from jarvis_engine.web.fetch import _fetch_with_curl_cffi
 
-        # response.url differs from original and points to private IP
-        mock_resp = self._make_mock_response(url="http://192.168.1.1/admin")
+        # Initial response is a 302 redirect to a private IP
+        mock_redirect = self._make_mock_response(status_code=302, url="https://example.com/")
+        mock_redirect.headers = {"Location": "http://192.168.1.1/admin", "Content-Type": "text/html"}
         mock_module = MagicMock()
-        mock_module.requests.get.return_value = mock_resp
+        mock_module.requests.get.return_value = mock_redirect
 
         with patch.dict("sys.modules", {"curl_cffi": mock_module, "curl_cffi.requests": mock_module.requests}):
             result = _fetch_with_curl_cffi("https://example.com/", 250_000)
@@ -846,10 +857,22 @@ class TestFetchWithHttpx:
 
         assert result == b""
 
-    def test_rejects_redirect_to_private_ip(self):
+    @patch("jarvis_engine.web.fetch.is_safe_public_url", return_value=False)
+    def test_rejects_redirect_to_private_ip(self, mock_safe):
         from jarvis_engine.web.fetch import _fetch_with_httpx
 
-        mock_client, _ = self._make_mock_client_and_response(url="http://192.168.1.1/admin")
+        # Initial response is a redirect with Location to private IP
+        mock_redirect_resp = MagicMock()
+        mock_redirect_resp.status_code = 302
+        mock_redirect_resp.is_redirect = True
+        mock_redirect_resp.headers = {"location": "http://192.168.1.1/admin"}
+        mock_redirect_resp.url = "https://example.com/"
+
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_redirect_resp
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
         mock_httpx = MagicMock()
         mock_httpx.Client.return_value = mock_client
 
@@ -868,7 +891,7 @@ class TestFetchWithHttpx:
         with patch.dict("sys.modules", {"httpx": mock_httpx}):
             _fetch_with_httpx("https://example.com/", 250_000)
 
-        mock_httpx.Client.assert_called_once_with(http2=True, follow_redirects=True, timeout=15.0)
+        mock_httpx.Client.assert_called_once_with(http2=True, follow_redirects=False, timeout=15.0)
 
 
 # ── TestFetchPageTextMultiTier ────────────────────────────────────────────
