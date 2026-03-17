@@ -4,6 +4,21 @@ milestone: v6.0
 milestone_name: Unity Agent
 status: executing
 stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-17T07:02:32.926Z"
+last_activity: 2026-03-17 -- Phase 21 plan 02 complete (UnityTool + BridgeState + path jail + static analysis)
+progress:
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+---
+
+---
+gsd_state_version: 1.0
+milestone: v6.0
+milestone_name: Unity Agent
+status: executing
+stopped_at: Completed 21-02-PLAN.md
 last_updated: "2026-03-17T06:45:23.029Z"
 last_activity: 2026-03-17 — Phase 21 plan 02 complete (UnityTool + BridgeState + path jail + static analysis)
 progress:

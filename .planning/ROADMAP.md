@@ -144,7 +144,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 20. Infrastructure Foundations | 2/2 | Complete    | 2026-03-17 | - |
-| 21. Unity Editor Bridge | 2/2 | Complete   | 2026-03-17 | - |
+| 21. Unity Editor Bridge | 2/2 | Complete    | 2026-03-17 | - |
 | 22. Core Agent Loop | v6.0 | 0/3 | Not started | - |
 | 23. C# Code Generation | v6.0 | 0/3 | Not started | - |
 | 24. Asset Pipeline | v6.0 | 0/2 | Not started | - |
