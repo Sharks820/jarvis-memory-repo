@@ -35,7 +35,7 @@ See archived plans in `.planning/phases/`.
 - [x] **Phase 20: Infrastructure Foundations** - VRAM coordinator, process manager, KG seeding, AgentStateStore, ToolRegistry (completed 2026-03-17)
 - [x] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail (completed 2026-03-17)
 - [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
-- [x] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI (completed 2026-03-17)
+- [x] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI (completed 2026-03-17)
 - [ ] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import
 - [ ] **Phase 25: Polish and Integration** - Runtime tool registration, learn-as-you-go accumulation, voice intake, completion summaries
 
@@ -116,11 +116,11 @@ Plans:
   2. Blender headless pipeline optimizes raw tripo.io meshes (LOD, UV, normals) without manual intervention
   3. Imported assets appear in Unity with correct TextureImporter, ModelImporter, and AudioImporter settings applied automatically
   4. Agent selects tripo.io for organic/character models and Blender for geometry/terrain based on asset type
-**Plans**: 3 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] 24-01: TripoTool, BlenderTool, Blender bpy scripts library
-- [ ] 24-02: AssetTool Unity import coordination, asset manifest output, agent routing logic
+- [ ] 24-01-PLAN.md — TripoTool, BlenderTool, Blender bpy scripts library
+- [ ] 24-02-PLAN.md — AssetTool Unity import coordination, agent routing logic, tool registration wiring
 
 ### Phase 25: Polish and Integration
 **Goal**: The agent improves from its own history, accepts voice instructions, allows runtime tool additions, and gives clear completion summaries — making the full development loop observable and extensible
