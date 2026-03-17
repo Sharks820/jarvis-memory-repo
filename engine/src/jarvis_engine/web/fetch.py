@@ -162,11 +162,125 @@ _STYLE_RE = re.compile(r"(?is)<style.*?>.*?</style>")
 _TAG_RE = re.compile(r"(?s)<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
 
+_BROWSER_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
+}
+
+_HTML_CONTENT_TYPES = ("text/", "application/xhtml", "application/xml")
+
+
+def _html_to_text(raw: bytes) -> str:
+    """Convert raw HTML bytes to plain text with tag/script/style stripping."""
+    text = raw.decode("utf-8", errors="replace")
+    # Prefer proper HTML parser over regex for tag stripping (security)
+    try:
+        from lxml.html.clean import Cleaner  # type: ignore[import-untyped]
+        from lxml.html import fromstring as _lxml_parse  # type: ignore[import-untyped]
+
+        cleaner = Cleaner(scripts=True, javascript=True, style=True, comments=True, page_structure=False)
+        doc = _lxml_parse(text)
+        cleaned = cleaner.clean_html(doc)
+        text = cleaned.text_content()
+    except (ImportError, Exception):
+        # Fallback to regex if lxml not available
+        text = _SCRIPT_RE.sub(" ", text)
+        text = _STYLE_RE.sub(" ", text)
+        text = _TAG_RE.sub(" ", text)
+        text = html_mod.unescape(text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _fetch_with_curl_cffi(url: str, max_bytes: int) -> bytes:
+    """Attempt fetch using curl_cffi with Chrome TLS impersonation.
+
+    Returns raw HTML bytes on success, or empty bytes on any failure.
+    curl_cffi is optional — returns b"" immediately if not installed.
+    """
+    try:
+        from curl_cffi import requests as curl_requests  # type: ignore[import-untyped]
+    except ImportError:
+        return b""
+    try:
+        response = curl_requests.get(
+            url,
+            headers=_BROWSER_HEADERS,
+            timeout=15,
+            impersonate="chrome",
+            allow_redirects=True,
+        )
+        # Check for redirect to unsafe destination
+        final_url = str(response.url) if response.url else url
+        if final_url != url and not is_safe_public_url(final_url):
+            logger.warning("curl_cffi: redirect to unsafe URL blocked: %s -> %s", url, final_url)
+            return b""
+        if response.status_code != 200:
+            logger.debug("curl_cffi: non-200 status %d for %s", response.status_code, url)
+            return b""
+        raw_ct = response.headers.get("Content-Type") if response.headers else None
+        content_type = raw_ct.lower() if isinstance(raw_ct, str) else ""
+        if content_type and not any(t in content_type for t in _HTML_CONTENT_TYPES):
+            logger.debug("curl_cffi: non-HTML content-type %r for %s", content_type, url)
+            return b""
+        return response.content[:max_bytes]
+    except Exception as exc:  # nosec B110
+        logger.debug("curl_cffi fetch failed for %s: %s", url, exc)
+        return b""
+
+
+def _fetch_with_httpx(url: str, max_bytes: int) -> bytes:
+    """Attempt fetch using httpx with HTTP/2 support.
+
+    Returns raw HTML bytes on success, or empty bytes on any failure.
+    httpx is optional — returns b"" immediately if not installed.
+    """
+    try:
+        import httpx  # type: ignore[import-untyped]
+    except ImportError:
+        return b""
+    try:
+        with httpx.Client(http2=True, follow_redirects=True, timeout=15.0) as client:
+            response = client.get(url, headers=_BROWSER_HEADERS)
+            # Check for redirect to unsafe destination
+            final_url = str(response.url) if response.url else url
+            if final_url != url and not is_safe_public_url(final_url):
+                logger.warning("httpx: redirect to unsafe URL blocked: %s -> %s", url, final_url)
+                return b""
+            if response.status_code != 200:
+                logger.debug("httpx: non-200 status %d for %s", response.status_code, url)
+                return b""
+            raw_ct = response.headers.get("content-type") if response.headers else None
+            content_type = raw_ct.lower() if isinstance(raw_ct, str) else ""
+            if content_type and not any(t in content_type for t in _HTML_CONTENT_TYPES):
+                logger.debug("httpx: non-HTML content-type %r for %s", content_type, url)
+                return b""
+            return response.content[:max_bytes]
+    except (OSError, ValueError) as exc:
+        logger.debug("httpx fetch failed for %s: %s", url, exc)
+        return b""
+    except Exception as exc:  # nosec B110
+        logger.debug("httpx fetch failed for %s: %s", url, exc)
+        return b""
+
 
 def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
     """Fetch a URL and return cleaned plain text.
 
-    Performs SSRF safety checks and DNS rebinding prevention.
+    Uses a 3-tier HTTP client stack for bot-bypass:
+      Tier 1: curl_cffi with Chrome TLS impersonation (bypasses Cloudflare)
+      Tier 2: httpx with HTTP/2 (bypasses basic bot detection)
+      Tier 3: urllib fallback (always available)
+
+    Performs SSRF safety checks and DNS rebinding prevention before any tier.
     Strips HTML tags, scripts, and styles. Returns empty string on any failure.
     Rewrites reddit.com → old.reddit.com for server-rendered content.
     """
@@ -175,6 +289,24 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
         return ""
     if not resolve_and_check_ip(url):
         return ""
+
+    # Tier 1: curl_cffi with Chrome TLS impersonation
+    raw = _fetch_with_curl_cffi(url, max_bytes)
+    if raw:
+        text = _html_to_text(raw)
+        if len(text) >= _MIN_USEFUL_TEXT:
+            return text
+        logger.debug("curl_cffi: insufficient text (%d chars) for %s, falling through", len(text), url)
+
+    # Tier 2: httpx with HTTP/2
+    raw = _fetch_with_httpx(url, max_bytes)
+    if raw:
+        text = _html_to_text(raw)
+        if len(text) >= _MIN_USEFUL_TEXT:
+            return text
+        logger.debug("httpx: insufficient text (%d chars) for %s, falling through", len(text), url)
+
+    # Tier 3: urllib fallback
     # NOTE: DNS TOCTOU — resolve_and_check_ip() resolves the hostname above,
     # but urllib re-resolves it independently when opening the connection.  A
     # malicious DNS server could return a safe IP here and a private IP on the
@@ -192,32 +324,13 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
         with opener.open(req, timeout=12) as resp:  # nosec B310
             raw_ct = resp.headers.get("Content-Type") if resp.headers else None
             content_type = raw_ct.lower() if isinstance(raw_ct, str) else ""
-            if content_type and not any(
-                t in content_type
-                for t in ("text/", "application/xhtml", "application/xml")
-            ):
+            if content_type and not any(t in content_type for t in _HTML_CONTENT_TYPES):
                 return ""
             payload = resp.read(max_bytes)
     except (OSError, ValueError) as exc:
-        logger.debug("Failed to fetch page text from %s: %s", url, exc)
+        logger.debug("urllib fetch failed for %s: %s", url, exc)
         return ""
-    text = payload.decode("utf-8", errors="replace")
-    # Prefer proper HTML parser over regex for tag stripping (security)
-    try:
-        from lxml.html.clean import Cleaner  # type: ignore[import-untyped]
-        from lxml.html import fromstring as _lxml_parse  # type: ignore[import-untyped]
-
-        cleaner = Cleaner(scripts=True, javascript=True, style=True, comments=True, page_structure=False)
-        doc = _lxml_parse(text)
-        cleaned = cleaner.clean_html(doc)
-        text = cleaned.text_content()
-    except (ImportError, Exception):
-        # Fallback to regex if lxml not available
-        text = _SCRIPT_RE.sub(" ", text)
-        text = _STYLE_RE.sub(" ", text)
-        text = _TAG_RE.sub(" ", text)
-        text = html_mod.unescape(text)
-    text = _WHITESPACE_RE.sub(" ", text).strip()
+    text = _html_to_text(payload)
     if len(text) < _MIN_USEFUL_TEXT:
         logger.debug(
             "Page text too short (%d chars < %d minimum) for %s — likely JS-rendered shell",
