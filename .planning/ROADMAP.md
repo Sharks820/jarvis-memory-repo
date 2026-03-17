@@ -67,11 +67,11 @@ Plans:
   3. UnityTool (Python) can create a Unity project, write a C# script, and trigger compilation via the bridge
   4. Any agent file write outside Assets/JarvisGenerated/ is rejected in Python before reaching the bridge
   5. Static analysis blocks generated C# containing Process.Start, File.Delete outside the path jail, or Assembly.LoadFrom before compilation
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 21-01: JarvisEditorBridge.cs, ReflectionCommandDispatcher.cs, domain reload handshake
-- [ ] 21-02: UnityTool Python client, path jail enforcement, pre-compilation static analysis
+- [ ] 21-01-PLAN.md — C# UPM package: JarvisEditorBridge, ReflectionCommandDispatcher, domain reload, TypeCoercer, StaticAnalysisGuard
+- [ ] 21-02-PLAN.md — Python UnityTool WS client, path jail, static analysis guard, BridgeState machine
 
 ### Phase 22: Core Agent Loop
 **Goal**: Users can give Jarvis a high-level Unity task and watch it execute autonomously — decomposing into steps, running tools, handling failures, requesting approval on destructive actions, and streaming progress to the widget
