@@ -51,5 +51,23 @@
     "progress_pct": 0,
     "status_detail": "Queued",
     "progress_bar": "[\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%"
+  },
+  {
+    "mission_id": "m-20260316043446991016-817e53",
+    "topic": "let's start a learning mission on unity game development. i want you to become the best unity game developing bot that has ever existed. figure out how to code effectively, how to test effectively, ho",
+    "objective": "learn",
+    "sources": [
+      "duckduckgo"
+    ],
+    "status": "pending",
+    "origin": "desktop-manual",
+    "created_utc": "2026-03-16T04:34:46.991016+00:00",
+    "updated_utc": "2026-03-16T04:34:46.991016+00:00",
+    "last_report_path": "",
+    "verified_findings": 0,
+    "progress_pct": 0,
+    "status_detail": "Queued",
+    "progress_bar": "[\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%",
+    "delivery_method": "notification"
   }
 ]
