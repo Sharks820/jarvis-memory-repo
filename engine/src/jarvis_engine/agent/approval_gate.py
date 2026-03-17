@@ -41,8 +41,11 @@ class ApprovalGate:
 
     def __init__(self, progress_bus: "ProgressEventBus") -> None:
         self._bus = progress_bus
-        # Maps task_id -> (event, approved_flag)
-        self._pending: dict[str, tuple[asyncio.Event, list[bool]]] = {}
+        # Maps task_id -> (event, approved_flag, event_loop)
+        # The loop reference is needed because approve()/reject() may be
+        # called from a different thread (CQRS handler) than the loop that
+        # created the Event (agent background thread).
+        self._pending: dict[str, tuple[asyncio.Event, list[bool], asyncio.AbstractEventLoop | None]] = {}
 
     # ------------------------------------------------------------------
     # Check
@@ -102,7 +105,11 @@ class ApprovalGate:
         """
         event = asyncio.Event()
         approved_flag: list[bool] = [False]  # mutable container for closure
-        self._pending[task_id] = (event, approved_flag)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        self._pending[task_id] = (event, approved_flag, loop)
 
         await self._bus.emit(
             {
@@ -133,9 +140,14 @@ class ApprovalGate:
         if entry is None:
             logger.debug("ApprovalGate.approve: unknown task_id %r (noop)", task_id)
             return
-        event, approved_flag = entry
+        event, approved_flag, loop = entry
         approved_flag[0] = True
-        event.set()
+        # Thread-safe: approve() may be called from a different thread
+        # than the event loop that created the Event.
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(event.set)
+        else:
+            event.set()
         logger.debug("ApprovalGate: approved task %r", task_id)
 
     def reject(self, task_id: str) -> None:
@@ -147,7 +159,10 @@ class ApprovalGate:
         if entry is None:
             logger.debug("ApprovalGate.reject: unknown task_id %r (noop)", task_id)
             return
-        event, approved_flag = entry
+        event, approved_flag, loop = entry
         approved_flag[0] = False
-        event.set()
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(event.set)
+        else:
+            event.set()
         logger.debug("ApprovalGate: rejected task %r", task_id)
