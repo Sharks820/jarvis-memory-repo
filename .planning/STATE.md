@@ -12,7 +12,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 
 Phase: v5.0 COMPLETE
 Status: All 6 phases shipped, 50 requirements implemented, 5978 tests passing
-Last activity: 2026-03-16 - Completed quick task 1: Fix learning missions web access with smart fallback strategies
+Last activity: 2026-03-16 - Completed quick task 2: Comprehensive bot-bypass web fetching with curl_cffi + httpx tiers
 
 Progress (v5.0): [██████████] 100%
 
@@ -150,6 +150,7 @@ Progress (v5.0): [██████████] 100%
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Fix learning missions web access with smart fallback strategies | 2026-03-16 | 26623e46 | [1-fix-learning-missions-web-access-with-sm](./quick/1-fix-learning-missions-web-access-with-sm/) |
+| 2 | Comprehensive bot-bypass web fetching with curl_cffi + httpx tiers | 2026-03-16 | 5740b387 | [2-comprehensive-bot-bypass-web-fetching-wi](./quick/2-comprehensive-bot-bypass-web-fetching-wi/) |
 - New audit evidence (2026-03-12):
   - repo `desloppify status`: strict 76.8 / overall 76.9, with `Error consistency` the weakest subjective dimension (58.0)
   - Android audit surfaced concrete integrity/security risks:
