@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-03-17T13:32:58.019Z"
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-03-17T14:01:18.433Z"
 last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 14
+  completed_plans: 13
   percent: 65
 ---
 
@@ -199,6 +199,8 @@ Progress (v6.0): [███████░░░] 73%
 - [Phase 24-asset-pipeline]: AssetTool delegates all Unity bridge calls to UnityTool.call() -- no direct WebSocket usage
 - [Phase 24-asset-pipeline]: route() checks BLENDER_KEYWORDS first (then TRIPO_KEYWORDS) to handle mixed descriptions; default is tripo
 - [Phase 24-asset-pipeline]: All three asset tools registered in _register_agent_handlers() with SUBSYSTEM_ERRORS try/except isolation
+- [Phase 25]: LearnAccumulator uses query_relevant_facts (keyword-based) not semantic -- no EmbeddingService dependency
+- [Phase 25]: Accumulator optional param (None default) in CompileFixLoop and UnityPromptBuilder -- full backward compat
 
 ### Blockers/Concerns
 
@@ -213,6 +215,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T13:30:35.898Z
-Stopped at: Completed 24-02-PLAN.md
+Last session: 2026-03-17T14:01:18.429Z
+Stopped at: Completed 25-01-PLAN.md
 Resume file: None

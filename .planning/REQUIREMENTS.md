@@ -50,7 +50,7 @@
 ### Knowledge
 
 - [x] **KNOW-01**: Unity 6.3 API reference, patterns, and common errors seeded into knowledge graph
-- [ ] **KNOW-02**: Successful code patterns and error fixes accumulated via learn-as-you-go
+- [x] **KNOW-02**: Successful code patterns and error fixes accumulated via learn-as-you-go
 - [x] **KNOW-03**: Agent queries KG during planning for Unity-specific guidance
 - [x] **KNOW-04**: Breaking changes from Unity 6.3 upgrade guide flagged during code generation
 
@@ -112,7 +112,7 @@
 | ASSET-03 | Phase 24 | Complete |
 | ASSET-04 | Phase 24 | Complete |
 | KNOW-01 | Phase 20 | Complete |
-| KNOW-02 | Phase 25 | Pending |
+| KNOW-02 | Phase 25 | Complete |
 | KNOW-03 | Phase 23 | Complete |
 | KNOW-04 | Phase 23 | Complete |
 
