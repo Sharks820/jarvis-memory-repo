@@ -79,6 +79,30 @@ class IPTracker:
 
     # Public API
 
+    @staticmethod
+    def _is_local_or_lan(ip: str) -> bool:
+        """Return True for localhost and RFC 1918 private IPs.
+
+        These should never be permanently blocked since they are
+        the owner's own devices (desktop widget, phone on LAN).
+        """
+        if ip in ("127.0.0.1", "::1", "localhost"):
+            return True
+        parts = ip.split(".")
+        if len(parts) == 4:
+            try:
+                first, second = int(parts[0]), int(parts[1])
+            except ValueError:
+                return False
+            # 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+            if first == 10:
+                return True
+            if first == 172 and 16 <= second <= 31:
+                return True
+            if first == 192 and second == 168:
+                return True
+        return False
+
     def record_attempt(self, ip: str, attack_type: str) -> str:
         """Record an attack attempt from *ip* and return the action taken.
 
@@ -88,6 +112,9 @@ class IPTracker:
         - 5 attempts  -> BLOCK 1 hour
         - 10 attempts -> BLOCK 24 hours
         - 20+ attempts -> permanent BLOCK
+
+        Local/LAN IPs are tracked but never blocked to prevent
+        the owner from locking themselves out.
         """
         now_str = now_iso()
         with self._lock:
@@ -127,8 +154,13 @@ class IPTracker:
                     (now_str, total, json.dumps(types), score, ip),
                 )
 
-            # Escalation logic
+            # Escalation logic — never block local/LAN IPs
             action = "ALLOW"
+            if self._is_local_or_lan(ip):
+                # Track attempts for forensics but never escalate to block
+                self._db.commit()
+                logger.debug("IPTracker: local/LAN IP %s — tracking only, no block", ip)
+                return "ALLOW"
             if total >= _PERMANENT_BLOCK_THRESHOLD:
                 self._db.execute(
                     "UPDATE threat_ips SET blocked_until = 'permanent' WHERE ip = ?",
@@ -239,6 +271,9 @@ class IPTracker:
 
     def block_ip(self, ip: str, duration_hours: int | None = None) -> None:
         """Manually block an IP.  *None* = permanent block."""
+        if self._is_local_or_lan(ip):
+            logger.warning("IPTracker: refusing to block local/LAN IP %s", ip)
+            return
         now_str = now_iso()
         if duration_hours is None:
             blocked_until = "permanent"

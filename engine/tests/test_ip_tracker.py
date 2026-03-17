@@ -115,37 +115,37 @@ class TestEscalationLadder:
 
 class TestBlocking:
     def test_manual_block_permanent(self, tracker: IPTracker) -> None:
-        tracker.block_ip("10.0.0.1")
-        assert tracker.is_blocked("10.0.0.1")
-        report = tracker.get_threat_report("10.0.0.1")
+        tracker.block_ip("203.0.113.1")
+        assert tracker.is_blocked("203.0.113.1")
+        report = tracker.get_threat_report("203.0.113.1")
         assert report is not None
         assert report["blocked_until"] == "permanent"
 
     def test_manual_block_with_duration(self, tracker: IPTracker) -> None:
-        tracker.block_ip("10.0.0.2", duration_hours=2)
-        assert tracker.is_blocked("10.0.0.2")
+        tracker.block_ip("203.0.113.2", duration_hours=2)
+        assert tracker.is_blocked("203.0.113.2")
 
     def test_unblock_clears_block(self, tracker: IPTracker) -> None:
-        tracker.block_ip("10.0.0.3")
-        assert tracker.is_blocked("10.0.0.3")
-        tracker.unblock_ip("10.0.0.3")
-        assert not tracker.is_blocked("10.0.0.3")
+        tracker.block_ip("203.0.113.3")
+        assert tracker.is_blocked("203.0.113.3")
+        tracker.unblock_ip("203.0.113.3")
+        assert not tracker.is_blocked("203.0.113.3")
 
     def test_unblock_nonexistent_ip_noop(self, tracker: IPTracker) -> None:
         tracker.unblock_ip("9.9.9.9")  # should not raise
         assert not tracker.is_blocked("9.9.9.9")
 
     def test_manual_block_creates_record(self, tracker: IPTracker) -> None:
-        tracker.block_ip("10.0.0.4", duration_hours=1)
-        report = tracker.get_threat_report("10.0.0.4")
+        tracker.block_ip("203.0.113.4", duration_hours=1)
+        report = tracker.get_threat_report("203.0.113.4")
         assert report is not None
         assert report["total_attempts"] == 0
         assert report["notes"] == "manual block"
 
     def test_manual_block_updates_existing(self, tracker: IPTracker) -> None:
-        tracker.record_attempt("10.0.0.5", "scan")
-        tracker.block_ip("10.0.0.5")
-        report = tracker.get_threat_report("10.0.0.5")
+        tracker.record_attempt("203.0.113.5", "scan")
+        tracker.block_ip("203.0.113.5")
+        report = tracker.get_threat_report("203.0.113.5")
         assert report is not None
         assert report["blocked_until"] == "permanent"
         assert report["total_attempts"] == 1  # preserved from record_attempt
@@ -246,27 +246,27 @@ class TestGetAllThreats:
         assert tracker.get_all_threats() == []
 
     def test_returns_all_tracked_ips(self, tracker: IPTracker) -> None:
-        tracker.record_attempt("10.0.0.1", "scan")
-        tracker.record_attempt("10.0.0.2", "injection")
+        tracker.record_attempt("203.0.113.1", "scan")
+        tracker.record_attempt("203.0.113.2", "injection")
         threats = tracker.get_all_threats()
         ips = {t["ip"] for t in threats}
-        assert ips == {"10.0.0.1", "10.0.0.2"}
+        assert ips == {"203.0.113.1", "203.0.113.2"}
 
     def test_min_score_filter(self, tracker: IPTracker) -> None:
-        tracker.record_attempt("10.0.0.1", "scan")  # score = 1.0
+        tracker.record_attempt("203.0.113.1", "scan")  # score = 1.0
         for _ in range(9):
-            tracker.record_attempt("10.0.0.2", "injection")  # score = 10.0
+            tracker.record_attempt("203.0.113.2", "injection")  # score = 10.0
         threats = tracker.get_all_threats(min_score=5.0)
         ips = {t["ip"] for t in threats}
-        assert "10.0.0.2" in ips
-        assert "10.0.0.1" not in ips
+        assert "203.0.113.2" in ips
+        assert "203.0.113.1" not in ips
 
     def test_ordered_by_score_desc(self, tracker: IPTracker) -> None:
-        tracker.record_attempt("10.0.0.1", "a")
+        tracker.record_attempt("203.0.113.1", "a")
         for _ in range(5):
-            tracker.record_attempt("10.0.0.2", "b")
+            tracker.record_attempt("203.0.113.2", "b")
         threats = tracker.get_all_threats()
-        assert threats[0]["ip"] == "10.0.0.2"
+        assert threats[0]["ip"] == "203.0.113.2"
 
 
 # ---------------------------------------------------------------
@@ -277,10 +277,10 @@ class TestGetAllThreats:
 class TestIPIsolation:
     def test_different_ips_independent_escalation(self, tracker: IPTracker) -> None:
         for _ in range(5):
-            tracker.record_attempt("10.0.0.1", "scan")
-        tracker.record_attempt("10.0.0.2", "scan")
-        assert tracker.is_blocked("10.0.0.1")
-        assert not tracker.is_blocked("10.0.0.2")
+            tracker.record_attempt("203.0.113.1", "scan")
+        tracker.record_attempt("203.0.113.2", "scan")
+        assert tracker.is_blocked("203.0.113.1")
+        assert not tracker.is_blocked("203.0.113.2")
 
 
 # ---------------------------------------------------------------

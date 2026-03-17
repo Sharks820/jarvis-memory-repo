@@ -110,10 +110,10 @@ class TestCheckRequest:
     def test_blocked_ip_rejected(self, orchestrator):
         """An IP that is already blocked by ip_tracker should be rejected."""
         # Manually block the IP first
-        orchestrator._ip_tracker.block_ip("10.99.99.99")
+        orchestrator._ip_tracker.block_ip("203.0.113.99")
         result = orchestrator.check_request(
             path="/health",
-            source_ip="10.99.99.99",
+            source_ip="203.0.113.99",
             headers={},
             body="",
             user_agent="JarvisApp/2.0",
