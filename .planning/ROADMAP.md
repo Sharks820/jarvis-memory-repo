@@ -34,7 +34,7 @@ See archived plans in `.planning/phases/`.
 
 - [x] **Phase 20: Infrastructure Foundations** - VRAM coordinator, process manager, KG seeding, AgentStateStore, ToolRegistry (completed 2026-03-17)
 - [x] **Phase 21: Unity Editor Bridge** - C# WebSocket plugin, JSON-RPC dispatch, domain reload handling, path jail (completed 2026-03-17)
-- [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
+- [x] **Phase 22: Core Agent Loop** - TaskPlanner, StepExecutor, ReflectionLoop, approval gate, SSE streaming (completed 2026-03-17)
 - [ ] **Phase 23: C# Code Generation** - Unity-domain prompting, compile-fix loop, NUnit tests, Editor panel UI
 - [ ] **Phase 24: Asset Pipeline** - tripo.io 3D generation, Blender headless post-processing, Unity asset import
 - [ ] **Phase 25: Polish and Integration** - Runtime tool registration, learn-as-you-go accumulation, voice intake, completion summaries
@@ -103,9 +103,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 23-01: Unity-domain system prompt, API validation pre-compilation pass, KG query integration
-- [ ] 23-02: NUnit test generation, play mode entry/exit with GPU coordinator interlock
-- [ ] 23-03: JarvisPanel.cs EditorWindow — progress UI, approve/reject dialogs
+- [ ] 23-01-PLAN.md — Unity-domain system prompt builder, API validation pre-compilation pass, KG query integration
+- [ ] 23-02-PLAN.md — NUnit test generation, compile-test-fix loop with VRAM coordinator interlock
+- [ ] 23-03-PLAN.md — JarvisPanel.cs EditorWindow with progress UI, approve/reject dialogs
 
 ### Phase 24: Asset Pipeline
 **Goal**: Agent can generate and import 3D assets — organic models via tripo.io and architecture/terrain via Blender headless — into the Unity project with correct import settings and user approval on API credit spend
