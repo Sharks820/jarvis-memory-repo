@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
 status: executing
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-17T07:02:32.926Z"
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-03-17T07:36:49.241Z"
 last_activity: 2026-03-17 -- Phase 21 plan 02 complete (UnityTool + BridgeState + path jail + static analysis)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
 ---
 
 ---
@@ -36,16 +36,16 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v6.0 Jarvis Unity Agent -- Phase 21: Unity Editor Bridge (Python client)
+**Current focus:** v6.0 Jarvis Unity Agent -- Phase 22: Core Agent Loop
 
 ## Current Position
 
-Phase: 21 of 25 (Unity Editor Bridge)
-Plan: 2 of 2 in current phase
-Status: Phase 21 plan 02 complete
-Last activity: 2026-03-17 -- Phase 21 plan 02 complete (UnityTool + BridgeState + path jail + static analysis)
+Phase: 22 of 25 (Core Agent Loop)
+Plan: 1 of 3 in current phase
+Status: Phase 22 plan 01 complete
+Last activity: 2026-03-17 -- Phase 22 plan 01 complete (FileTool + ShellTool + WebTool + ApprovalGate + ProgressEventBus)
 
-Progress (v6.0): [███░░░░░░░] 12%
+Progress (v6.0): [██████░░░░] 59%
 
 ## Performance Metrics
 
@@ -73,6 +73,12 @@ Progress (v6.0): [███░░░░░░░] 12%
 - 35 new tests added (21 security + 14 state machine)
 - Duration: ~19 minutes
 
+**v6.0 Phase 22-01 results (2026-03-17):**
+- pytest: 6156 passing, 10 skipped, 0 failures
+- ruff: clean
+- 50 new tests added (29 tool tests + 21 gate/bus tests)
+- Duration: ~16 minutes
+
 ## Accumulated Context
 
 ### Decisions
@@ -93,6 +99,8 @@ Progress (v6.0): [███░░░░░░░] 12%
 - [Phase 21]: List<MethodInfo> per cache key for overload-safe reflection dispatch in ReflectionCommandDispatcher
 - [Phase 21]: websocket-sharp DLL not committed to repo -- user downloads WebSocketSharp.Standard 1.0.3 from NuGet per README instructions
 - [Phase 21]: C# StaticAnalysisGuard is defense-in-depth; Python _assert_safe_code() is the authoritative pre-write gate
+- [Phase 22-core-agent-loop]: WebTool wraps jarvis_engine.web.fetch.fetch_page_text (SSRF-safe) rather than reimplementing fetch
+- [Phase 22-core-agent-loop]: ProgressEventBus singleton uses module-level _bus, created on first get_progress_bus() call
 
 ### Blockers/Concerns
 
@@ -107,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17
-Stopped at: Completed 21-02-PLAN.md
+Last session: 2026-03-17T07:36:49.237Z
+Stopped at: Completed 22-01-PLAN.md
 Resume file: None

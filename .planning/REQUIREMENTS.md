@@ -12,15 +12,15 @@
 - [ ] **AGENT-03**: Agent reflects on step results and replans when outcomes differ from expectations
 - [x] **AGENT-04**: Agent checkpoints state to SQLite before each tool call for crash recovery
 - [ ] **AGENT-05**: Agent respects task-level token budget and escalates after 3 consecutive same-error failures
-- [ ] **AGENT-06**: Agent streams real-time progress events to widget and Unity Editor panel via SSE
+- [x] **AGENT-06**: Agent streams real-time progress events to widget and Unity Editor panel via SSE
 
 ### Tool Layer
 
 - [x] **TOOL-01**: Pluggable tool registry with standard interface (execute, validate, estimate_cost)
-- [ ] **TOOL-02**: Smart approval gate: safe=auto, destructive=approve, costly=approve+estimate
-- [ ] **TOOL-03**: FileTool reads/writes project files confined to project directory
-- [ ] **TOOL-04**: ShellTool executes commands via subprocess with policy gate and timeout
-- [ ] **TOOL-05**: WebTool integrates with existing web fetch pipeline for research
+- [x] **TOOL-02**: Smart approval gate: safe=auto, destructive=approve, costly=approve+estimate
+- [x] **TOOL-03**: FileTool reads/writes project files confined to project directory
+- [x] **TOOL-04**: ShellTool executes commands via subprocess with policy gate and timeout
+- [x] **TOOL-05**: WebTool integrates with existing web fetch pipeline for research
 - [ ] **TOOL-06**: User can register new tools at runtime ("use Mixamo for animations")
 
 ### Unity Integration
@@ -89,12 +89,12 @@
 | AGENT-03 | Phase 22 | Pending |
 | AGENT-04 | Phase 20 | Complete |
 | AGENT-05 | Phase 22 | Pending |
-| AGENT-06 | Phase 22 | Pending |
+| AGENT-06 | Phase 22 | Complete |
 | TOOL-01 | Phase 20 | Complete |
-| TOOL-02 | Phase 22 | Pending |
-| TOOL-03 | Phase 22 | Pending |
-| TOOL-04 | Phase 22 | Pending |
-| TOOL-05 | Phase 22 | Pending |
+| TOOL-02 | Phase 22 | Complete |
+| TOOL-03 | Phase 22 | Complete |
+| TOOL-04 | Phase 22 | Complete |
+| TOOL-05 | Phase 22 | Complete |
 | TOOL-06 | Phase 25 | Pending |
 | UNITY-01 | Phase 21 | Complete |
 | UNITY-02 | Phase 21 | Complete |
