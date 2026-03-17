@@ -419,10 +419,27 @@ class TestBridgeStateMachine:
 
 
 def _make_mock_ws(response_payload: str) -> AsyncMock:
-    """Create a mock WebSocket that returns a canned response."""
+    """Create a mock WebSocket that feeds responses through the async iterator.
+
+    The listener loop reads via ``async for raw in self._ws``, so the mock
+    must support async iteration.  Messages are queued and yielded one at a
+    time.  After all messages are consumed, the iterator blocks forever
+    (simulating an open connection) so the listener doesn't exit early.
+    """
+    messages: list[str] = [response_payload] if response_payload else []
+    _block_forever: asyncio.Event = asyncio.Event()  # never set
+
+    async def _aiter():
+        for msg in messages:
+            yield msg
+        # Keep the iterator alive so the listener doesn't exit
+        await _block_forever.wait()
+
     mock_ws = AsyncMock()
+    mock_ws.send = AsyncMock()
     mock_ws.recv = AsyncMock(return_value=response_payload)
-    mock_ws.__aiter__ = MagicMock(return_value=iter([]))
+    mock_ws.__aiter__ = lambda self=None: _aiter()
+    mock_ws.close = AsyncMock()
     return mock_ws
 
 

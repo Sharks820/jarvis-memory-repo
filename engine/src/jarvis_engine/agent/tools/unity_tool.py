@@ -35,31 +35,34 @@ _JAIL_PREFIX = "Assets/JarvisGenerated"
 
 # Each entry is (compiled_pattern, human_readable_message).
 _DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # Process execution
     (re.compile(r"Process\.Start"), "Process.Start is forbidden"),
-    (
-        re.compile(r"System\.Diagnostics\.Process"),
-        "System.Diagnostics.Process is forbidden",
-    ),
+    (re.compile(r"System\.Diagnostics\.Process"), "System.Diagnostics.Process is forbidden"),
+    (re.compile(r"System\.Management\.Automation"), "PowerShell execution is forbidden"),
+    # File/directory deletion
     (re.compile(r"File\.Delete"), "File.Delete is forbidden"),
     (re.compile(r"Directory\.Delete"), "Directory.Delete is forbidden"),
-    (
-        re.compile(r"FileUtil\.DeleteFileOrDirectory"),
-        "FileUtil.DeleteFileOrDirectory is forbidden",
-    ),
-    (
-        re.compile(r"AssetDatabase\.DeleteAsset"),
-        "AssetDatabase.DeleteAsset is forbidden",
-    ),
+    (re.compile(r"FileUtil\.DeleteFileOrDirectory"), "FileUtil.DeleteFileOrDirectory is forbidden"),
+    (re.compile(r"AssetDatabase\.DeleteAsset"), "AssetDatabase.DeleteAsset is forbidden"),
+    # Path traversal
     (re.compile(r"\.\.\s*[/\\]"), "Path traversal (../) is forbidden"),
-    (re.compile(r"Assembly\.LoadFrom"), "Assembly.LoadFrom is forbidden"),
-    (
-        re.compile(r"Assembly\.Load\s*[\(\[]"),
-        "Assembly.Load is forbidden",
-    ),
-    (
-        re.compile(r"GetMethod\s*\(.*\)\s*\.\s*Invoke"),
-        "Reflection Invoke chain is forbidden",
-    ),
+    # Assembly/reflection
+    (re.compile(r"Assembly\.Load(?:From|File)?\s*[\(\[]"), "Assembly.Load is forbidden"),
+    (re.compile(r"GetMethod\s*\(.*\)\s*\.\s*Invoke"), "Reflection Invoke chain is forbidden"),
+    (re.compile(r"Activator\.CreateInstance"), "Dynamic instantiation is forbidden"),
+    (re.compile(r"AppDomain\.ExecuteAssembly"), "Assembly execution is forbidden"),
+    # Dynamic compilation
+    (re.compile(r"CSharpCodeProvider|CodeDomProvider"), "Dynamic C# compilation is forbidden"),
+    (re.compile(r"CSharpCompilation"), "Roslyn compilation is forbidden"),
+    # Native interop
+    (re.compile(r"\bDllImport\b"), "P/Invoke (DllImport) is forbidden"),
+    (re.compile(r"\bunsafe\b"), "Unsafe code blocks are forbidden"),
+    (re.compile(r"Marshal\.\w+"), "Unmanaged memory access is forbidden"),
+    # Network (data exfiltration)
+    (re.compile(r"WebClient|HttpClient|WebRequest"), "Network requests are forbidden in generated code"),
+    # Environment/Registry
+    (re.compile(r"Environment\.SetEnvironmentVariable"), "Environment modification is forbidden"),
+    (re.compile(r"Microsoft\.Win32\.Registry"), "Registry access is forbidden"),
 ]
 
 
@@ -158,6 +161,7 @@ class UnityTool:
         self._request_id = 0
         self._ready_event: asyncio.Event = asyncio.Event()
         self._listener_task: asyncio.Task[None] | None = None
+        self._pending_rpc: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -187,7 +191,7 @@ class UnityTool:
         self._state = BridgeState.CONNECTED
         self._ready_event.set()
         self._listener_task = asyncio.create_task(
-            self._listen_for_heartbeat(), name="unity-heartbeat"
+            self._listen_loop(), name="unity-bridge-listener"
         )
         logger.info("UnityTool: connected, state=%s", self._state)
 
@@ -250,9 +254,20 @@ class UnityTool:
         raw_request = json.dumps(request)
         logger.debug("UnityTool -> %s", raw_request)
         await self._ws.send(raw_request)
-        raw_response = await self._ws.recv()
-        logger.debug("UnityTool <- %s", raw_response)
-        response: dict[str, Any] = json.loads(raw_response)
+        # Wait for the response via the pending-response future.
+        # The single reader loop (_listen_loop) dispatches messages to either
+        # _pending_rpc or the heartbeat handler based on the 'id' field.
+        req_id = str(self._request_id)
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
+        self._pending_rpc[req_id] = future
+        try:
+            response = await asyncio.wait_for(future, timeout=30.0)
+        except asyncio.TimeoutError:
+            self._pending_rpc.pop(req_id, None)
+            raise RuntimeError(f"RPC timeout waiting for response to {method}") from None
+        finally:
+            self._pending_rpc.pop(req_id, None)
+        logger.debug("UnityTool <- %s", response)
         if "error" in response:
             raise RuntimeError(response["error"]["message"])
         return response.get("result")
@@ -280,12 +295,14 @@ class UnityTool:
         # bypass the WAITING_FOR_BRIDGE guard in call().
         if self._state == BridgeState.DISCONNECTED:
             raise ConnectionError("UnityTool is not connected to the bridge.")
+        # Pre-set WAITING state and clear event BEFORE sending to prevent race
+        # where heartbeat arrives between send and state transition.
+        self._state = BridgeState.WAITING_FOR_BRIDGE
+        self._ready_event.clear()
+        logger.info("UnityTool: entering WAITING_FOR_BRIDGE for %r", rel_path)
         result = await self._send_rpc(
             "WriteScript", {"path": rel_path, "content": content}
         )
-        logger.info("UnityTool: script sent, entering WAITING_FOR_BRIDGE for %r", rel_path)
-        self._state = BridgeState.WAITING_FOR_BRIDGE
-        self._ready_event.clear()
         return result
 
     async def compile(self) -> Any:
@@ -300,18 +317,35 @@ class UnityTool:
     # Heartbeat listener (background task)
     # ------------------------------------------------------------------
 
-    async def _listen_for_heartbeat(self) -> None:
-        """Background task: listen for bridge heartbeat messages.
+    async def _listen_loop(self) -> None:
+        """Single reader loop: dispatches messages to RPC futures or heartbeat handler.
 
-        When {"status": "ready"} is received, transitions from
-        WAITING_FOR_BRIDGE back to CONNECTED.
+        JSON-RPC responses (have 'id') go to pending RPC futures.
+        Status messages (have 'status') go to the heartbeat handler.
+        This prevents concurrent WebSocket reads between _send_rpc and the listener.
         """
         try:
             async for raw in self._ws:
-                await self._handle_heartbeat_message(raw)
+                try:
+                    msg: dict[str, Any] = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                # Dispatch: RPC response or heartbeat
+                msg_id = msg.get("id")
+                if msg_id and msg_id in self._pending_rpc:
+                    future = self._pending_rpc.pop(msg_id)
+                    if not future.done():
+                        future.set_result(msg)
+                else:
+                    await self._handle_heartbeat_message(raw)
         except Exception:  # noqa: BLE001
-            logger.debug("UnityTool: heartbeat listener closed")
+            logger.debug("UnityTool: listener loop closed")
             self._state = BridgeState.DISCONNECTED
+            # Fail any pending RPCs
+            for future in self._pending_rpc.values():
+                if not future.done():
+                    future.set_exception(ConnectionError("Bridge disconnected"))
+            self._pending_rpc.clear()
 
     async def _handle_heartbeat_message(self, raw: str) -> None:
         """Process a single raw heartbeat message."""
