@@ -22,6 +22,7 @@ using WebSocketSharp.Server;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Jarvis.EditorBridge.Models;
+using System.Collections.Generic;
 
 namespace Jarvis.EditorBridge
 {
@@ -43,6 +44,15 @@ namespace Jarvis.EditorBridge
 
         private static WebSocketServer _server;
         private static ReflectionCommandDispatcher _dispatcher;
+
+        // ── Agent message event ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Fired on the main thread when an inbound WebSocket message has a method
+        /// that starts with "agent_".  JarvisPanel subscribes to this event to
+        /// update its progress / approval UI without polling.
+        /// </summary>
+        public static event Action<string> OnAgentMessage;
 
         // ── Static constructor — runs on every domain reload ───────────────────
 
@@ -121,6 +131,38 @@ namespace Jarvis.EditorBridge
         /// Access the dispatcher for direct dispatch from tests or other Editor scripts.
         /// </summary>
         internal static ReflectionCommandDispatcher Dispatcher => _dispatcher;
+
+        /// <summary>
+        /// Send a JSON-RPC response payload to all connected clients.
+        /// Used by JarvisPanel to reply to approval requests from the Python agent.
+        /// </summary>
+        /// <param name="payload">Pre-serialized JSON string.</param>
+        public static void BroadcastRaw(string payload)
+        {
+            if (_server == null || !_server.IsListening) return;
+
+            try
+            {
+                var sessions = _server.WebSocketServices[ServicePath].Sessions;
+                sessions.Broadcast(payload);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Jarvis] BroadcastRaw failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Raise the OnAgentMessage event on Unity's main thread so that
+        /// EditorWindow subscribers (JarvisPanel) can safely call Repaint().
+        /// Called from JarvisBridgeService.OnMessage for agent_* methods.
+        /// </summary>
+        internal static void RaiseAgentMessage(string rawMessage)
+        {
+            // WebSocket messages arrive on a background thread.
+            // EditorApplication.delayCall is posted to the main thread.
+            EditorApplication.delayCall += () => OnAgentMessage?.Invoke(rawMessage);
+        }
 
         // ── Private server lifecycle ───────────────────────────────────────────
 
@@ -233,6 +275,10 @@ namespace Jarvis.EditorBridge
                                 "Invalid request: 'method' field is required")));
                         return;
                     }
+
+                    // ── Forward agent_* messages to UI listeners ────────────────
+                    if (request.Method.StartsWith("agent_", StringComparison.Ordinal))
+                        JarvisEditorBridge.RaiseAgentMessage(e.Data);
 
                     // ── Defense-in-depth: static analysis for write operations ──
                     // Only run if params contain a string that looks like C# code
