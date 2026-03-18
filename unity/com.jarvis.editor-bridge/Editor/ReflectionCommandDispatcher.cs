@@ -305,6 +305,24 @@ namespace Jarvis.EditorBridge
 
         // ── Built-in command handler implementations ─────────────────────────
 
+        private static readonly string s_jailPrefix = "Assets/JarvisGenerated/";
+
+        /// <summary>
+        /// Validate that a path is under Assets/JarvisGenerated/.
+        /// Throws UnauthorizedAccessException on violation.
+        /// </summary>
+        private static void EnforceBuiltinPathJail(string path, string methodName)
+        {
+            string normalized = (path ?? "").Replace("\\", "/");
+            if (!normalized.StartsWith(s_jailPrefix, StringComparison.Ordinal)
+                && normalized != "Assets/JarvisGenerated")
+            {
+                throw new UnauthorizedAccessException(
+                    $"[Jarvis] Path jail violation in {methodName}: " +
+                    $"'{path}' is not under {s_jailPrefix}");
+            }
+        }
+
         private static object HandleWriteScript(JObject args)
         {
             string path = args.Value<string>("path") ?? args.Value<string>("content") != null
@@ -314,6 +332,9 @@ namespace Jarvis.EditorBridge
 
             if (string.IsNullOrEmpty(path))
                 throw new ArgumentException("WriteScript requires a 'path' parameter.");
+
+            // Path jail enforcement (defense-in-depth; Python side is authoritative)
+            EnforceBuiltinPathJail(path, "WriteScript");
 
             string fullPath = Path.Combine(Application.dataPath, "..", path);
             string dir = Path.GetDirectoryName(fullPath);
@@ -326,19 +347,24 @@ namespace Jarvis.EditorBridge
 
         private static object HandleCompileProject(JObject args)
         {
-            AssetDatabase.Refresh();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
             // Unity compilation is triggered by Refresh; errors are surfaced via
             // CompilationPipeline callbacks (see JarvisCompilationWatcher if present).
-            return new { compiled = true };
+            // Return pending=true so Python knows compilation was triggered but
+            // success hasn't been verified yet — use GetCompileErrors for results.
+            return new { compiled = false, pending = true,
+                message = "Compilation triggered via AssetDatabase.Refresh. Check GetCompileErrors for results." };
         }
 
         private static object HandleRunTests(JObject args)
         {
             // Unity Test Framework integration — start test run.
             // Full UTR integration requires the TestRunnerApi; for now we accept the
-            // request so the RPC contract is satisfied and return a placeholder.
+            // request so the RPC contract is satisfied.
+            // Return pending=true so Python knows tests were started but results
+            // aren't immediately available.
             string testFilter = args.Value<string>("testFilter") ?? "";
-            return new { started = true, testFilter = testFilter };
+            return new { started = true, pending = true, testFilter = testFilter };
         }
 
         private static object HandleEnterPlayMode(JObject args)
@@ -358,6 +384,10 @@ namespace Jarvis.EditorBridge
             string path = args.Value<string>("path") ?? "";
             if (string.IsNullOrEmpty(path))
                 throw new ArgumentException("ImportAsset requires a 'path' parameter.");
+
+            // Path jail enforcement (defense-in-depth; Python side is authoritative)
+            EnforceBuiltinPathJail(path, "ImportAsset");
+
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
             return new { imported = true, path = path };
         }
@@ -366,7 +396,10 @@ namespace Jarvis.EditorBridge
         {
             // Compile errors are surfaced via CompilationPipeline callbacks.
             // Return empty array as baseline; JarvisCompilationWatcher can augment.
-            return new { errors = new string[0] };
+            // Note: For real-time errors, subscribe to
+            // CompilationPipeline.assemblyCompilationFinished in JarvisCompilationWatcher.
+            return new { errors = new string[0],
+                note = "Subscribe to CompilationPipeline.assemblyCompilationFinished for real-time errors" };
         }
 
         private static object HandleCreateProject(JObject args)

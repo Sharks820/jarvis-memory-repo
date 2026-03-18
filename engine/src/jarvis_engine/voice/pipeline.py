@@ -771,8 +771,12 @@ def _dispatch_and_handle_response(
             print("intent=llm_unavailable")
             print(f"reason={response or 'LLM gateway not available.'}")
             return 1
-        elif response:
+        else:
+            # Always record user turn after successful LLM dispatch,
+            # even if response is empty (prevents losing user context)
             _add_to_history("user", text)
+
+        if response:
             _add_to_history("assistant", response)
 
             # Track assistant turn in conversation state for cross-LLM continuity

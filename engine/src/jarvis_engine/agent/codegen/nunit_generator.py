@@ -22,8 +22,10 @@ if TYPE_CHECKING:
 # Compiled patterns
 # ---------------------------------------------------------------------------
 
-# Match `class ClassName` (optionally followed by `: BaseClass`)
-_RE_CLASS_NAME = re.compile(r'^public\s+class\s+(\w+)', re.MULTILINE)
+# Match `class ClassName` with optional access/partial modifiers
+_RE_CLASS_NAME = re.compile(
+    r'^(?:public\s+|internal\s+)?(?:partial\s+)?class\s+(\w+)', re.MULTILINE
+)
 
 # Match markdown code fences: ```csharp ... ``` or ``` ... ```
 _RE_CODE_FENCE = re.compile(r"^```(?:csharp|cs)?\s*\n?([\s\S]*?)\n?```\s*$", re.DOTALL)

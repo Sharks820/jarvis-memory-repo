@@ -123,7 +123,28 @@ class ReflectionLoop:
                 pos += 1
                 continue
 
-            # Failure path
+            # Failure path — check for non-retryable errors first
+            if result.error and "rejected" in result.error.lower():
+                logger.warning(
+                    "ReflectionLoop: step %d approval rejected for task %s — "
+                    "non-retryable, marking failed",
+                    step.step_index,
+                    task.task_id,
+                )
+                task.status = "failed"
+                task.last_error = result.error
+                self._store.checkpoint(task)
+                await self._bus.emit(
+                    {
+                        "type": "approval_rejected",
+                        "task_id": task.task_id,
+                        "step_index": step.step_index,
+                        "error": result.error,
+                        "message": f"Step rejected by approval gate: {result.error}",
+                    }
+                )
+                return task
+
             error_hash = self._error_hash(result.error)
             if error_hash == last_error_hash:
                 consecutive_same_error += 1

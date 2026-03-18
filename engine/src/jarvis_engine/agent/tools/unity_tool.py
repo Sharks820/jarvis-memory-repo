@@ -203,11 +203,20 @@ class UnityTool:
             "params": {"token": secret},
         })
         await self._ws.send(auth_request)
-        raw_auth = await self._ws.recv()
-        try:
-            auth_msg: dict[str, Any] = json.loads(raw_auth)
-        except (json.JSONDecodeError, TypeError):
-            auth_msg = {}
+        # Wait for auth response, skipping any heartbeat/ready messages
+        # that the bridge may send immediately on connect.
+        auth_msg: dict[str, Any] = {}
+        while True:
+            raw_auth = await asyncio.wait_for(self._ws.recv(), timeout=5.0)
+            try:
+                candidate: dict[str, Any] = json.loads(raw_auth)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if candidate.get("id") == "auth":
+                auth_msg = candidate
+                break
+            # else: skip heartbeat/ready messages that arrived before auth response
+            logger.debug("UnityTool: skipping pre-auth message: %s", raw_auth[:120])
         auth_result = auth_msg.get("result")
         if not isinstance(auth_result, dict) or not auth_result.get("authenticated"):
             await self._ws.close()
@@ -407,7 +416,7 @@ class UnityTool:
         params = kwargs.pop("params", kwargs)
         if method == "WriteScript":
             path = params.get("path", "")
-            code = params.get("code", "")
+            code = params.get("content", params.get("code", ""))
             return await self.write_script(path, code)
         elif method == "CreateProject":
             return await self.create_project(**params)

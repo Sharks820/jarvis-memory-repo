@@ -41,30 +41,27 @@ class VRAMCoordinator:
     Both share ``_gpu_mutex`` — only one may be held at a time.
     """
 
-    # Lazily created to avoid binding to the wrong event loop at import time.
-    _gpu_mutex: asyncio.Lock | None = field(default=None, init=False)
-    _mutex_loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False, init=False)
+    # Process-scoped threading.Lock for cross-loop safety.
+    # Using threading.Lock (not asyncio.Lock) ensures the mutex works correctly
+    # across different event loops (e.g. tests that create fresh loops).
+    _gpu_mutex: threading.Lock | None = field(default=None, init=False)
     _generation_active: bool = field(default=False, init=False)
     _playmode_active: bool = field(default=False, init=False)
 
-    def _get_mutex(self) -> asyncio.Lock:
-        """Return the asyncio.Lock, creating it lazily in the current event loop.
-
-        Recreates the lock if the running event loop has changed (e.g. tests
-        that create a fresh loop per test case).
-        """
-        loop = asyncio.get_running_loop()
-        if self._gpu_mutex is None or self._mutex_loop is not loop:
-            self._gpu_mutex = asyncio.Lock()
-            self._mutex_loop = loop
+    def _get_mutex(self) -> threading.Lock:
+        """Return the threading.Lock, creating it lazily on first access."""
+        if self._gpu_mutex is None:
+            self._gpu_mutex = threading.Lock()
         return self._gpu_mutex
 
     async def acquire_generation(self) -> None:
         """Acquire the GPU mutex for an Ollama generation call.
 
         Blocks until no Unity play-mode is active.
+        Uses run_in_executor to avoid blocking the event loop.
         """
-        await self._get_mutex().acquire()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._get_mutex().acquire)
         self._generation_active = True
         logger.debug("VRAMCoordinator: generation_active=True")
 
@@ -78,8 +75,10 @@ class VRAMCoordinator:
         """Acquire the GPU mutex before entering Unity play-mode.
 
         Blocks until no Ollama generation is active.
+        Uses run_in_executor to avoid blocking the event loop.
         """
-        await self._get_mutex().acquire()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._get_mutex().acquire)
         self._playmode_active = True
         logger.debug("VRAMCoordinator: unity_playmode_active=True")
 
