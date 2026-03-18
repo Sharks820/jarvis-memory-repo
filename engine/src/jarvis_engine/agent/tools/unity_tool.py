@@ -424,7 +424,7 @@ class UnityTool:
                 elif msg_id:
                     logger.debug("Stale RPC response id=%s (no pending handler)", msg_id)
                 else:
-                    await self._handle_heartbeat_message(raw)
+                    self._handle_heartbeat_msg(msg)
         except Exception:  # noqa: BLE001
             logger.debug("UnityTool: listener loop closed")
             self._state = BridgeState.DISCONNECTED
@@ -434,12 +434,8 @@ class UnityTool:
                     future.set_exception(ConnectionError("Bridge disconnected"))
             self._pending_rpc.clear()
 
-    async def _handle_heartbeat_message(self, raw: str) -> None:
-        """Process a single raw heartbeat message."""
-        try:
-            msg: dict[str, Any] = json.loads(raw)
-        except json.JSONDecodeError:
-            return
+    def _handle_heartbeat_msg(self, msg: dict[str, Any]) -> None:
+        """Process an already-parsed heartbeat/status message."""
         if msg.get("status") == "ready":
             logger.info("UnityTool: bridge ready — transitioning to CONNECTED")
             self._state = BridgeState.CONNECTED

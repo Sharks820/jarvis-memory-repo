@@ -18,11 +18,21 @@ if TYPE_CHECKING:
 
 _DEFAULT_BLOCKED: list[str] = [
     "rm -rf /",
+    "rm -rf ~",
+    "rm -r -f",
+    "rm --recursive",
     "format ",
     "del /s",
+    "del /f",
     "rmdir /s",
     ":(){",
     "mkfs",
+    "dd if=",
+    "chmod -r 000",
+    "chown -r",
+    "shutdown",
+    "reboot",
+    "halt",
 ]
 
 
@@ -62,6 +72,18 @@ class ShellTool:
                 f"Command blocked by policy: command substitution ($() or backticks) "
                 f"is not permitted in {command!r}"
             )
+
+        # Reject command chaining operators that could smuggle blocked commands
+        # past the blocklist (e.g. "echo ok && rm -r -f /").
+        # Only check outside quoted strings to avoid false positives on valid
+        # Python/shell arguments (e.g. python -c "import time; time.sleep(10)").
+        unquoted = re.sub(r"""(["']).*?\1""", "", normalized)
+        for chain_op in ("&&", "||"):
+            if chain_op in unquoted:
+                raise PermissionError(
+                    f"Command blocked by policy: chaining operator {chain_op!r} "
+                    f"is not permitted in {command!r}"
+                )
 
     # ------------------------------------------------------------------
     # Execution

@@ -49,19 +49,16 @@ namespace Jarvis.EditorBridge
                 "Forbidden: AssetDatabase.DeleteAsset — requires explicit approval"
             ),
 
-            // Dynamic assembly loading — arbitrary code execution
+            // Dynamic assembly loading — arbitrary code execution (unified pattern)
             (
-                new Regex(@"\bAssembly\.LoadFrom\b", RegexOptions.Compiled),
-                "Forbidden: Assembly.LoadFrom allows arbitrary code execution"
-            ),
-            (
-                new Regex(@"\bAssembly\.Load\s*\(", RegexOptions.Compiled),
-                "Forbidden: Assembly.Load allows arbitrary code execution"
+                new Regex(@"\bAssembly\.Load(?:From|File)?\s*[\(\[]", RegexOptions.Compiled),
+                "Forbidden: Assembly.Load/LoadFrom/LoadFile allows arbitrary code execution"
             ),
 
             // Path traversal sequences — escape from JarvisGenerated jail
+            // Whitespace-tolerant to match Python-side pattern
             (
-                new Regex(@"\.\.[/\\]", RegexOptions.Compiled),
+                new Regex(@"\.\.\s*[/\\]", RegexOptions.Compiled),
                 "Forbidden: Path traversal sequence detected (../ or ..\\)"
             ),
 

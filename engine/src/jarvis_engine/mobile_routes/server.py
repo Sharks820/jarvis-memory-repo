@@ -1197,6 +1197,8 @@ class MobileIngestHandler(
         "/memory/hygiene": "_handle_get_memory_hygiene",
         "/diagnostics/status": "_handle_get_diagnostics",
         "/favicon.ico": "_handle_get_favicon",
+        "/agent/status": "handle_agent_status",
+        "/agent/stream": "handle_agent_stream",
     }
 
     # Paths exempt from rate limiting (public/unauthenticated GET endpoints)
@@ -1309,6 +1311,8 @@ class MobileIngestHandler(
         "/missions/pause": "_handle_post_missions_pause",
         "/missions/resume": "_handle_post_missions_resume",
         "/missions/restart": "_handle_post_missions_restart",
+        "/agent/run": "handle_agent_run",
+        "/agent/approve": "handle_agent_approve",
     }
 
     # Endpoint-specific POST body size limits (bytes).

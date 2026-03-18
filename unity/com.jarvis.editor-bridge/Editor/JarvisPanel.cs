@@ -45,6 +45,10 @@ namespace Jarvis.EditorBridge
         private string _approvalTaskId      = "";
         private string _approvalDescription = "";
 
+        // Cached GUIStyles to avoid per-frame allocation
+        private GUIStyle _statusStyle;
+        private GUIStyle _pendingStyle;
+
         // ── Menu registration ──────────────────────────────────────────────────
 
         /// <summary>Open or focus the Jarvis Agent Panel.</summary>
@@ -140,11 +144,10 @@ namespace Jarvis.EditorBridge
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Status:", GUILayout.Width(50));
 
-            var statusStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = StatusColor(_currentStatus) }
-            };
-            EditorGUILayout.LabelField(_currentStatus, statusStyle, GUILayout.ExpandWidth(true));
+            if (_statusStyle == null)
+                _statusStyle = new GUIStyle(EditorStyles.boldLabel);
+            _statusStyle.normal.textColor = StatusColor(_currentStatus);
+            EditorGUILayout.LabelField(_currentStatus, _statusStyle, GUILayout.ExpandWidth(true));
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
@@ -183,11 +186,12 @@ namespace Jarvis.EditorBridge
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            var pendingStyle = new GUIStyle(EditorStyles.wordWrappedLabel)
+            if (_pendingStyle == null)
             {
-                normal = { textColor = new Color(1f, 0.85f, 0f) }  // yellow
-            };
-            EditorGUILayout.LabelField($"Approval: \"{_approvalDescription}\"", pendingStyle);
+                _pendingStyle = new GUIStyle(EditorStyles.wordWrappedLabel);
+                _pendingStyle.normal.textColor = new Color(1f, 0.85f, 0f);  // yellow
+            }
+            EditorGUILayout.LabelField($"Approval: \"{_approvalDescription}\"", _pendingStyle);
 
             EditorGUILayout.BeginHorizontal();
 

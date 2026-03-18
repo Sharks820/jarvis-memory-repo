@@ -240,12 +240,14 @@ namespace Jarvis.EditorBridge
                 // Resolve relative to the Unity project root (Application.dataPath is <project>/Assets)
                 string projectRoot = System.IO.Path.GetFullPath(
                     System.IO.Path.Combine(Application.dataPath, ".."));
-                jailPrefix = System.IO.Path.Combine(projectRoot, "Assets", "JarvisGenerated");
+                jailPrefix = System.IO.Path.Combine(projectRoot, "Assets", "JarvisGenerated")
+                    + System.IO.Path.DirectorySeparatorChar;
             }
-            catch
+            catch (Exception ex)
             {
-                // Application.dataPath unavailable outside play mode — skip jail check
-                return;
+                // Fail closed — reject when jail prefix cannot be computed
+                throw new UnauthorizedAccessException(
+                    $"[Jarvis] Path jail check cannot compute jail prefix: {ex.Message}");
             }
 
             foreach (var prop in args.Properties())
@@ -264,7 +266,11 @@ namespace Jarvis.EditorBridge
                     string normalized = System.IO.Path.IsPathRooted(val)
                         ? System.IO.Path.GetFullPath(val)
                         : System.IO.Path.GetFullPath(System.IO.Path.Combine(projectRoot, val));
-                    if (!normalized.StartsWith(jailPrefix, StringComparison.OrdinalIgnoreCase))
+                    // Allow exact jail directory or any path under it
+                    if (!normalized.StartsWith(jailPrefix, StringComparison.OrdinalIgnoreCase)
+                        && !normalized.Equals(
+                            jailPrefix.TrimEnd(System.IO.Path.DirectorySeparatorChar),
+                            StringComparison.OrdinalIgnoreCase))
                     {
                         throw new UnauthorizedAccessException(
                             $"[Jarvis] Bridge path jail violation: method '{methodKey}', " +
@@ -272,9 +278,12 @@ namespace Jarvis.EditorBridge
                             $"JarvisGenerated jail ({jailPrefix}).");
                     }
                 }
-                catch (ArgumentException)
+                catch (ArgumentException ex)
                 {
-                    // Non-path string — ignore
+                    // If it looks like a path but can't be resolved, fail closed
+                    throw new UnauthorizedAccessException(
+                        $"[Jarvis] Path jail violation: parameter '{prop.Name}' " +
+                        $"value '{val}' could not be validated: {ex.Message}");
                 }
             }
         }
@@ -446,7 +455,9 @@ namespace Jarvis.EditorBridge
             if (args["scaleFactor"] != null)
                 importer.globalScale = args.Value<float>("scaleFactor");
             if (args["importMaterials"] != null)
-                importer.importMaterials = args.Value<bool>("importMaterials");
+                importer.materialImportMode = args.Value<bool>("importMaterials")
+                    ? ModelImporterMaterialImportMode.ImportViaMaterialDescription
+                    : ModelImporterMaterialImportMode.None;
             if (args["generateLightmapUVs"] != null)
                 importer.generateSecondaryUV = args.Value<bool>("generateLightmapUVs");
             if (args["meshCompression"] != null)

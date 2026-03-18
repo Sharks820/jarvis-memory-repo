@@ -127,6 +127,10 @@ class StepExecutor:
                 result_value = await raw_result
             else:
                 result_value = raw_result
+            # Extract token usage if the tool returns a dict with "tokens_used"
+            step_tokens = 0
+            if isinstance(result_value, dict) and "tokens_used" in result_value:
+                step_tokens = int(result_value.get("tokens_used", 0))
             output = str(result_value)
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -163,4 +167,4 @@ class StepExecutor:
             step.tool_name,
             task.task_id,
         )
-        return StepResult(success=True, output=output)
+        return StepResult(success=True, output=output, tokens_used=step_tokens)

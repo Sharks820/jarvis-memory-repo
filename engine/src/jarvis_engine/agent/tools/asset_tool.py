@@ -44,8 +44,7 @@ def _assert_in_jail(path: str) -> None:
             f"Empty path is not permitted; must be inside {_JAIL_PREFIX}/"
         )
     normalised = os.path.normpath(path.replace("\\", "/")).replace("\\", "/")
-    required_prefix = _JAIL_PREFIX + "/"
-    if not normalised.startswith(required_prefix):
+    if normalised != _JAIL_PREFIX and not normalised.startswith(_JAIL_PREFIX + "/"):
         raise PermissionError(
             f"Path {path!r} (normalised: {normalised!r}) is outside the "
             f"asset path jail ({_JAIL_PREFIX}/)."

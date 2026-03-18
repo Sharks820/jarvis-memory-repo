@@ -590,7 +590,7 @@ class TestWithTestFile:
         tool.write_script = AsyncMock(return_value={"status": "ok"})
 
         async def _compile():
-            return {"errors": [], "warnings": []}
+            return {"errors": [], "warnings": [], "compiled": True}
 
         tool.compile = _compile
 

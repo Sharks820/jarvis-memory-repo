@@ -71,7 +71,7 @@ namespace Jarvis.EditorBridge
                     string stored = System.IO.File.ReadAllText(secretPath).Trim();
                     if (!string.IsNullOrEmpty(stored))
                     {
-                        Debug.Log($"[Jarvis] Bridge secret loaded from {secretPath}");
+                        Debug.Log("[Jarvis] Bridge secret loaded from file");
                         return stored;
                     }
                 }
@@ -332,10 +332,10 @@ namespace Jarvis.EditorBridge
                         if (request.Method == "authenticate")
                         {
                             var token = request.Params?.Value<string>("token") ?? "";
-                            // Reject empty secrets to prevent bypass when no secret is configured
+                            // Reject empty secrets to prevent bypass; constant-time comparison
                             if (!string.IsNullOrEmpty(token)
                                 && !string.IsNullOrEmpty(JarvisEditorBridge.SharedSecret)
-                                && token == JarvisEditorBridge.SharedSecret)
+                                && ConstantTimeEquals(token, JarvisEditorBridge.SharedSecret))
                             {
                                 _authenticated = true;
                                 Send(JsonConvert.SerializeObject(
@@ -438,7 +438,8 @@ namespace Jarvis.EditorBridge
             {
                 var writeKeywords = new[]
                 {
-                    "Write", "Create", "Save", "Export", "WriteAllText", "WriteAllBytes"
+                    "Write", "Create", "Save", "Export", "WriteAllText", "WriteAllBytes",
+                    "Execute", "Run", "Compile", "Script", "Generate"
                 };
                 foreach (var kw in writeKeywords)
                 {
@@ -447,6 +448,17 @@ namespace Jarvis.EditorBridge
                 }
                 return false;
             }
+        }
+
+        /// <summary>Constant-time string comparison to prevent timing attacks.</summary>
+        private static bool ConstantTimeEquals(string a, string b)
+        {
+            if (a == null || b == null) return false;
+            if (a.Length != b.Length) return false;
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++)
+                diff |= a[i] ^ b[i];
+            return diff == 0;
         }
     }
 }

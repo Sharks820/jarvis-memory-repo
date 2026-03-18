@@ -115,6 +115,23 @@ class AgentRunHandler:
             task.last_error = "Agent subsystem not fully configured"
             if self._store is not None:
                 self._store.checkpoint(task)
+            if self._bus is not None:
+                try:
+                    _fail_loop = asyncio.new_event_loop()
+                    try:
+                        _fail_loop.run_until_complete(
+                            self._bus.emit(
+                                {
+                                    "type": "task_failed",
+                                    "task_id": task.task_id,
+                                    "error": task.last_error,
+                                }
+                            )
+                        )
+                    finally:
+                        _fail_loop.close()
+                except Exception:  # noqa: BLE001
+                    pass
             return
 
         try:
@@ -156,6 +173,25 @@ class AgentRunHandler:
                 self._store.checkpoint(task)
             except Exception:  # noqa: BLE001
                 pass
+            # Emit task_failed so SSE clients don't hang indefinitely.
+            # The event loop is closed at this point, so use a temporary one.
+            if self._bus is not None:
+                try:
+                    _fail_loop = asyncio.new_event_loop()
+                    try:
+                        _fail_loop.run_until_complete(
+                            self._bus.emit(
+                                {
+                                    "type": "task_failed",
+                                    "task_id": task.task_id,
+                                    "error": str(exc),
+                                }
+                            )
+                        )
+                    finally:
+                        _fail_loop.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 class AgentStatusHandler:

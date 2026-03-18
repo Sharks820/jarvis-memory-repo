@@ -379,18 +379,14 @@ class TestBridgeStateMachine:
 
     def test_heartbeat_exits_waiting(self) -> None:
         """Receiving {status: ready} sets state back to CONNECTED."""
+        tool = UnityTool()
+        tool._state = BridgeState.WAITING_FOR_BRIDGE
+        tool._ready_event.clear()
 
-        async def _run() -> None:
-            tool = UnityTool()
-            tool._state = BridgeState.WAITING_FOR_BRIDGE
-            tool._ready_event.clear()
+        tool._handle_heartbeat_msg({"status": "ready"})
 
-            await tool._handle_heartbeat_message('{"status":"ready"}')
-
-            assert tool.state == BridgeState.CONNECTED
-            assert tool._ready_event.is_set()
-
-        asyncio.run(_run())
+        assert tool.state == BridgeState.CONNECTED
+        assert tool._ready_event.is_set()
 
     def test_disconnect_handler(self) -> None:
         """When disconnect() is called, state transitions to DISCONNECTED."""
