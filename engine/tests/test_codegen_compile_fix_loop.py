@@ -69,8 +69,8 @@ def _make_unity_tool(
     async def _compile():
         call_count[0] += 1
         if call_count[0] < compile_success_on_attempt:
-            return {"errors": compile_errors or ["CS0117: some error"], "warnings": []}
-        return {"errors": [], "warnings": []}
+            return {"compiled": False, "errors": compile_errors or ["CS0117: some error"], "warnings": []}
+        return {"compiled": True, "errors": [], "warnings": []}
 
     tool.compile = _compile
 

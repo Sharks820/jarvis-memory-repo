@@ -46,6 +46,9 @@ namespace Jarvis.EditorBridge
             { "ImportAsset", HandleImportAsset },
             { "GetCompileErrors", HandleGetCompileErrors },
             { "CreateProject", HandleCreateProject },
+            { "SetModelImporterSettings", HandleSetModelImporterSettings },
+            { "SetTextureImporterSettings", HandleSetTextureImporterSettings },
+            { "SetAudioImporterSettings", HandleSetAudioImporterSettings },
         };
 
         // ── Public API ─────────────────────────────────────────────────────────
@@ -422,6 +425,90 @@ namespace Jarvis.EditorBridge
                 project = Application.dataPath,
                 version = Application.unityVersion
             };
+        }
+
+        private static object HandleSetModelImporterSettings(JObject args)
+        {
+            string path = args.Value<string>("path") ?? "";
+            if (string.IsNullOrEmpty(path))
+                throw new ArgumentException("SetModelImporterSettings requires a 'path' parameter.");
+            EnforceBuiltinPathJail(path, "SetModelImporterSettings");
+
+            var importer = AssetImporter.GetAtPath(path) as ModelImporter;
+            if (importer == null)
+                throw new InvalidOperationException($"No ModelImporter found at path: {path}");
+
+            if (args["scaleFactor"] != null)
+                importer.globalScale = args.Value<float>("scaleFactor");
+            if (args["importMaterials"] != null)
+                importer.importMaterials = args.Value<bool>("importMaterials");
+            if (args["generateLightmapUVs"] != null)
+                importer.generateSecondaryUV = args.Value<bool>("generateLightmapUVs");
+            if (args["meshCompression"] != null)
+            {
+                var compression = args.Value<string>("meshCompression") ?? "Off";
+                if (System.Enum.TryParse<ModelImporterMeshCompression>(compression, true, out var mc))
+                    importer.meshCompression = mc;
+            }
+
+            importer.SaveAndReimport();
+            return new { applied = true, path = path, type = "ModelImporter" };
+        }
+
+        private static object HandleSetTextureImporterSettings(JObject args)
+        {
+            string path = args.Value<string>("path") ?? "";
+            if (string.IsNullOrEmpty(path))
+                throw new ArgumentException("SetTextureImporterSettings requires a 'path' parameter.");
+            EnforceBuiltinPathJail(path, "SetTextureImporterSettings");
+
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null)
+                throw new InvalidOperationException($"No TextureImporter found at path: {path}");
+
+            if (args["sRGB"] != null)
+                importer.sRGBTexture = args.Value<bool>("sRGB");
+            if (args["maxTextureSize"] != null)
+                importer.maxTextureSize = args.Value<int>("maxTextureSize");
+            if (args["textureCompression"] != null)
+            {
+                var compression = args.Value<string>("textureCompression") ?? "Normal";
+                if (System.Enum.TryParse<TextureImporterCompression>(compression, true, out var tc))
+                    importer.textureCompression = tc;
+            }
+            if (args["mipmapEnabled"] != null)
+                importer.mipmapEnabled = args.Value<bool>("mipmapEnabled");
+
+            importer.SaveAndReimport();
+            return new { applied = true, path = path, type = "TextureImporter" };
+        }
+
+        private static object HandleSetAudioImporterSettings(JObject args)
+        {
+            string path = args.Value<string>("path") ?? "";
+            if (string.IsNullOrEmpty(path))
+                throw new ArgumentException("SetAudioImporterSettings requires a 'path' parameter.");
+            EnforceBuiltinPathJail(path, "SetAudioImporterSettings");
+
+            var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+            if (importer == null)
+                throw new InvalidOperationException($"No AudioImporter found at path: {path}");
+
+            var settings = importer.defaultSampleSettings;
+            if (args["compressionFormat"] != null)
+            {
+                var format = args.Value<string>("compressionFormat") ?? "Vorbis";
+                if (System.Enum.TryParse<AudioCompressionFormat>(format, true, out var af))
+                    settings.compressionFormat = af;
+            }
+            if (args["quality"] != null)
+                settings.quality = args.Value<float>("quality");
+            if (args["loadInBackground"] != null)
+                importer.loadInBackground = args.Value<bool>("loadInBackground");
+
+            importer.defaultSampleSettings = settings;
+            importer.SaveAndReimport();
+            return new { applied = true, path = path, type = "AudioImporter" };
         }
     }
 }

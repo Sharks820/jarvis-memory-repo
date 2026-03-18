@@ -82,11 +82,22 @@ def _parse_compile_errors(result: Any) -> list[str]:
     Handles both ``{"errors": [...]}`` and raw error string results.
     Returns a sentinel ``["__pending__"]`` when the result indicates
     compilation was triggered but not yet complete.
+
+    IMPORTANT: ``compiled=false`` without errors is NOT success — it means
+    compilation hasn't been verified.  Only ``compiled=true`` with empty
+    errors is a real success.
     """
     if isinstance(result, dict):
         if result.get("pending"):
             return ["__pending__"]
-        return result.get("errors") or []
+        errors = result.get("errors") or []
+        if errors:
+            return errors
+        # Only trust an explicit compiled=true as success
+        if result.get("compiled") is True:
+            return []
+        # compiled is missing or false — not verified
+        return ["__pending__"]
     return []
 
 
@@ -95,13 +106,21 @@ def _parse_test_errors(result: Any) -> list[str]:
 
     Returns a sentinel ``["__pending__"]`` when the result indicates
     tests were started but results are not yet available.
+
+    IMPORTANT: defaults ``passed`` to False (not True) so that missing
+    fields never produce a false green.
     """
     if isinstance(result, dict):
         if result.get("pending"):
             return ["__pending__"]
-        if result.get("passed", True):
+        errors = result.get("errors") or []
+        if errors:
+            return errors
+        # Only trust an explicit passed=true as success
+        if result.get("passed") is True:
             return []
-        return result.get("errors") or ["NUnit tests failed (no details)"]
+        # passed is missing or false — treat as failure
+        return ["NUnit tests: result not confirmed (passed field missing or false)"]
     return []
 
 
@@ -306,22 +325,35 @@ class CompileFixLoop:
         )
 
     async def _poll_compile_errors(self, max_attempts: int = 30) -> list[str]:
-        """Poll GetCompileErrors until ready or timeout (1s intervals)."""
+        """Poll GetCompileErrors until ready or timeout (1s intervals).
+
+        Only returns empty (success) if the bridge explicitly confirms
+        ``ready=true`` with zero errors.  Otherwise returns errors or a
+        timeout sentinel.
+        """
         for _ in range(max_attempts):
             await asyncio.sleep(1.0)
             errors_result = await self._unity_tool.call("GetCompileErrors", {})
             if not isinstance(errors_result, dict):
                 continue
             errors = errors_result.get("errors") or []
-            if errors_result.get("ready", False) or errors:
+            if errors:
                 return list(errors)
+            # Only accept success on explicit ready=true
+            if errors_result.get("ready") is True:
+                return []
+            # Not ready yet — keep polling
         logger.warning("CompileFixLoop: compile status unknown after %ds timeout", max_attempts)
         return ["Compilation status unknown after timeout"]
 
     async def _poll_test_results(
         self, test_class_name: str, max_attempts: int = 30
     ) -> list[str]:
-        """Poll for test results until ready or timeout (1s intervals)."""
+        """Poll for test results until ready or timeout (1s intervals).
+
+        Only returns empty (success) if the bridge explicitly confirms
+        ``passed=true``.  Missing or false ``passed`` is treated as failure.
+        """
         for _ in range(max_attempts):
             await asyncio.sleep(1.0)
             result = await self._unity_tool.call(
@@ -331,9 +363,13 @@ class CompileFixLoop:
                 continue
             if result.get("pending"):
                 continue
-            if result.get("passed", True):
+            errors = result.get("errors") or []
+            if errors:
+                return errors
+            # Only accept success on explicit passed=true
+            if result.get("passed") is True:
                 return []
-            return result.get("errors") or ["NUnit tests failed (no details)"]
+            return ["NUnit tests: result not confirmed (passed field missing or false)"]
         logger.warning("CompileFixLoop: test status unknown after %ds timeout", max_attempts)
         return ["Test results unknown after timeout"]
 

@@ -687,23 +687,31 @@ _AREA_CODE_TZ: dict[str, str] = {
 _TZ_STANDARD_OFFSETS: dict[str, int] = {"ET": -5, "CT": -6, "MT": -7, "PT": -8, "HT": -10}
 
 
-def _is_us_dst(utc_dt: datetime) -> bool:
-    """Check if a UTC datetime falls within US DST (second Sunday March - first Sunday November).
+def _is_us_dst(utc_dt: datetime, standard_offset: int) -> bool:
+    """Check if a UTC datetime falls within US DST for a given timezone.
 
     US DST: starts 2 AM local on second Sunday of March, ends 2 AM local
-    on first Sunday of November.  We approximate using UTC dates which is
-    close enough for hour-of-day scoring.
+    on first Sunday of November.  The UTC cutover depends on the timezone's
+    standard offset (2 AM local = 2 - offset in UTC).
+
+    Args:
+        utc_dt: The UTC datetime to check.
+        standard_offset: Standard UTC offset (e.g., -5 for ET, -8 for PT).
     """
     year = utc_dt.year
-    # Second Sunday of March: find first Sunday in March, then add 7 days
+    # Second Sunday of March
     march1 = datetime(year, 3, 1, tzinfo=UTC)
     first_sunday_march = 1 + (6 - march1.weekday()) % 7
-    dst_start = datetime(year, 3, first_sunday_march + 7, 7, 0, tzinfo=UTC)  # ~2AM ET in UTC
+    # 2 AM local in UTC = 2 - standard_offset (offset is negative, so subtract)
+    dst_start_utc_hour = 2 - standard_offset  # e.g., ET: 2-(-5)=7, PT: 2-(-8)=10
+    dst_start = datetime(year, 3, first_sunday_march + 7, dst_start_utc_hour, 0, tzinfo=UTC)
 
     # First Sunday of November
     nov1 = datetime(year, 11, 1, tzinfo=UTC)
     first_sunday_nov = 1 + (6 - nov1.weekday()) % 7
-    dst_end = datetime(year, 11, first_sunday_nov, 6, 0, tzinfo=UTC)  # ~2AM ET in UTC
+    # End uses DST offset (standard + 1), so 2 AM DST local = 2 - (standard + 1) in UTC
+    dst_end_utc_hour = 2 - (standard_offset + 1)  # e.g., ET: 2-(-4)=6, PT: 2-(-7)=9
+    dst_end = datetime(year, 11, first_sunday_nov, dst_end_utc_hour, 0, tzinfo=UTC)
 
     return dst_start <= utc_dt < dst_end
 
@@ -712,12 +720,13 @@ def _local_hour_for_tz(tz_abbr: str, utc_now: datetime) -> int:
     """Get current hour in timezone, accounting for US DST.
 
     Hawaii (HT) does not observe DST and is excluded from the adjustment.
+    Each timezone uses its own UTC cutover times for DST boundaries.
     """
     offset = _TZ_STANDARD_OFFSETS.get(tz_abbr)
     if offset is None:
         return utc_now.hour
     # Apply DST offset for non-Hawaii US timezones
-    if tz_abbr != "HT" and _is_us_dst(utc_now):
+    if tz_abbr != "HT" and _is_us_dst(utc_now, offset):
         offset += 1
     return (utc_now.hour + offset) % 24
 

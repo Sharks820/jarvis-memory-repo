@@ -381,7 +381,12 @@ def _load_todoist_tasks() -> list[dict]:
 def load_email_items(limit: int = 20) -> list[dict]:
     json_path = os.getenv("JARVIS_EMAIL_JSON", "").strip()
     if json_path:
-        return _read_json_list(Path(json_path))
+        p = Path(json_path)
+        # Block UNC paths and symlinks (same as other feed paths)
+        if str(p).startswith("\\\\") or (p.exists() and p.is_symlink()):
+            logger.warning("Blocked suspicious email JSON path: %s", json_path)
+            return []
+        return _read_json_list(p)
 
     host = os.getenv("JARVIS_IMAP_HOST", "").strip()
     user = os.getenv("JARVIS_IMAP_USER", "").strip()
