@@ -103,6 +103,10 @@ class TaskPlanner:
         tokens_used = response.input_tokens + response.output_tokens
 
         steps = self._parse_steps(response.text)
+        # Validate tool names against registry
+        warnings = self.validate_plan(steps)
+        for w in warnings:
+            logger.warning("TaskPlanner.plan: %s", w)
         logger.info(
             "TaskPlanner.plan: parsed %d steps for goal %r (tokens=%d)",
             len(steps),
@@ -163,6 +167,10 @@ class TaskPlanner:
         tokens_used = response.input_tokens + response.output_tokens
 
         steps = self._parse_steps(response.text)
+        # Validate tool names against registry
+        warnings = self.validate_plan(steps)
+        for w in warnings:
+            logger.warning("TaskPlanner.replan: %s", w)
         logger.info(
             "TaskPlanner.replan: revised to %d steps (tokens=%d, error=%r)",
             len(steps),
@@ -223,6 +231,21 @@ class TaskPlanner:
             )
 
         return steps
+
+    def validate_plan(self, steps: list[AgentStep]) -> list[str]:
+        """Validate tool_name in each step against the registry.
+
+        Returns a list of warning strings for unknown tools (empty if all valid).
+        """
+        known = {spec.name for spec in self._registry.list_tools()}
+        warnings: list[str] = []
+        for step in steps:
+            if self._registry.get(step.tool_name) is None:
+                warnings.append(
+                    f"Step {step.step_index}: unknown tool_name {step.tool_name!r} "
+                    f"(available: {', '.join(sorted(known))})"
+                )
+        return warnings
 
     @staticmethod
     def _strip_code_fences(text: str) -> str:

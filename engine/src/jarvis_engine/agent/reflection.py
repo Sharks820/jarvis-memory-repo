@@ -111,6 +111,7 @@ class ReflectionLoop:
 
             # 2. Execute step
             result = await self._executor.execute_step(step, task)
+            task.tokens_used += result.tokens_used
 
             # 3. Evaluate
             if self.evaluate(result):

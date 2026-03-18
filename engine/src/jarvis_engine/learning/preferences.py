@@ -153,20 +153,23 @@ class PreferenceTracker(LearningTrackerBase):
             source_channel="user",
             content=subject_id,
         )
-        self._provenance_store.record_subject(
-            subject_type="preference",
-            subject_id=subject_id,
-            metadata=provenance,
-        )
-        self._provenance_store.record_policy_event(
-            subject_type="preference",
-            subject_id=subject_id,
-            action="observe",
-            verdict=provenance["promotion_state"],
-            policy_mode=provenance["policy_mode"],
-            reason="preference_signal_observed",
-            metadata={"category": category, "preference": preference},
-        )
+        try:
+            self._provenance_store.record_subject(
+                subject_type="preference",
+                subject_id=subject_id,
+                metadata=provenance,
+            )
+            self._provenance_store.record_policy_event(
+                subject_type="preference",
+                subject_id=subject_id,
+                action="observe",
+                verdict=provenance["promotion_state"],
+                policy_mode=provenance["policy_mode"],
+                reason="preference_signal_observed",
+                metadata={"category": category, "preference": preference},
+            )
+        except (OSError, ValueError, AttributeError) as exc:
+            logger.debug("Provenance recording failed: %s", exc)
 
     @staticmethod
     def _parse_iso_timestamp(ts: str) -> datetime | None:

@@ -15,6 +15,7 @@ detection time and use that path for all invocations.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -491,7 +492,10 @@ def _compact_messages_for_cli(messages: list[dict[str, str]]) -> list[dict[str, 
     # content hash to avoid double-checkpointing when both
     # _build_messages_text and _build_claude_cli_prompt call us.
     if dropped:
-        content_key = hash(tuple(m.get("content", "")[:100] for m in dropped))
+        content_key = hashlib.md5(  # noqa: S324 — not for security, just dedup
+            "|".join(m.get("content", "")[:100] for m in dropped).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
         if content_key != getattr(_compact_messages_for_cli, "_last_ckpt", None):
             _compact_messages_for_cli._last_ckpt = content_key  # type: ignore[attr-defined]
             try:

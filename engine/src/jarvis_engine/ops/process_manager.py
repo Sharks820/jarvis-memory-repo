@@ -184,6 +184,7 @@ def _lock_pid_file(service: str, root: Path) -> AbstractContextManager[None]:
                     try:
                         import msvcrt
 
+                        os.lseek(fd, 0, os.SEEK_SET)
                         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
                     except OSError as exc:
                         logger.debug("Failed to unlock file: %s", exc)

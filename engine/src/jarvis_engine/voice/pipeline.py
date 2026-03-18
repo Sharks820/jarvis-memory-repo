@@ -244,6 +244,13 @@ class ConversationState:
 # Module-level singleton
 _state = ConversationState()
 
+
+def _reset_conversation_state() -> None:
+    """Reset module-level conversation state (for test isolation)."""
+    global _state
+    _state = ConversationState()
+
+
 # Flush dirty conversation history on interpreter shutdown
 
 
@@ -300,7 +307,7 @@ class _ConversationHistoryProxy:
     def __iter__(self) -> Iterator[dict[str, str]]:
         return iter(_state.get_history_messages())
 
-    def __getitem__(self, idx: int | slice) -> dict[str, str] | list[dict[str, str]]:
+    def __getitem__(self, idx: int | slice) -> Any:
         return _state.get_history_messages()[idx]
 
     def __bool__(self) -> bool:
@@ -657,7 +664,11 @@ def _append_final_instructions(
             "You have web search results above -- use them to give current, accurate answers. "
             "Cite the source when using web search results. "
             "If you don't have relevant information, say so honestly. "
-            "Do not re-introduce yourself unless explicitly asked."
+            "Do not re-introduce yourself unless explicitly asked. "
+            "Do not output full code listings or entire scripts unless the user explicitly asks to see the code. "
+            "By default, summarize what you created or changed in 1-3 sentences. "
+            "When showing code, keep snippets short (under 15 lines) and focus on the key parts. "
+            "For agent tasks like Unity development, route to the agent system and report results concisely."
         )
     elif web_attempted:
         system_parts.append(
@@ -666,7 +677,11 @@ def _append_final_instructions(
             "Answer the question using your knowledge. "
             "Do NOT say you cannot access the web or that you are not wired for web access. "
             "Simply provide the best answer you can. "
-            "Do not re-introduce yourself unless explicitly asked."
+            "Do not re-introduce yourself unless explicitly asked. "
+            "Do not output full code listings or entire scripts unless the user explicitly asks to see the code. "
+            "By default, summarize what you created or changed in 1-3 sentences. "
+            "When showing code, keep snippets short (under 15 lines) and focus on the key parts. "
+            "For agent tasks like Unity development, route to the agent system and report results concisely."
         )
     else:
         system_parts.append(
@@ -674,7 +689,11 @@ def _append_final_instructions(
             "If the user asks about something you have facts for, use those facts directly. "
             "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
             "If you don't have relevant information, say so honestly. "
-            "Do not re-introduce yourself unless explicitly asked."
+            "Do not re-introduce yourself unless explicitly asked. "
+            "Do not output full code listings or entire scripts unless the user explicitly asks to see the code. "
+            "By default, summarize what you created or changed in 1-3 sentences. "
+            "When showing code, keep snippets short (under 15 lines) and focus on the key parts. "
+            "For agent tasks like Unity development, route to the agent system and report results concisely."
         )
 
 
@@ -753,6 +772,7 @@ def _dispatch_and_handle_response(
             print(f"reason={response or 'LLM gateway not available.'}")
             return 1
         elif response:
+            _add_to_history("user", text)
             _add_to_history("assistant", response)
 
             # Track assistant turn in conversation state for cross-LLM continuity
@@ -896,8 +916,6 @@ def _prepare_history(
         for m in hist
         if isinstance(m, dict)
     )
-    _add_to_history("user", text)
-
     # Track user turn in conversation state for cross-LLM continuity
     try:
         from jarvis_engine.memory.conversation_state import get_conversation_state

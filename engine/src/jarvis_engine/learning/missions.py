@@ -404,6 +404,7 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             old = _PAGE_CACHE.pop(key, None)
             if old is not None:
                 _page_cache_bytes[0] -= len(old[1].encode("utf-8"))
+                _page_cache_bytes[0] = max(0, _page_cache_bytes[0])
     value = _fetch_page_text_with_fallbacks(url, max_bytes=max_bytes)
     if not value:
         # Do not memoize transient fetch failures across retries.
@@ -413,6 +414,7 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
         if key in _PAGE_CACHE:
             _old_ts, old_val = _PAGE_CACHE[key]
             _page_cache_bytes[0] -= len(old_val.encode("utf-8"))
+            _page_cache_bytes[0] = max(0, _page_cache_bytes[0])
         _PAGE_CACHE[key] = (now, value)
         _page_cache_bytes[0] += len(value.encode("utf-8"))
         if len(_PAGE_CACHE) > _PAGE_CACHE_MAX_ENTRIES or _page_cache_bytes[0] > _PAGE_CACHE_MAX_BYTES:
@@ -420,6 +422,7 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:_PAGE_CACHE_EVICT_BATCH]
             for stale_key, (_stale_ts, stale_val) in stale:
                 _page_cache_bytes[0] -= len(stale_val.encode("utf-8"))
+                _page_cache_bytes[0] = max(0, _page_cache_bytes[0])
                 _PAGE_CACHE.pop(stale_key, None)
     return value
 
@@ -642,9 +645,8 @@ def _build_mission_report(
         "verified_findings": verified,
         "verified_count": len(verified),
         "completed_utc": now_iso(),
+        "final_status": final_status or "",
     }
-    if final_status:
-        report["final_status"] = final_status
     return report
 
 

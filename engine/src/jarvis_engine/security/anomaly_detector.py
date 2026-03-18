@@ -179,7 +179,7 @@ class AnomalyDetector:
                 "anomaly_type": a.anomaly_type,
                 "severity": a.severity,
                 "detail": a.detail,
-                "metrics": a.metrics,
+                "metrics": dict(a.metrics),
             }
             for a in items
         ]

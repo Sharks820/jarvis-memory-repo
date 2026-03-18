@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Unity Agent
-status: executing
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-03-17T14:19:45.995Z"
-last_activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
+status: feature-complete-pending-integration
+stopped_at: Completed 25-02-PLAN.md — bugs being fixed, integration testing pending
+last_updated: "2026-03-17T15:00:00.000Z"
+last_activity: 2026-03-17 -- Post-completion bug fixes and planning doc accuracy pass
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 14
   completed_plans: 14
-  percent: 65
+  percent: 95
 ---
 
 ---
@@ -100,16 +100,23 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v6.0 Jarvis Unity Agent)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v6.0 Jarvis Unity Agent -- Phase 23: C# Code Generation
+**Current focus:** v6.0 Jarvis Unity Agent -- Feature-complete, fixing bugs and preparing for integration testing
 
 ## Current Position
 
-Phase: 23 of 25 (C# Code Generation)
-Plan: 2 of 2 in current phase (complete)
-Status: Phase 23 plan 02 complete
-Last activity: 2026-03-17 -- Phase 23 plan 02 complete (NUnitGenerator + CompileFixLoop)
+Phase: All 6 phases (20-25) code-complete
+Plan: 14/14 plans implemented
+Status: Feature-complete — post-completion bug fixes in progress, integration testing pending
+Last activity: 2026-03-17 -- Post-completion bug fixes; planning docs accuracy pass
 
-Progress (v6.0): [███████░░░] 73%
+Progress (v6.0): [█████████░] 95% (code done, integration testing remains)
+
+### Known Gaps (honest state)
+- Unity bridge custom RPC methods (WriteScript, CompileProject, etc.) not production-tested against real Unity Editor
+- No real Unity Editor integration testing has been performed — all validation is Python unit tests
+- CompileFixLoop cannot fix test files (being fixed)
+- Bridge authentication/handshake not implemented
+- UNITY-04, CODE-04, CODE-05 are Partial status (see REQUIREMENTS.md)
 
 ## Performance Metrics
 
@@ -214,7 +221,10 @@ Progress (v6.0): [███████░░░] 73%
 
 ### Pending Todos
 
-None yet.
+- Reconcile Python UnityTool RPC names with explicit C# bridge handlers; add real editor-backed end-to-end tests.
+- Add authentication/handshake validation to JarvisEditorBridge before any privileged dispatch.
+- Fix CompileFixLoop so generated NUnit test files can be repaired alongside runtime scripts.
+- Define an engine abstraction path for future Godot support instead of extending Unity-specific contracts indefinitely.
 
 ## Session Continuity
 

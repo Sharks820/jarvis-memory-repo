@@ -91,6 +91,12 @@ class BlenderTool:
             RuntimeError: If subprocess returns non-zero exit code (stderr included).
             asyncio.TimeoutError: If subprocess exceeds timeout_seconds.
         """
+        if script not in _KNOWN_SCRIPTS:
+            return {
+                "ok": False,
+                "error": f"Unknown script: {script!r}. Must be one of {sorted(_KNOWN_SCRIPTS)}",
+            }
+
         script_path = _SCRIPTS_DIR / f"{script}.py"
         extra_arg_list = [f"{k}={v}" for k, v in extra_args.items()]
 

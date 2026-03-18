@@ -281,9 +281,9 @@ class CostTracker:
         """
         if getattr(self, "_closed", False):
             return
-        self._closed = True
         try:
             with self._write_lock:
+                self._closed = True
                 self._db.close()
         except (OSError, RuntimeError) as exc:
             logger.debug("Failed to close CostTracker database connection: %s", exc)

@@ -771,6 +771,64 @@ def validate_entity(entity: str) -> bool:
     return True
 
 
+# Quality gate helpers
+
+
+_RE_WORD_LIKE = re.compile(r"\b[a-zA-Z]{2,}\b")
+_RE_CONSECUTIVE_REPEAT = re.compile(r"(.{2,4})\1{10,}")
+
+
+def _is_garbled_text(text: str) -> bool:
+    """Return True if *text* looks like garbled/nonsensical LLM output.
+
+    Short strings (<=10 chars) are always accepted to avoid rejecting
+    brief but legitimate responses like "ok" or "yes".
+
+    Heuristics
+    ----------
+    1. Any single character (excluding spaces and common structural chars
+       like quotes, braces, newlines) dominates >40 % of the text.
+    2. Unique-char / total-char ratio < 0.05 for text longer than 50 chars.
+    3. Fewer than 2 word-like tokens ([a-zA-Z]{2,}) in text longer than 20 chars
+       — but exempts text that looks like URLs or JSON.
+    4. A 2-4 char substring repeats more than 10 times consecutively.
+    """
+    if len(text) <= 10:
+        return False
+
+    # Strip spaces AND common structural characters that legitimately repeat
+    # in JSON, code, and formatted text (quotes, braces, brackets, newlines).
+    stripped = re.sub(r'[\s"\'{}()\[\]:,./\\]', "", text)
+    if not stripped:
+        return False
+
+    from collections import Counter
+
+    counts = Counter(stripped)
+    max_freq = counts.most_common(1)[0][1]
+
+    # 1. Repetitive single-character ratio
+    if max_freq / len(stripped) > 0.40:
+        return True
+
+    # 2. Low unique character ratio (long text only)
+    if len(stripped) > 50 and len(counts) / len(stripped) < 0.05:
+        return True
+
+    # 3. No word-like tokens (longer text only)
+    # Exempt URLs (contain ://) and JSON (start with { or [)
+    if len(text) > 20 and len(_RE_WORD_LIKE.findall(text)) < 2:
+        if "://" not in text and not text.lstrip().startswith(("{", "[")):
+            return True
+
+    # 4. Consecutive repeated substrings (cap search length to avoid backtracking)
+    search_text = text[:2000] if len(text) > 2000 else text
+    if _RE_CONSECUTIVE_REPEAT.search(search_text):
+        return True
+
+    return False
+
+
 # Entity extraction functions
 
 
@@ -1033,6 +1091,16 @@ class ConversationStateManager:
             The model/provider that generated or received this turn.
         """
         with self._lock:
+            # Quality gate: reject garbled/nonsensical assistant output.
+            # User turns are always tracked (even if STT garbled them)
+            # so the state machine doesn't lose turn counts.
+            if role == "assistant" and _is_garbled_text(content):
+                logger.warning(
+                    "Rejected garbled content from assistant turn (len=%d)",
+                    len(content),
+                )
+                return
+
             self._snapshot.turn_count += 1
             self._snapshot.active_model = model
             self._snapshot.updated_at = now_iso()

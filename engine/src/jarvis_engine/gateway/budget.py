@@ -263,18 +263,20 @@ class BudgetEnforcer:
         with self._lock:
             if self._closed:
                 return
+            today = self._today()
+            month = self._this_month()
             self._db.execute(
                 "INSERT INTO budget_tracking (day_key, cost_usd, model, provider) VALUES (?, ?, ?, ?)",
-                (self._today(), cost_usd, model, provider),
+                (today, cost_usd, model, provider),
             )
             self._db.commit()
             # Update in-memory cache incrementally instead of re-querying.
             # _daily_spend()/_monthly_spend() will return the already-updated
             # cache value (no DB round-trip) or initialise from DB on first call
             # (the committed row is already visible to those queries).
-            if self._cached_daily is not None and self._cached_day == self._today():
+            if self._cached_daily is not None and self._cached_day == today:
                 self._cached_daily += cost_usd
-            if self._cached_monthly is not None and self._cached_month == self._this_month():
+            if self._cached_monthly is not None and self._cached_month == month:
                 self._cached_monthly += cost_usd
             self._emit_alerts(self._daily_spend(), self._monthly_spend())
 
@@ -348,9 +350,9 @@ class BudgetEnforcer:
         """Close the database connection."""
         if self._closed:
             return
-        self._closed = True
         try:
             with self._lock:
+                self._closed = True
                 self._db.close()
         except (OSError, RuntimeError) as exc:
             logger.debug("Failed to close BudgetEnforcer DB: %s", exc)

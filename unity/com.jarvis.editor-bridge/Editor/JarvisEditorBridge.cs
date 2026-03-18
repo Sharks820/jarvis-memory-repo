@@ -40,6 +40,14 @@ namespace Jarvis.EditorBridge
         private const string ServicePath = "/jarvis";
         private const int RetryDelayMs = 500;
 
+        /// <summary>
+        /// Shared secret for bridge authentication. Loaded from the
+        /// JARVIS_BRIDGE_SECRET environment variable; falls back to a
+        /// development-only default.
+        /// </summary>
+        internal static readonly string SharedSecret =
+            Environment.GetEnvironmentVariable("JARVIS_BRIDGE_SECRET") ?? "jarvis-dev-secret";
+
         // ── State ──────────────────────────────────────────────────────────────
 
         private static WebSocketServer _server;
@@ -237,10 +245,12 @@ namespace Jarvis.EditorBridge
         private class JarvisBridgeService : WebSocketBehavior
         {
             private readonly ReflectionCommandDispatcher _dispatcher;
+            private bool _authenticated;
 
             public JarvisBridgeService(ReflectionCommandDispatcher dispatcher)
             {
                 _dispatcher = dispatcher;
+                _authenticated = false;
             }
 
             protected override void OnOpen()
@@ -273,6 +283,42 @@ namespace Jarvis.EditorBridge
                         Send(JsonConvert.SerializeObject(
                             JsonRpcResponse.Failure(request.Id, -32600,
                                 "Invalid request: 'method' field is required")));
+                        return;
+                    }
+
+                    // ── Authentication gate ────────────────────────────────────
+                    // The first message from every client MUST be an "authenticate"
+                    // call carrying the shared secret.  All other methods are
+                    // rejected until authentication succeeds.
+                    if (!_authenticated)
+                    {
+                        if (request.Method == "authenticate")
+                        {
+                            var token = request.Params?.Value<string>("token") ?? "";
+                            if (token == JarvisEditorBridge.SharedSecret)
+                            {
+                                _authenticated = true;
+                                Send(JsonConvert.SerializeObject(
+                                    JsonRpcResponse.Success(request.Id,
+                                        new { authenticated = true })));
+                                Debug.Log($"[Jarvis] Client {ID} authenticated");
+                            }
+                            else
+                            {
+                                Send(JsonConvert.SerializeObject(
+                                    JsonRpcResponse.Failure(request.Id, -32001,
+                                        "Authentication failed: invalid token")));
+                                Debug.LogWarning($"[Jarvis] Client {ID} failed authentication");
+                                Context.WebSocket.Close();
+                            }
+                        }
+                        else
+                        {
+                            Send(JsonConvert.SerializeObject(
+                                JsonRpcResponse.Failure(request.Id, -32001,
+                                    "Must authenticate first")));
+                            Context.WebSocket.Close();
+                        }
                         return;
                     }
 

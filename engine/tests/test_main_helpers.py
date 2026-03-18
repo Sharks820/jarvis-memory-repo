@@ -55,7 +55,8 @@ class TestHelperFunctions:
         pytest.param("find on the web react hooks", "react", id="find_on_web"),
     ])
     def test_extract_web_query(self, text, expected_substr):
-        assert expected_substr in voice_extractors_mod._extract_web_query(text)
+        result = voice_extractors_mod._extract_web_query(text)
+        assert expected_substr in result.lower()
 
     @pytest.mark.parametrize("text,expected", [
         pytest.param("go to https://example.com", "https://example.com", id="https_url"),

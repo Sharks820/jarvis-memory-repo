@@ -442,6 +442,8 @@ class KnowledgeGraph:
                         existing,
                     )
                     if result is not None:
+                        if not result:
+                            self._mutation_counter += 1  # contradiction was committed, invalidate cache
                         return result
                 else:
                     self._insert_new_node(

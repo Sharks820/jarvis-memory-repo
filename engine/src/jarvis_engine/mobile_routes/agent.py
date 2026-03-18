@@ -37,7 +37,7 @@ class _AgentRouteServerProtocol(MobileRouteServerProtocol, Protocol):
 class _AgentRoutesHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
     server: _AgentRouteServerProtocol
 
-    def _read_json_body(self) -> dict[str, Any]:
+    def _read_json_body(self) -> tuple[dict[str, Any] | None, bytes]:
         ...
 
     def _write_text(self, status: int, content_type: str, text: str) -> None:
@@ -60,7 +60,10 @@ class AgentRoutesMixin:
     def handle_agent_run(self: _AgentRoutesHandlerProtocol) -> None:
         """Submit a new agent task goal."""
         try:
-            body = self._read_json_body()
+            body, _raw = self._read_json_body()
+            if body is None:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid JSON body"})
+                return
             goal = str(body.get("goal", "")).strip()
             task_id = str(body.get("task_id", "")).strip()
             token_budget = int(body.get("token_budget", 50000))
@@ -85,7 +88,8 @@ class AgentRoutesMixin:
             from jarvis_engine.mobile_routes._helpers import _parse_query_params
 
             params = _parse_query_params(self.path)  # type: ignore[attr-defined]
-            task_id = params.get("task_id", "")
+            task_id_list = params.get("task_id", [""])
+            task_id = task_id_list[0] if task_id_list else ""
 
             from jarvis_engine.commands.agent_commands import AgentStatusCommand
 
@@ -112,7 +116,10 @@ class AgentRoutesMixin:
     def handle_agent_approve(self: _AgentRoutesHandlerProtocol) -> None:
         """Approve or reject a pending task."""
         try:
-            body = self._read_json_body()
+            body, _raw = self._read_json_body()
+            if body is None:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid JSON body"})
+                return
             task_id = str(body.get("task_id", "")).strip()
             approved = bool(body.get("approved", True))
             reason = str(body.get("reason", "")).strip()
@@ -155,10 +162,11 @@ class AgentRoutesMixin:
             self.end_headers()  # type: ignore[attr-defined]
 
             # Use a separate thread-local event loop for SSE blocking
-            loop = asyncio.new_event_loop()
-            queue = loop.run_until_complete(_subscribe_async(bus))
-
+            loop: asyncio.AbstractEventLoop | None = None
             try:
+                loop = asyncio.new_event_loop()
+                queue = loop.run_until_complete(_subscribe_async(bus))
+
                 while True:
                     # Poll queue with keep-alive timeout
                     event = loop.run_until_complete(
@@ -177,8 +185,12 @@ class AgentRoutesMixin:
             except (BrokenPipeError, ConnectionResetError, OSError):
                 logger.debug("SSE client disconnected")
             finally:
-                loop.run_until_complete(_unsubscribe_async(bus, queue))
-                loop.close()
+                if loop is not None:
+                    try:
+                        loop.run_until_complete(_unsubscribe_async(bus, queue))
+                    except Exception:  # noqa: BLE001
+                        logger.debug("SSE unsubscribe failed during cleanup")
+                    loop.close()
 
         except _AGENT_ROUTE_ERRORS as exc:
             logger.error("handle_agent_stream error: %s", exc)

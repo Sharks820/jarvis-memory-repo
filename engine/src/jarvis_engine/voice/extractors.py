@@ -41,7 +41,12 @@ def escape_response(msg: str) -> str:
     The mobile API parser splits on newlines — multi-line LLM answers would
     be truncated without escaping.  The parser unescapes on receipt.
     """
-    return msg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+    text = msg.replace("\\", "\\\\")
+    text = text.replace("\n", "\\n")
+    text = text.replace("\r", "\\r")
+    text = text.replace("\t", "\\t")
+    text = text.replace("\0", "")  # strip null bytes entirely
+    return text
 
 
 # Wake word prefixes used for stripping "jarvis"/"hey jarvis" from transcribed text.
@@ -109,6 +114,7 @@ def _extract_weather_location(text: str) -> str:
 
 def _extract_web_query(text: str) -> str:
     lowered = text.lower().strip()
+    original = text.strip()
     patterns = [
         r"(?:search(?:\s+the)?\s+(?:web|internet|online)\s+for)\s+(.+)",
         r"(?:research)\s+(.+)",
@@ -119,7 +125,9 @@ def _extract_web_query(text: str) -> str:
         match = re.search(pattern, lowered, flags=re.IGNORECASE)
         if not match:
             continue
-        value = match.group(1).strip().rstrip("?.!,;:")
+        start = match.start(1)
+        end = match.end(1)
+        value = original[start:end].strip().rstrip("?.!,;:")
         if value:
             return value[:260]
     cleaned = strip_wake_word(lowered)
@@ -324,7 +332,7 @@ def _looks_like_sync_or_connect_mutation(expanded: str) -> bool:
     """Detect common spoken sync/connect requests that mutate external state."""
     if not expanded:
         return False
-    has_sync_like_verb = any(term in expanded for term in ("sync", "connect", "grant connector"))
+    has_sync_like_verb = any(term in expanded for term in ("sync", "connect", "grant access", "grant permission"))
     if not has_sync_like_verb:
         return False
     return any(target in expanded for target in _SYNC_MUTATION_TARGETS)

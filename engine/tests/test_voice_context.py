@@ -300,14 +300,14 @@ class TestBuildSystemParts:
         assert "tone: casual" in pref_part[0]
 
     def test_empty_sections_excluded(self, tmp_path: Path) -> None:
-        """Empty lists produce no extra sections beyond datetime+persona."""
+        """Empty lists produce no extra sections beyond datetime+persona+capabilities."""
         with patch("jarvis_engine.config.repo_root", return_value=tmp_path), \
              patch("jarvis_engine.voice.context.load_persona_config", return_value={}), \
              patch("jarvis_engine.memory.persona.get_persona_prompt", return_value="P"):
             result = _build_system_parts([], [], [], [])
 
-        # Only datetime + persona
-        assert len(result) == 2
+        # datetime + persona + capabilities
+        assert len(result) == 3
 
     def test_fact_lines_limited_to_six(self, tmp_path: Path) -> None:
         """At most 6 fact lines are included."""

@@ -155,7 +155,12 @@ def _load_feed_json_list(
 def load_calendar_events(target_date: date | None = None) -> list[dict]:
     json_path = os.getenv("JARVIS_CALENDAR_JSON", "").strip()
     if json_path:
-        return _read_json_list(Path(json_path))
+        p = Path(json_path)
+        # Block UNC paths and symlinks (same as other feed paths)
+        if str(p).startswith("\\\\") or (p.exists() and p.is_symlink()):
+            logger.warning("Blocked suspicious calendar JSON path: %s", json_path)
+            return []
+        return _read_json_list(p)
 
     ics_url = os.getenv("JARVIS_CALENDAR_ICS_URL", "").strip()
     ics_file = os.getenv("JARVIS_CALENDAR_ICS_FILE", "").strip()
@@ -339,7 +344,12 @@ def load_task_items(repo_root: Path) -> list[dict]:
     # Default: local JSON file
     json_path = os.getenv("JARVIS_TASKS_JSON", "").strip()
     if json_path:
-        return _read_json_list(Path(json_path))
+        p = Path(json_path)
+        # Block UNC paths and symlinks (same as other feed paths)
+        if str(p).startswith("\\\\") or (p.exists() and p.is_symlink()):
+            logger.warning("Blocked suspicious tasks JSON path: %s", json_path)
+            return []
+        return _read_json_list(p)
     return _read_json_list(repo_root / ".planning" / "tasks.json")
 
 
@@ -458,10 +468,7 @@ def _triage_email(sender: str, subject: str) -> str:
     sender_email = lowered_sender
     if "<" in sender_email:
         sender_email = sender_email.split("<")[-1].rstrip(">")
-    if any(
-        sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m
-        for m in high_sender_markers
-    ):
+    if any(sender_email.startswith(m) for m in high_sender_markers):
         return "high"
     return "normal"
 

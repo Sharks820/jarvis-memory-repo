@@ -106,7 +106,7 @@ class TestExtractWebQuery:
 
     def test_research(self) -> None:
         result = _extract_web_query("research ML frameworks")
-        assert "ml" in result
+        assert "ml" in result.lower()
 
     def test_look_up(self) -> None:
         result = _extract_web_query("look up rust programming")

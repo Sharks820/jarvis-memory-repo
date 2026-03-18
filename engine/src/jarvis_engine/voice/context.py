@@ -313,6 +313,14 @@ def _build_system_parts(
 
     persona = load_persona_config(repo_root())
     parts = [_current_datetime_prompt_line(), get_persona_prompt(persona)]
+    parts.append(
+        "Your capabilities: You can run autonomous agent tasks for Unity game development "
+        "(create projects, write C# scripts, generate 3D assets, compile and test). "
+        "You can perform web searches, manage learning missions, track conversation context "
+        "across provider switches, and execute shell commands. "
+        "When asked to build or create something in Unity, route it through "
+        "your agent task system rather than trying to output code directly."
+    )
     if fact_lines:
         parts.append(
             "Known facts about the user (use these to personalize your response):\n"

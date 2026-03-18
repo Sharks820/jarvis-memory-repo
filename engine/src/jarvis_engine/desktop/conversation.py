@@ -19,9 +19,35 @@ import tkinter as tk
 from collections.abc import Callable
 from typing import Any, ClassVar, Protocol, cast
 
+import re
+
 from jarvis_engine.desktop.helpers import _http_json
 
 logger = logging.getLogger(__name__)
+
+_RE_BOLD = re.compile(r'\*\*(.+?)\*\*')
+_RE_ITALIC = re.compile(r'\*(.+?)\*')
+_RE_CODE_INLINE = re.compile(r'`([^`]+)`')
+_RE_CODE_FENCE = re.compile(r'```[\w]*\r?\n(.*?)```', re.DOTALL)
+_RE_HEADER = re.compile(r'^#{1,6}\s+', re.MULTILINE)
+
+
+def _strip_markdown(text: str) -> str:
+    """Strip common markdown formatting for plain-text display."""
+    # Remove code fences but keep content (truncated)
+    def _truncate_code_block(m: re.Match) -> str:  # type: ignore[type-arg]
+        code = m.group(1).strip()
+        lines = code.split('\n')
+        if len(lines) > 5:
+            return f"[code: {len(lines)} lines]\n" + '\n'.join(lines[:3]) + '\n...'
+        return code
+
+    text = _RE_CODE_FENCE.sub(_truncate_code_block, text)
+    text = _RE_BOLD.sub(r'\1', text)
+    text = _RE_ITALIC.sub(r'\1', text)
+    text = _RE_CODE_INLINE.sub(r'\1', text)
+    text = _RE_HEADER.sub('', text)
+    return text
 
 
 class _ConversationHost(Protocol):
@@ -217,6 +243,16 @@ class ConversationMixin:
         for name, kwargs in self._CHAT_TAG_SPECS:
             self.output.tag_configure(name, **kwargs)
 
+        # Right-click context menu for copy
+        self._chat_context_menu = tk.Menu(self.output, tearoff=0)
+        self._chat_context_menu.add_command(
+            label="Copy", command=lambda: self._copy_chat_selection()
+        )
+        self._chat_context_menu.add_command(
+            label="Copy All", command=lambda: self._copy_all_chat()
+        )
+        self.output.bind("<Button-3>", self._show_chat_context_menu)
+
     # Chat history management
 
     def _clear_history(self: Any) -> None:
@@ -351,6 +387,10 @@ class ConversationMixin:
                 except tk.TclError:
                     logger.debug("Failed to copy tag %r to popout text widget", tag)
         popout_text.config(state=tk.DISABLED)
+
+        # Right-click context menu for popout text widget
+        popout_text.bind("<Button-3>", self._show_chat_context_menu)
+
         return popout_text
 
     def _build_popout_input(self: Any, win: tk.Toplevel) -> tuple[tk.Text, tk.Button]:
@@ -435,6 +475,10 @@ class ConversationMixin:
     # Chat logging
 
     def _log(self: Any, message: str, role: str = "system") -> None:
+        if self.stop_event.is_set():
+            return
+        if role == "jarvis":
+            message = _strip_markdown(message)
         stamp = time.strftime("%H:%M:%S")
         self.output.config(state=tk.NORMAL)
 
@@ -481,6 +525,10 @@ class ConversationMixin:
                     popout.insert(tk.END, f"  {stamp}  \n", "timestamp")
                 popout.insert(tk.END, display, tag)
                 popout.see(tk.END)
+                # Cap popout at 500 lines (same as main widget)
+                pline_count = int(popout.index("end-1c").split(".")[0])
+                if pline_count > 500:
+                    popout.delete("1.0", f"{pline_count - 500}.0")
                 popout.config(state=tk.DISABLED)
             except tk.TclError:
                 logger.debug("Popout text widget was destroyed; clearing reference")
@@ -493,6 +541,37 @@ class ConversationMixin:
             self.after(0, self._log, message, role)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("_log_async failed (widget may be destroyed)")
+
+    # Context menu helpers
+
+    def _show_chat_context_menu(self: Any, event: tk.Event) -> None:  # type: ignore[type-arg]
+        """Show right-click context menu at cursor position."""
+        # Track which widget was right-clicked so copy reads from the right one
+        self._chat_context_source = event.widget
+        menu = getattr(self, "_chat_context_menu", None)
+        if menu is not None:
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+    def _copy_chat_selection(self: Any) -> None:
+        """Copy selected text from chat to clipboard."""
+        widget = getattr(self, "_chat_context_source", self.output)
+        try:
+            sel = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+            widget.clipboard_clear()
+            widget.clipboard_append(sel)
+        except tk.TclError:
+            pass  # No selection
+
+    def _copy_all_chat(self: Any) -> None:
+        """Copy all chat text to clipboard."""
+        widget = getattr(self, "_chat_context_source", self.output)
+        text = widget.get("1.0", tk.END).strip()
+        if text:
+            widget.clipboard_clear()
+            widget.clipboard_append(text)
 
     # Thinking indicator
 

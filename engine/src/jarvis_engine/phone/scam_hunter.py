@@ -377,7 +377,19 @@ def compute_enhanced_spam_score(
     # Carrier SCAM/SPAM label (Samsung Smart Call, T-Mobile Scam Shield)
     if caller_display_name:
         name_upper = caller_display_name.upper()
-        if any(label in name_upper for label in _SCAM_LABELS):
+        # Use word-boundary matching for short labels to avoid false positives
+        # (e.g. "SCAM" matching inside "SCAMPI")
+        _matched_label = False
+        for label in _SCAM_LABELS:
+            if len(label) <= 5:
+                if re.search(rf'\b{re.escape(label)}\b', name_upper):
+                    _matched_label = True
+                    break
+            else:
+                if label in name_upper:
+                    _matched_label = True
+                    break
+        if _matched_label:
             score += 0.50
 
     # STIR/SHAKEN
@@ -672,7 +684,42 @@ _AREA_CODE_TZ: dict[str, str] = {
 }
 
 # UTC offsets for time zone abbreviations (standard time)
-_TZ_UTC_OFFSETS = {"ET": -5, "CT": -6, "MT": -7, "PT": -8, "HT": -10}
+_TZ_STANDARD_OFFSETS: dict[str, int] = {"ET": -5, "CT": -6, "MT": -7, "PT": -8, "HT": -10}
+
+
+def _is_us_dst(utc_dt: datetime) -> bool:
+    """Check if a UTC datetime falls within US DST (second Sunday March - first Sunday November).
+
+    US DST: starts 2 AM local on second Sunday of March, ends 2 AM local
+    on first Sunday of November.  We approximate using UTC dates which is
+    close enough for hour-of-day scoring.
+    """
+    year = utc_dt.year
+    # Second Sunday of March: find first Sunday in March, then add 7 days
+    march1 = datetime(year, 3, 1, tzinfo=UTC)
+    first_sunday_march = 1 + (6 - march1.weekday()) % 7
+    dst_start = datetime(year, 3, first_sunday_march + 7, 7, 0, tzinfo=UTC)  # ~2AM ET in UTC
+
+    # First Sunday of November
+    nov1 = datetime(year, 11, 1, tzinfo=UTC)
+    first_sunday_nov = 1 + (6 - nov1.weekday()) % 7
+    dst_end = datetime(year, 11, first_sunday_nov, 6, 0, tzinfo=UTC)  # ~2AM ET in UTC
+
+    return dst_start <= utc_dt < dst_end
+
+
+def _local_hour_for_tz(tz_abbr: str, utc_now: datetime) -> int:
+    """Get current hour in timezone, accounting for US DST.
+
+    Hawaii (HT) does not observe DST and is excluded from the adjustment.
+    """
+    offset = _TZ_STANDARD_OFFSETS.get(tz_abbr)
+    if offset is None:
+        return utc_now.hour
+    # Apply DST offset for non-Hawaii US timezones
+    if tz_abbr != "HT" and _is_us_dst(utc_now):
+        offset += 1
+    return (utc_now.hour + offset) % 24
 
 
 def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
@@ -700,8 +747,7 @@ def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
     if not tz_abbr:
         return 0.0
 
-    utc_offset = _TZ_UTC_OFFSETS.get(tz_abbr, 0)
-    caller_hour = (now.hour + utc_offset) % 24
+    caller_hour = _local_hour_for_tz(tz_abbr, now)
 
     # Extremely suspicious: 11 PM - 6 AM caller local time
     if caller_hour >= 23 or caller_hour < 6:

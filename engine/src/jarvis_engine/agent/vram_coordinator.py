@@ -43,13 +43,20 @@ class VRAMCoordinator:
 
     # Lazily created to avoid binding to the wrong event loop at import time.
     _gpu_mutex: asyncio.Lock | None = field(default=None, init=False)
+    _mutex_loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False, init=False)
     _generation_active: bool = field(default=False, init=False)
     _playmode_active: bool = field(default=False, init=False)
 
     def _get_mutex(self) -> asyncio.Lock:
-        """Return the asyncio.Lock, creating it lazily in the current event loop."""
-        if self._gpu_mutex is None:
+        """Return the asyncio.Lock, creating it lazily in the current event loop.
+
+        Recreates the lock if the running event loop has changed (e.g. tests
+        that create a fresh loop per test case).
+        """
+        loop = asyncio.get_running_loop()
+        if self._gpu_mutex is None or self._mutex_loop is not loop:
             self._gpu_mutex = asyncio.Lock()
+            self._mutex_loop = loop
         return self._gpu_mutex
 
     async def acquire_generation(self) -> None:

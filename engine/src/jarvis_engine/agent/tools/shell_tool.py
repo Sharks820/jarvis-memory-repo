@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
@@ -43,14 +44,24 @@ class ShellTool:
     def _check_blocklist(self, command: str) -> None:
         """Raise PermissionError if *command* matches any blocked pattern.
 
-        Comparison is case-insensitive.
+        Normalises whitespace and checks case-insensitively.  Also rejects
+        command substitution via ``$( )`` and backticks.
         """
-        lower_cmd = command.lower()
+        # Normalize whitespace so "rm  -rf  /" still matches "rm -rf /"
+        normalized = re.sub(r"\s+", " ", command.strip().lower())
+
         for pattern in self._blocked:
-            if pattern.lower() in lower_cmd:
+            if pattern.lower() in normalized:
                 raise PermissionError(
                     f"Command blocked by policy: pattern {pattern!r} matched in {command!r}"
                 )
+
+        # Reject command substitution attempts that could smuggle blocked commands
+        if "$(" in normalized or "`" in normalized:
+            raise PermissionError(
+                f"Command blocked by policy: command substitution ($() or backticks) "
+                f"is not permitted in {command!r}"
+            )
 
     # ------------------------------------------------------------------
     # Execution

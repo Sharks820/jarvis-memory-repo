@@ -47,7 +47,7 @@ class WebTool:
             Page text as a string, at most 10 000 characters.
         """
         logger.debug("WebTool.execute: fetching %s", url)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         # Run the blocking fetch in a thread-pool so the event loop stays free.
         text: str = await loop.run_in_executor(None, fetch_page_text, url)
         truncated = text[:_MAX_CHARS]

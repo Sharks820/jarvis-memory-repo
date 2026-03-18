@@ -1,7 +1,7 @@
 """Tests for UnityTool: path jail, static analysis guard, and WebSocket client.
 
 TDD: tests written first, then implementation.
-Async tests use asyncio.run() — no pytest-asyncio required (matches project pattern).
+Async tests use asyncio.run() -- no pytest-asyncio required (matches project pattern).
 """
 from __future__ import annotations
 
@@ -17,6 +17,63 @@ from jarvis_engine.agent.tools.unity_tool import (
     _assert_in_jail,
     _assert_safe_code,
 )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+# Auth success response returned by mock recv() during connect()
+_AUTH_OK = json.dumps(
+    {"jsonrpc": "2.0", "id": "auth", "result": {"authenticated": True}}
+)
+
+
+def _make_mock_ws(response_payload: str = "") -> AsyncMock:
+    """Create a mock WebSocket that feeds responses through the async iterator.
+
+    The listener loop reads via ``async for raw in self._ws``, so the mock
+    must support async iteration.  Messages are queued and yielded one at a
+    time.  After all messages are consumed, the iterator blocks forever
+    (simulating an open connection) so the listener doesn't exit early.
+
+    ``recv()`` returns the auth success response consumed by connect()'s
+    authentication handshake.  The actual test response is fed through the
+    async iterator to the listener loop.
+    """
+    messages: list[str] = [response_payload] if response_payload else []
+    _block_forever: asyncio.Event = asyncio.Event()  # never set
+
+    async def _aiter():
+        for msg in messages:
+            yield msg
+        # Keep the iterator alive so the listener doesn't exit
+        await _block_forever.wait()
+
+    mock_ws = AsyncMock()
+    mock_ws.send = AsyncMock()
+    # recv() is called once during connect() for auth handshake
+    mock_ws.recv = AsyncMock(return_value=_AUTH_OK)
+    mock_ws.__aiter__ = lambda self=None: _aiter()
+    mock_ws.close = AsyncMock()
+    return mock_ws
+
+
+class _AsyncContextManager:
+    """Async context manager wrapping a mock WebSocket."""
+
+    def __init__(self, ws: AsyncMock) -> None:
+        self._ws = ws
+
+    async def __aenter__(self) -> AsyncMock:
+        return self._ws
+
+    async def __aexit__(self, *args: object) -> None:
+        pass
+
+
+def _async_context_manager(ws: AsyncMock) -> _AsyncContextManager:
+    return _AsyncContextManager(ws)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +121,10 @@ class TestPathJail:
         """Exact jail root without trailing file raises (no file component)."""
         with pytest.raises(PermissionError):
             _assert_in_jail("Assets/JarvisGeneratedEvil.cs")
+
+    def test_path_jail_directory_itself(self) -> None:
+        """Exact jail directory path (no trailing slash) does not raise."""
+        _assert_in_jail("Assets/JarvisGenerated")
 
 
 # ---------------------------------------------------------------------------
@@ -154,8 +215,7 @@ class TestBridgeStateMachine:
 
         async def _run() -> None:
             tool = UnityTool()
-            mock_ws = AsyncMock()
-            mock_ws.__aiter__ = MagicMock(return_value=iter([]))
+            mock_ws = _make_mock_ws()
             with patch(
                 "jarvis_engine.agent.tools.unity_tool.websockets_connect",
                 return_value=_async_context_manager(mock_ws),
@@ -237,12 +297,14 @@ class TestBridgeStateMachine:
 
         async def _run() -> None:
             tool = UnityTool()
-            mock_ws = AsyncMock()
+            mock_ws = _make_mock_ws()
             with patch(
                 "jarvis_engine.agent.tools.unity_tool.websockets_connect",
                 return_value=_async_context_manager(mock_ws),
             ):
                 await tool.connect()
+                # Reset send call count so we only check calls after connect/auth
+                mock_ws.send.reset_mock()
                 with pytest.raises(PermissionError):
                     await tool.write_script("Assets/Evil.cs", "safe code")
                 mock_ws.send.assert_not_called()
@@ -255,12 +317,14 @@ class TestBridgeStateMachine:
 
         async def _run() -> None:
             tool = UnityTool()
-            mock_ws = AsyncMock()
+            mock_ws = _make_mock_ws()
             with patch(
                 "jarvis_engine.agent.tools.unity_tool.websockets_connect",
                 return_value=_async_context_manager(mock_ws),
             ):
                 await tool.connect()
+                # Reset send call count so we only check calls after connect/auth
+                mock_ws.send.reset_mock()
                 with pytest.raises(ValueError):
                     await tool.write_script(
                         "Assets/JarvisGenerated/Bad.cs",
@@ -333,8 +397,7 @@ class TestBridgeStateMachine:
 
         async def _run() -> None:
             tool = UnityTool()
-            mock_ws = AsyncMock()
-            mock_ws.__aiter__ = MagicMock(return_value=iter([]))
+            mock_ws = _make_mock_ws()
             with patch(
                 "jarvis_engine.agent.tools.unity_tool.websockets_connect",
                 return_value=_async_context_manager(mock_ws),
@@ -411,50 +474,3 @@ class TestBridgeStateMachine:
                 await tool.call("SomeMethod")
 
         asyncio.run(_run())
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_mock_ws(response_payload: str) -> AsyncMock:
-    """Create a mock WebSocket that feeds responses through the async iterator.
-
-    The listener loop reads via ``async for raw in self._ws``, so the mock
-    must support async iteration.  Messages are queued and yielded one at a
-    time.  After all messages are consumed, the iterator blocks forever
-    (simulating an open connection) so the listener doesn't exit early.
-    """
-    messages: list[str] = [response_payload] if response_payload else []
-    _block_forever: asyncio.Event = asyncio.Event()  # never set
-
-    async def _aiter():
-        for msg in messages:
-            yield msg
-        # Keep the iterator alive so the listener doesn't exit
-        await _block_forever.wait()
-
-    mock_ws = AsyncMock()
-    mock_ws.send = AsyncMock()
-    mock_ws.recv = AsyncMock(return_value=response_payload)
-    mock_ws.__aiter__ = lambda self=None: _aiter()
-    mock_ws.close = AsyncMock()
-    return mock_ws
-
-
-class _AsyncContextManager:
-    """Async context manager wrapping a mock WebSocket."""
-
-    def __init__(self, ws: AsyncMock) -> None:
-        self._ws = ws
-
-    async def __aenter__(self) -> AsyncMock:
-        return self._ws
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
-
-def _async_context_manager(ws: AsyncMock) -> _AsyncContextManager:
-    return _AsyncContextManager(ws)

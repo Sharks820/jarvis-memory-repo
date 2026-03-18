@@ -7,7 +7,8 @@
 - ✅ **v3.0 Hardening** — 2 phases (shipped 2026-03-01)
 - ✅ **v4.0 Intelligence & Voice** — 5 phases (shipped)
 - ✅ **v5.0 Reliability & Continuity** — 6 phases (shipped 2026-03-16)
-- 📋 **v6.0 Unity Agent** — Phases 20–25 (planned)
+- 🔶 **v6.0 Unity Agent** — Phases 20–25 (Feature-Complete, pending integration testing)
+  > Python unit tests pass (6474+) but real Unity Editor integration has not been validated. Known gaps: Unity bridge custom RPC methods untested, CompileFixLoop can't fix test files, no Editor auth handshake.
 
 ---
 

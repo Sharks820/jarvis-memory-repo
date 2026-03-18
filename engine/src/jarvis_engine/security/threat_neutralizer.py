@@ -80,6 +80,7 @@ _REQUEST_TIMEOUT = 10
 
 # Rate limit: 1 report per IP per hour (3600 seconds)
 _REPORT_COOLDOWN_S = 3600
+_MAX_COOLDOWN_ENTRIES = 10_000
 
 
 class ThreatNeutralizer:
@@ -345,7 +346,7 @@ class ThreatNeutralizer:
         with self._lock:
             # Periodic cleanup: every 100 calls, prune expired entries
             self._report_call_count += 1
-            if self._report_call_count % 100 == 0:
+            if self._report_call_count % 100 == 0 or len(self._report_cooldowns) > _MAX_COOLDOWN_ENTRIES:
                 expired = [
                     k
                     for k, v in self._report_cooldowns.items()

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class ProgressEventBus:
     def __init__(self, max_size: int = _DEFAULT_MAX_SIZE) -> None:
         self._max_size = max_size
         self._subscribers: list[asyncio.Queue[dict[str, Any]]] = []
+        self._sub_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Subscription management
@@ -35,8 +37,10 @@ class ProgressEventBus:
         The caller receives all events emitted after this call.
         """
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self._max_size)
-        self._subscribers.append(q)
-        logger.debug("ProgressEventBus: subscriber added (total=%d)", len(self._subscribers))
+        with self._sub_lock:
+            self._subscribers.append(q)
+            total = len(self._subscribers)
+        logger.debug("ProgressEventBus: subscriber added (total=%d)", total)
         return q
 
     def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
@@ -45,9 +49,11 @@ class ProgressEventBus:
         Silently ignores queues not currently subscribed.
         """
         try:
-            self._subscribers.remove(queue)
+            with self._sub_lock:
+                self._subscribers.remove(queue)
+                remaining = len(self._subscribers)
             logger.debug(
-                "ProgressEventBus: subscriber removed (remaining=%d)", len(self._subscribers)
+                "ProgressEventBus: subscriber removed (remaining=%d)", remaining
             )
         except ValueError:
             pass
@@ -62,7 +68,9 @@ class ProgressEventBus:
         If a subscriber's queue is full, the oldest item is dropped before
         adding the new event (no blocking).
         """
-        for q in list(self._subscribers):
+        with self._sub_lock:
+            snapshot = list(self._subscribers)
+        for q in snapshot:
             if q.full():
                 try:
                     q.get_nowait()

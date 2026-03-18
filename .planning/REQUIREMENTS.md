@@ -28,7 +28,7 @@
 - [x] **UNITY-01**: JarvisEditorBridge C# plugin communicates via WebSocket JSON-RPC on localhost:8091
 - [x] **UNITY-02**: Bridge uses reflection-based command dispatch covering full Unity Editor API
 - [x] **UNITY-03**: Bridge handles domain reload gracefully (heartbeat + reconnect + WAITING_FOR_BRIDGE state)
-- [ ] **UNITY-04**: UnityTool creates projects, writes C# scripts, compiles, builds via bridge
+- [ ] **UNITY-04**: UnityTool creates projects, writes C# scripts, compiles, builds via bridge *(Partial — Python unit tests pass but custom RPC methods like WriteScript/CompileProject not production-tested against real Unity Editor)*
 - [x] **UNITY-05**: Unity Editor panel shows agent progress, approval dialogs, console streaming
 - [ ] **UNITY-06**: VRAM coordinator prevents OOM when Ollama and Unity share 8GB GPU
 
@@ -37,8 +37,8 @@
 - [x] **CODE-01**: Agent generates valid Unity 6.3 C# scripts with correct API usage
 - [x] **CODE-02**: Agent compiles, runs tests, enters play mode, and fixes errors in a verify-fix loop
 - [x] **CODE-03**: Agent writes NUnit tests alongside game scripts
-- [ ] **CODE-04**: Pre-compilation static analysis blocks dangerous APIs (Process.Start, File.Delete outside jail)
-- [ ] **CODE-05**: Generated code confined to Assets/JarvisGenerated/ path jail
+- [ ] **CODE-04**: Pre-compilation static analysis blocks dangerous APIs (Process.Start, File.Delete outside jail) *(Partial — static analysis guard implemented but not validated against real Unity compilation)*
+- [ ] **CODE-05**: Generated code confined to Assets/JarvisGenerated/ path jail *(Partial — Python-side path jail enforced but not end-to-end tested with real Unity Editor)*
 
 ### Asset Pipeline
 
@@ -99,14 +99,14 @@
 | UNITY-01 | Phase 21 | Complete |
 | UNITY-02 | Phase 21 | Complete |
 | UNITY-03 | Phase 21 | Complete |
-| UNITY-04 | Phase 21 | Pending |
+| UNITY-04 | Phase 21 | Partial — RPC methods not production-tested |
 | UNITY-05 | Phase 23 | Complete |
 | UNITY-06 | Phase 20 | Pending |
 | CODE-01 | Phase 23 | Complete |
 | CODE-02 | Phase 23 | Complete |
 | CODE-03 | Phase 23 | Complete |
-| CODE-04 | Phase 21 | Pending |
-| CODE-05 | Phase 21 | Pending |
+| CODE-04 | Phase 21 | Partial — not validated against real Unity |
+| CODE-05 | Phase 21 | Partial — not end-to-end tested with Unity |
 | ASSET-01 | Phase 24 | Complete |
 | ASSET-02 | Phase 24 | Complete |
 | ASSET-03 | Phase 24 | Complete |

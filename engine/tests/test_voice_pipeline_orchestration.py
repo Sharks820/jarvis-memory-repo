@@ -459,7 +459,9 @@ class TestDispatchAndHandleResponse:
         assert "response=" in output
         assert "model=kimi-k2" in output
         assert "provider=groq" in output
-        mock_hist.assert_called_once_with("assistant", "Hello there!")
+        assert mock_hist.call_count == 2
+        mock_hist.assert_any_call("user", "hello")
+        mock_hist.assert_any_call("assistant", "Hello there!")
         mock_mark.assert_called_once_with("kimi-k2", "groq")
         mock_learn.assert_called_once()
 
@@ -665,7 +667,7 @@ class TestPrepareHistory:
         assert "42% complete" in system_prompt
         assert "3 artifacts so far" in system_prompt
         assert history == (("assistant", "Earlier reply"),)
-        mock_add_to_history.assert_called_once_with("user", "hello")
+        mock_add_to_history.assert_not_called()
         csm.update_turn.assert_called_once_with("user", "hello", "kimi-k2")
 
     @patch(f"{_VP}._add_to_history")
@@ -693,4 +695,4 @@ class TestPrepareHistory:
 
         assert "Active learning mission:" not in system_prompt
         assert history == ()
-        mock_add_to_history.assert_called_once_with("user", "hello")
+        mock_add_to_history.assert_not_called()

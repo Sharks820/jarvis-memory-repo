@@ -431,9 +431,14 @@ class DiagnosticEngine:
             return issues
 
         latest = history[-1]
-        node_count = int(latest.get("node_count", 0))
-        edge_count = int(latest.get("edge_count", 0))
-        avg_confidence = float(latest.get("avg_confidence", 1.0))
+        try:
+            node_count = int(latest.get("node_count", 0))
+            edge_count = int(latest.get("edge_count", 0))
+            avg_confidence = float(latest.get("avg_confidence", 1.0))
+        except (ValueError, TypeError):
+            node_count = 0
+            edge_count = 0
+            avg_confidence = 1.0
 
         # Check orphan ratio (nodes with no edges)
         if node_count > 0 and edge_count >= 0:
@@ -480,7 +485,7 @@ class DiagnosticEngine:
 
         # Check personal_vocab.txt
         try:
-            vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
+            vocab_path = Path(__file__).parent.parent / "data" / "personal_vocab.txt"
             if not vocab_path.exists():
                 issues.append(DiagnosticIssue(
                     id=_issue_id(),

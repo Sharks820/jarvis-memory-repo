@@ -87,6 +87,8 @@ class AgentStateStore:
 
     def __init__(self, db: sqlite3.Connection) -> None:
         self._db = db
+        if self._db.row_factory is None:
+            self._db.row_factory = sqlite3.Row
         self._ensure_schema()
 
     # ------------------------------------------------------------------

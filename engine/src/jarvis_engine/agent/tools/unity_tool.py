@@ -87,8 +87,8 @@ def _assert_in_jail(rel_path: str) -> None:
     normalised = os.path.normpath(rel_path.replace("\\", "/")).replace("\\", "/")
     # Require path to start with the jail prefix followed by a separator so
     # that sibling prefixes like "Assets/JarvisGenerated2" don't sneak through.
-    required_prefix = _JAIL_PREFIX + "/"
-    if not normalised.startswith(required_prefix):
+    # Accept the jail directory itself or any path under it
+    if normalised != _JAIL_PREFIX and not normalised.startswith(_JAIL_PREFIX + "/"):
         raise PermissionError(
             f"Path {rel_path!r} (normalised: {normalised!r}) is outside the "
             f"Unity path jail ({_JAIL_PREFIX}/)."
@@ -158,6 +158,7 @@ class UnityTool:
         self._port = port
         self._state = BridgeState.DISCONNECTED
         self._ws: Any = None
+        self._ws_cm: Any = None
         self._request_id = 0
         self._ready_event: asyncio.Event = asyncio.Event()
         self._listener_task: asyncio.Task[None] | None = None
@@ -187,13 +188,39 @@ class UnityTool:
         logger.info("UnityTool: connecting to %s", uri)
         # websockets.asyncio.client.connect is an async context manager;
         # we enter it to get the connection object.
-        self._ws = await websockets_connect(uri).__aenter__()
+        self._ws_cm = websockets_connect(uri)
+        self._ws = await self._ws_cm.__aenter__()
+
+        # ── Authenticate BEFORE starting the listener ──────────────────
+        # Uses direct send/recv to avoid a race condition where the
+        # listener task could consume the auth response before the RPC
+        # future is registered.
+        secret = os.environ.get("JARVIS_BRIDGE_SECRET", "jarvis-dev-secret")
+        auth_request = json.dumps({
+            "jsonrpc": "2.0",
+            "id": "auth",
+            "method": "authenticate",
+            "params": {"token": secret},
+        })
+        await self._ws.send(auth_request)
+        raw_auth = await self._ws.recv()
+        try:
+            auth_msg: dict[str, Any] = json.loads(raw_auth)
+        except (json.JSONDecodeError, TypeError):
+            auth_msg = {}
+        auth_result = auth_msg.get("result")
+        if not isinstance(auth_result, dict) or not auth_result.get("authenticated"):
+            await self._ws.close()
+            self._ws = None
+            self._ws_cm = None
+            raise ConnectionError("Unity bridge authentication failed")
+
         self._state = BridgeState.CONNECTED
         self._ready_event.set()
         self._listener_task = asyncio.create_task(
             self._listen_loop(), name="unity-bridge-listener"
         )
-        logger.info("UnityTool: connected, state=%s", self._state)
+        logger.info("UnityTool: connected and authenticated, state=%s", self._state)
 
     async def disconnect(self) -> None:
         """Close the WebSocket and cancel the heartbeat listener."""
@@ -204,7 +231,14 @@ class UnityTool:
             except (asyncio.CancelledError, Exception):
                 pass
             self._listener_task = None
-        if self._ws is not None:
+        if self._ws_cm is not None:
+            try:
+                await self._ws_cm.__aexit__(None, None, None)
+            except Exception:  # noqa: BLE001
+                pass
+            self._ws_cm = None
+            self._ws = None
+        elif self._ws is not None:
             try:
                 await self._ws.close()
             except Exception:  # noqa: BLE001
@@ -258,12 +292,11 @@ class UnityTool:
         # The single reader loop (_listen_loop) dispatches messages to either
         # _pending_rpc or the heartbeat handler based on the 'id' field.
         req_id = str(self._request_id)
-        future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending_rpc[req_id] = future
         try:
             response = await asyncio.wait_for(future, timeout=30.0)
         except asyncio.TimeoutError:
-            self._pending_rpc.pop(req_id, None)
             raise RuntimeError(f"RPC timeout waiting for response to {method}") from None
         finally:
             self._pending_rpc.pop(req_id, None)
@@ -330,12 +363,14 @@ class UnityTool:
                     msg: dict[str, Any] = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                # Dispatch: RPC response or heartbeat
+                # Dispatch: RPC response, stale RPC, or heartbeat
                 msg_id = msg.get("id")
                 if msg_id and msg_id in self._pending_rpc:
                     future = self._pending_rpc.pop(msg_id)
                     if not future.done():
                         future.set_result(msg)
+                elif msg_id:
+                    logger.debug("Stale RPC response id=%s (no pending handler)", msg_id)
                 else:
                     await self._handle_heartbeat_message(raw)
         except Exception:  # noqa: BLE001
@@ -361,6 +396,25 @@ class UnityTool:
     # ------------------------------------------------------------------
     # ToolSpec registration
     # ------------------------------------------------------------------
+
+    async def _safe_dispatch(self, **kwargs: Any) -> Any:
+        """Dispatch tool calls with full security enforcement.
+
+        Routes WriteScript through write_script() (which enforces path jail and
+        static analysis).  Other methods pass through call() directly.
+        """
+        method = kwargs.pop("method", "")
+        params = kwargs.pop("params", kwargs)
+        if method == "WriteScript":
+            path = params.get("path", "")
+            code = params.get("code", "")
+            return await self.write_script(path, code)
+        elif method == "CreateProject":
+            return await self.create_project(**params)
+        elif method == "Compile":
+            return await self.compile()
+        else:
+            return await self.call(method, params)
 
     def get_tool_spec(self) -> "ToolSpec":  # noqa: F821
         """Return a ToolSpec for registration in the agent ToolRegistry."""
@@ -390,7 +444,7 @@ class UnityTool:
                 },
                 "required": ["method"],
             },
-            execute=self.call,
+            execute=self._safe_dispatch,
             requires_approval=False,
             is_destructive=False,
         )

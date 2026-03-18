@@ -90,21 +90,18 @@ class StepExecutor:
             task.status = "blocked"
             task.approval_needed = True
             self._store.checkpoint(task)
-            await self._bus.emit(
-                {
-                    "type": "approval_needed",
-                    "task_id": task.task_id,
-                    "step_index": step.step_index,
-                    "tool_name": step.tool_name,
-                }
-            )
+            # Note: wait_for_approval emits its own approval_needed event on
+            # the ProgressEventBus — do NOT emit a duplicate here.
             approved = await self._gate.wait_for_approval(task.task_id, step.description)
             if not approved:
                 task.approval_needed = False
+                task.status = "failed"
                 return StepResult(
                     success=False,
                     error=f"Approval rejected for step {step.step_index} ({step.tool_name})",
                 )
+            # Immediately reset status from "blocked" to "running" after approval
+            task.status = "running"
             task.approval_needed = False
 
         # 3. Checkpoint (running state)

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -106,8 +107,14 @@ def _route_description(description: str) -> tuple[str, str]:
     # Check full text for substring matches (catches multi-word keywords)
     desc_lower = description.lower()
 
-    matched_blender = [kw for kw in _BLENDER_KEYWORDS if kw in desc_lower]
-    matched_tripo = [kw for kw in _TRIPO_KEYWORDS if kw in desc_lower]
+    def _kw_match(kw: str, text: str) -> bool:
+        """Use word-boundary regex for short keywords to avoid substring false positives."""
+        if len(kw) <= 4:
+            return bool(re.search(rf"\b{re.escape(kw)}\b", text))
+        return kw in text
+
+    matched_blender = [kw for kw in _BLENDER_KEYWORDS if _kw_match(kw, desc_lower)]
+    matched_tripo = [kw for kw in _TRIPO_KEYWORDS if _kw_match(kw, desc_lower)]
 
     if matched_blender and not matched_tripo:
         reason = f"matched architecture/terrain keywords: {', '.join(matched_blender)}"

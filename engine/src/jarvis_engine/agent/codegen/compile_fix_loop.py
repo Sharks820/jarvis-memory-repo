@@ -163,9 +163,12 @@ class CompileFixLoop:
 
         # Derive test class name from test_path for RunTests filter
         test_class_name: str | None = None
+        test_path_stem: str | None = None
+        current_test_content = test_content
         if test_path:
             stem = re.sub(r"\.cs$", "", test_path.rsplit("/", 1)[-1])
             test_class_name = stem
+            test_path_stem = stem
 
         for attempt in range(1, self._max_retries + 1):
             iterations = attempt
@@ -179,8 +182,8 @@ class CompileFixLoop:
             await self._unity_tool.write_script(script_path, current_code)
 
             # --- Step 3: Write test file if provided ---
-            if test_path and test_content:
-                await self._unity_tool.write_script(test_path, test_content)
+            if test_path and current_test_content:
+                await self._unity_tool.write_script(test_path, current_test_content)
 
             # --- Step 4: Compile ---
             compile_result = await self._unity_tool.compile()
@@ -191,7 +194,29 @@ class CompileFixLoop:
                 logger.info(
                     "CompileFixLoop attempt %d: %d compile error(s)", attempt, len(compile_errors)
                 )
-                current_code = await self._fix_with_llm(current_code, compile_errors)
+
+                # Split errors: some may reference the test file, others the game script.
+                # Fix each file independently so the test file isn't frozen on errors.
+                if test_path_stem and current_test_content:
+                    test_file_errors = [e for e in compile_errors if test_path_stem in e]
+                    script_file_errors = [e for e in compile_errors if test_path_stem not in e]
+                else:
+                    test_file_errors = []
+                    script_file_errors = compile_errors
+
+                if test_file_errors and current_test_content:
+                    current_test_content = await self._fix_with_llm(
+                        current_test_content, test_file_errors, "NUnit test"
+                    )
+                if script_file_errors:
+                    current_code = await self._fix_with_llm(
+                        current_code, script_file_errors, "game script"
+                    )
+                elif not test_file_errors:
+                    # All errors but none matched either category — fix the script
+                    current_code = await self._fix_with_llm(
+                        current_code, compile_errors, "game script"
+                    )
                 continue
 
             # --- Compilation succeeded ---
@@ -206,7 +231,15 @@ class CompileFixLoop:
                     logger.info(
                         "CompileFixLoop attempt %d: %d test failure(s)", attempt, len(test_errors)
                     )
-                    current_code = await self._fix_with_llm(current_code, test_errors)
+                    # Test failures may require fixing the test or the script.
+                    # Fix both: test content for assertion logic, script for behaviour.
+                    if current_test_content and test_path:
+                        current_test_content = await self._fix_with_llm(
+                            current_test_content, test_errors, "NUnit test"
+                        )
+                    current_code = await self._fix_with_llm(
+                        current_code, test_errors, "game script"
+                    )
                     continue
 
             # --- Step 6: Enter play mode with VRAM coordination ---
@@ -252,8 +285,16 @@ class CompileFixLoop:
             warnings=all_warnings,
         )
 
-    async def _fix_with_llm(self, current_code: str, errors: list[str]) -> str:
+    async def _fix_with_llm(
+        self, current_code: str, errors: list[str], file_label: str = "C# script"
+    ) -> str:
         """Ask the LLM to fix *current_code* given *errors*.
+
+        Args:
+            current_code: The source code to fix.
+            errors: Error messages to address.
+            file_label: Human-readable label for the file being fixed (e.g.
+                "game script" or "NUnit test") — included in the LLM prompt.
 
         Returns the corrected code (fences stripped).
         """
@@ -270,13 +311,13 @@ class CompileFixLoop:
 
         # Build fix prompt using prompt_builder for system message
         system_prompt = self._prompt_builder.build_unity_system_prompt(
-            task_context="fix compile errors",
-            extra_context="Fix the compilation errors listed below. Return ONLY the corrected C# code.",
+            task_context=f"fix {file_label} errors",
+            extra_context=f"Fix the errors in the {file_label} listed below. Return ONLY the corrected C# code.",
         )
 
         # Build user message with error context and KG suggestions
         user_parts: list[str] = [
-            "The following C# script has compilation/test errors that must be fixed.",
+            f"The following {file_label} has compilation/test errors that must be fixed.",
             "",
             "Current code:",
             f"```csharp\n{current_code}\n```",
