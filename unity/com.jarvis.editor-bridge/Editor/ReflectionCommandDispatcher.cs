@@ -237,8 +237,10 @@ namespace Jarvis.EditorBridge
             string jailPrefix;
             try
             {
-                jailPrefix = System.IO.Path.GetFullPath(
-                    System.IO.Path.Combine(Application.dataPath, "JarvisGenerated"));
+                // Resolve relative to the Unity project root (Application.dataPath is <project>/Assets)
+                string projectRoot = System.IO.Path.GetFullPath(
+                    System.IO.Path.Combine(Application.dataPath, ".."));
+                jailPrefix = System.IO.Path.Combine(projectRoot, "Assets", "JarvisGenerated");
             }
             catch
             {
@@ -256,7 +258,12 @@ namespace Jarvis.EditorBridge
 
                 try
                 {
-                    string normalized = System.IO.Path.GetFullPath(val);
+                    // Resolve relative paths against the project root, not CWD
+                    string projectRoot = System.IO.Path.GetFullPath(
+                        System.IO.Path.Combine(Application.dataPath, ".."));
+                    string normalized = System.IO.Path.IsPathRooted(val)
+                        ? System.IO.Path.GetFullPath(val)
+                        : System.IO.Path.GetFullPath(System.IO.Path.Combine(projectRoot, val));
                     if (!normalized.StartsWith(jailPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new UnauthorizedAccessException(
@@ -340,10 +347,8 @@ namespace Jarvis.EditorBridge
 
         private static object HandleWriteScript(JObject args)
         {
-            string path = args.Value<string>("path") ?? args.Value<string>("content") != null
-                ? args.Value<string>("path") ?? ""
-                : "";
-            string code = args.Value<string>("code") ?? args.Value<string>("content") ?? "";
+            string path = args.Value<string>("path") ?? "";
+            string code = args.Value<string>("content") ?? args.Value<string>("code") ?? "";
 
             if (string.IsNullOrEmpty(path))
                 throw new ArgumentException("WriteScript requires a 'path' parameter.");

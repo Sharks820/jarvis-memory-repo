@@ -126,7 +126,12 @@ class AgentRunHandler:
             asyncio.set_event_loop(loop)
             try:
                 planner = TaskPlanner(self._gateway, self._registry)
-                executor_obj = StepExecutor(self._registry, self._gate, self._store, self._bus)
+                executor_obj = StepExecutor(
+                    self._registry,
+                    self._gate,
+                    self._store,
+                    self._bus,
+                )
                 reflection = ReflectionLoop(executor_obj, planner, self._store, self._bus)
 
                 steps, tokens = planner.plan(task.goal)
@@ -138,6 +143,7 @@ class AgentRunHandler:
                 loop.run_until_complete(reflection.run_loop(task, steps))
             finally:
                 loop.close()
+                asyncio.set_event_loop(None)
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "AgentRunHandler: background loop failed for task %s: %s",

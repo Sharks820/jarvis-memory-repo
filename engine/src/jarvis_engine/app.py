@@ -884,7 +884,7 @@ def _register_agent_handlers(
         project_dir = root
         file_tool = FileTool(project_dir)
         registry.register(file_tool.get_tool_spec())
-        shell_tool = ShellTool(project_dir)
+        shell_tool = ShellTool()
         registry.register(shell_tool.get_tool_spec())
 
         # Try to register web tool (optional dep)

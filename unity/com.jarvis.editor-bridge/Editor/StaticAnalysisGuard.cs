@@ -64,6 +64,66 @@ namespace Jarvis.EditorBridge
                 new Regex(@"\.\.[/\\]", RegexOptions.Compiled),
                 "Forbidden: Path traversal sequence detected (../ or ..\\)"
             ),
+
+            // Reflection invoke chain — arbitrary method execution
+            (
+                new Regex(@"\bGetMethod\s*\(.*\)\s*\.\s*Invoke\b", RegexOptions.Compiled),
+                "Forbidden: Reflection Invoke chain allows arbitrary code execution"
+            ),
+            (
+                new Regex(@"\bActivator\.CreateInstance\b", RegexOptions.Compiled),
+                "Forbidden: Dynamic instantiation via Activator"
+            ),
+            (
+                new Regex(@"\bAppDomain\.ExecuteAssembly\b", RegexOptions.Compiled),
+                "Forbidden: Assembly execution via AppDomain"
+            ),
+
+            // Dynamic compilation
+            (
+                new Regex(@"\bCSharpCodeProvider\b|\bCodeDomProvider\b", RegexOptions.Compiled),
+                "Forbidden: Dynamic C# compilation"
+            ),
+            (
+                new Regex(@"\bCSharpCompilation\b", RegexOptions.Compiled),
+                "Forbidden: Roslyn compilation"
+            ),
+
+            // Native interop
+            (
+                new Regex(@"\bDllImport\b", RegexOptions.Compiled),
+                "Forbidden: P/Invoke (DllImport) — native code execution"
+            ),
+            (
+                new Regex(@"\bunsafe\b", RegexOptions.Compiled),
+                "Forbidden: Unsafe code blocks"
+            ),
+            (
+                new Regex(@"\bMarshal\.\w+", RegexOptions.Compiled),
+                "Forbidden: Unmanaged memory access via Marshal"
+            ),
+
+            // Network — data exfiltration
+            (
+                new Regex(@"\bWebClient\b|\bHttpClient\b|\bWebRequest\b", RegexOptions.Compiled),
+                "Forbidden: Network requests in generated code"
+            ),
+
+            // PowerShell execution
+            (
+                new Regex(@"\bSystem\.Management\.Automation\b", RegexOptions.Compiled),
+                "Forbidden: PowerShell execution"
+            ),
+
+            // Environment/Registry modification
+            (
+                new Regex(@"\bEnvironment\.SetEnvironmentVariable\b", RegexOptions.Compiled),
+                "Forbidden: Environment variable modification"
+            ),
+            (
+                new Regex(@"\bMicrosoft\.Win32\.Registry\b", RegexOptions.Compiled),
+                "Forbidden: Registry access"
+            ),
         };
 
         // ── Public API ─────────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ class _AgentRouteServerProtocol(MobileRouteServerProtocol, Protocol):
 class _AgentRoutesHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
     server: _AgentRouteServerProtocol
 
-    def _read_json_body(self) -> tuple[dict[str, Any] | None, bytes]:
+    def _read_json_body(self, *, max_content_length: int = 10_000) -> tuple[dict[str, Any] | None, bytes]:
         ...
 
     def _write_text(self, status: int, content_type: str, text: str) -> None:
@@ -60,7 +60,7 @@ class AgentRoutesMixin:
     def handle_agent_run(self: _AgentRoutesHandlerProtocol) -> None:
         """Submit a new agent task goal."""
         try:
-            body, _raw = self._read_json_body()
+            body, _raw = self._read_json_body(max_content_length=10_000)
             if body is None:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid JSON body"})
                 return
@@ -68,10 +68,11 @@ class AgentRoutesMixin:
             task_id = str(body.get("task_id", "")).strip()
             token_budget = int(body.get("token_budget", 50000))
 
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.agent_commands import AgentRunCommand
 
             cmd = AgentRunCommand(goal=goal, task_id=task_id, token_budget=token_budget)
-            result = self.server.bus_dispatch(cmd)
+            result = get_bus().dispatch(cmd)
             payload: dict[str, Any] = {"ok": True, "task_id": result.task_id, "status": result.status}
             self._write_json(HTTPStatus.OK, payload)
         except _AGENT_ROUTE_ERRORS as exc:
@@ -91,10 +92,11 @@ class AgentRoutesMixin:
             task_id_list = params.get("task_id", [""])
             task_id = task_id_list[0] if task_id_list else ""
 
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.agent_commands import AgentStatusCommand
 
             cmd = AgentStatusCommand(task_id=task_id)
-            result = self.server.bus_dispatch(cmd)
+            result = get_bus().dispatch(cmd)
             payload: dict[str, Any] = {
                 "ok": result.return_code == 0,
                 "task_id": result.task_id,
@@ -116,7 +118,7 @@ class AgentRoutesMixin:
     def handle_agent_approve(self: _AgentRoutesHandlerProtocol) -> None:
         """Approve or reject a pending task."""
         try:
-            body, _raw = self._read_json_body()
+            body, _raw = self._read_json_body(max_content_length=10_000)
             if body is None:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid JSON body"})
                 return
@@ -124,10 +126,11 @@ class AgentRoutesMixin:
             approved = bool(body.get("approved", True))
             reason = str(body.get("reason", "")).strip()
 
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.agent_commands import AgentApproveCommand
 
             cmd = AgentApproveCommand(task_id=task_id, approved=approved, reason=reason)
-            result = self.server.bus_dispatch(cmd)
+            result = get_bus().dispatch(cmd)
             payload: dict[str, Any] = {
                 "ok": result.return_code == 0,
                 "task_id": result.task_id,
@@ -163,6 +166,7 @@ class AgentRoutesMixin:
 
             # Use a separate thread-local event loop for SSE blocking
             loop: asyncio.AbstractEventLoop | None = None
+            queue: asyncio.Queue | None = None
             try:
                 loop = asyncio.new_event_loop()
                 queue = loop.run_until_complete(_subscribe_async(bus))
@@ -189,10 +193,11 @@ class AgentRoutesMixin:
                 logger.debug("SSE client disconnected")
             finally:
                 if loop is not None:
-                    try:
-                        loop.run_until_complete(_unsubscribe_async(bus, queue))
-                    except Exception:  # noqa: BLE001
-                        logger.debug("SSE unsubscribe failed during cleanup")
+                    if queue is not None:
+                        try:
+                            loop.run_until_complete(_unsubscribe_async(bus, queue))
+                        except Exception:  # noqa: BLE001
+                            logger.debug("SSE unsubscribe failed during cleanup")
                     loop.close()
 
         except _AGENT_ROUTE_ERRORS as exc:

@@ -231,9 +231,20 @@ class UnityTool:
         await self._ws.send(auth_request)
         # Wait for auth response, skipping any heartbeat/ready messages
         # that the bridge may send immediately on connect.
+        import time as _time
+
         auth_msg: dict[str, Any] = {}
+        _auth_deadline = _time.monotonic() + 15.0  # total 15s timeout for auth handshake
         while True:
-            raw_auth = await asyncio.wait_for(self._ws.recv(), timeout=5.0)
+            remaining_time = _auth_deadline - _time.monotonic()
+            if remaining_time <= 0:
+                await self._ws.close()
+                self._ws = None
+                self._ws_cm = None
+                raise ConnectionError("Unity bridge auth handshake timed out (15s)")
+            raw_auth = await asyncio.wait_for(
+                self._ws.recv(), timeout=min(5.0, remaining_time)
+            )
             try:
                 candidate: dict[str, Any] = json.loads(raw_auth)
             except (json.JSONDecodeError, TypeError):
@@ -314,21 +325,20 @@ class UnityTool:
         and parses the response.  Raises RuntimeError on JSON-RPC error.
         """
         self._request_id += 1
+        req_id = str(self._request_id)
         request = {
             "jsonrpc": "2.0",
-            "id": str(self._request_id),
+            "id": req_id,
             "method": method,
             "params": params or {},
         }
         raw_request = json.dumps(request)
-        logger.debug("UnityTool -> %s", raw_request)
-        await self._ws.send(raw_request)
-        # Wait for the response via the pending-response future.
-        # The single reader loop (_listen_loop) dispatches messages to either
-        # _pending_rpc or the heartbeat handler based on the 'id' field.
-        req_id = str(self._request_id)
+        # Register the future BEFORE sending to prevent a race where the
+        # listener receives the response before the future exists.
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending_rpc[req_id] = future
+        logger.debug("UnityTool -> %s", raw_request)
+        await self._ws.send(raw_request)
         try:
             response = await asyncio.wait_for(future, timeout=30.0)
         except asyncio.TimeoutError:
@@ -444,7 +454,12 @@ class UnityTool:
 
         Routes WriteScript through write_script() (which enforces path jail and
         static analysis).  Other methods pass through call() directly.
+        Auto-connects to the bridge on first use if not already connected.
         """
+        # Lazy connect: auto-connect on first tool invocation
+        if self._state == BridgeState.DISCONNECTED:
+            await self.connect()
+
         method = kwargs.pop("method", "")
         params = kwargs.pop("params", kwargs)
         if method == "WriteScript":
@@ -452,8 +467,9 @@ class UnityTool:
             code = params.get("content", params.get("code", ""))
             return await self.write_script(path, code)
         elif method == "CreateProject":
-            return await self.create_project(**params)
-        elif method == "Compile":
+            project_path = params.get("path", params.get("project_path", ""))
+            return await self.create_project(project_path)
+        elif method in ("Compile", "CompileProject"):
             return await self.compile()
         else:
             return await self.call(method, params)
@@ -487,6 +503,6 @@ class UnityTool:
                 "required": ["method"],
             },
             execute=self._safe_dispatch,
-            requires_approval=False,
-            is_destructive=False,
+            requires_approval=True,
+            is_destructive=True,
         )
