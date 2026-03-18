@@ -920,6 +920,12 @@ def _register_agent_handlers(
             from jarvis_engine.agent.tools.unity_tool import UnityTool
 
             unity_tool_ref = UnityTool()
+            # Wire approval callback so JarvisPanel approve/reject buttons
+            # route through the ApprovalGate (via WebSocket notifications)
+            unity_tool_ref._on_approval = lambda tid, ok: (
+                gate.approve(tid) if ok else gate.reject(tid)
+            )
+            registry.register(unity_tool_ref.get_tool_spec())
             asset_tool = AssetTool(
                 unity_tool=unity_tool_ref,
                 tripo_tool=tripo_tool_instance,

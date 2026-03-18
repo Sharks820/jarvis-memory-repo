@@ -105,11 +105,22 @@ class AgentRunHandler:
 
     def _run_agent_loop(self, task: Any) -> None:
         """Execute the full plan->execute->reflect cycle in a background thread."""
-        if self._gateway is None or self._registry is None or self._store is None:
+        if (
+            self._gateway is None
+            or self._registry is None
+            or self._store is None
+            or self._gate is None
+            or self._bus is None
+        ):
             logger.warning(
-                "AgentRunHandler: gateway/registry/store not configured for task %s -- "
-                "marking failed",
+                "AgentRunHandler: required subsystems not fully configured for task %s -- "
+                "marking failed (gateway=%s, registry=%s, store=%s, gate=%s, bus=%s)",
                 task.task_id,
+                self._gateway is not None,
+                self._registry is not None,
+                self._store is not None,
+                self._gate is not None,
+                self._bus is not None,
             )
             task.status = "failed"
             task.last_error = "Agent subsystem not fully configured"

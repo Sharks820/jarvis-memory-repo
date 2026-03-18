@@ -189,6 +189,9 @@ class UnityTool:
         self._ready_event: asyncio.Event = asyncio.Event()
         self._listener_task: asyncio.Task[None] | None = None
         self._pending_rpc: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        # Optional callback for approval responses from JarvisPanel.
+        # Set by the handler wiring to route approval messages to the ApprovalGate.
+        self._on_approval: Any = None  # Callable[[str, bool], None] | None
 
     # ------------------------------------------------------------------
     # Properties
@@ -435,11 +438,25 @@ class UnityTool:
             self._pending_rpc.clear()
 
     def _handle_heartbeat_msg(self, msg: dict[str, Any]) -> None:
-        """Process an already-parsed heartbeat/status message."""
+        """Process an already-parsed heartbeat/notification message.
+
+        Handles:
+        - {"status": "ready"} — bridge domain reload complete
+        - {"method": "approval_response", "params": {...}} — JarvisPanel approve/reject
+        """
         if msg.get("status") == "ready":
             logger.info("UnityTool: bridge ready — transitioning to CONNECTED")
             self._state = BridgeState.CONNECTED
             self._ready_event.set()
+        elif msg.get("method") == "approval_response" and self._on_approval is not None:
+            params = msg.get("params", {})
+            task_id = params.get("task_id", "")
+            approved = bool(params.get("approved", False))
+            logger.info("UnityTool: approval_response task_id=%s approved=%s", task_id, approved)
+            try:
+                self._on_approval(task_id, approved)
+            except Exception:  # noqa: BLE001
+                logger.debug("UnityTool: approval callback failed for %s", task_id)
 
     # ------------------------------------------------------------------
     # ToolSpec registration

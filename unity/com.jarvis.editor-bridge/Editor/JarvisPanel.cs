@@ -211,11 +211,17 @@ namespace Jarvis.EditorBridge
         {
             try
             {
-                var response = JsonRpcResponse.Success(
-                    _approvalTaskId,
-                    new { approved = approved });
+                // Send as a JSON-RPC notification (no id) with a method the Python
+                // listener recognizes.  The Python UnityTool._listen_loop dispatches
+                // messages without an "id" to the heartbeat/notification handler.
+                var notification = new
+                {
+                    jsonrpc = "2.0",
+                    method = "approval_response",
+                    @params = new { task_id = _approvalTaskId, approved = approved }
+                };
 
-                var payload = JsonConvert.SerializeObject(response);
+                var payload = JsonConvert.SerializeObject(notification);
                 JarvisEditorBridge.BroadcastRaw(payload);
 
                 AddLog(approved
