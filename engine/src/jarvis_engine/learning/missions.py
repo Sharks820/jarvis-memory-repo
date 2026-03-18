@@ -107,6 +107,7 @@ class MissionRecord(TypedDict, total=False):
     progress_bar: str
     prior_results: list[dict[str, Any]]  # LM-06: preserved results from prior attempts
     delivery_method: str  # MOB-08: notification|file|none
+    checkpoint: dict[str, Any]
 
 
 class VerifiedFinding(TypedDict):
@@ -130,6 +131,7 @@ class MissionReport(TypedDict):
     verified_findings: list[VerifiedFinding]
     verified_count: int
     completed_utc: str
+    final_status: str
 
 
 def _missions_path(root: Path) -> Path:
@@ -161,6 +163,86 @@ def _save_missions(root: Path, missions: list[dict[str, Any]]) -> None:
     atomic_write_json(_missions_path(root), missions, secure=False)
 
 
+def _get_mission_checkpoint(root: Path, mission_id: str) -> dict[str, Any]:
+    missions = load_missions(root)
+    for mission in missions:
+        if str(mission.get("mission_id", "")) != mission_id:
+            continue
+        checkpoint = mission.get("checkpoint", {})
+        return checkpoint if isinstance(checkpoint, dict) else {}
+    return {}
+
+
+def _update_mission_checkpoint(root: Path, mission_id: str, **fields: Any) -> None:
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        for mission in missions:
+            if str(mission.get("mission_id", "")) != mission_id:
+                continue
+            checkpoint = mission.get("checkpoint", {})
+            if not isinstance(checkpoint, dict):
+                checkpoint = {}
+            checkpoint.update(fields)
+            mission["checkpoint"] = checkpoint
+            mission["updated_utc"] = now_iso()
+            _save_missions(root, missions)
+            return
+
+
+def _mission_runtime_status(root: Path, mission_id: str) -> str:
+    mission = get_mission_by_id(root, mission_id)
+    return str(mission.get("status", "") if mission else "").lower()
+
+
+def _halted_mission_status(root: Path, mission_id: str) -> str:
+    status = _mission_runtime_status(root, mission_id)
+    return status if status in {"paused", "cancelled", "blocked"} else ""
+
+
+def _ensure_mission_steps(root: Path, mission_id: str) -> None:
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        for mission in missions:
+            if str(mission.get("mission_id", "")) != mission_id:
+                continue
+            steps = mission.get("steps")
+            if not isinstance(steps, list) or not steps:
+                mission["steps"] = _init_mission_steps()
+                mission["updated_utc"] = now_iso()
+                _save_missions(root, missions)
+            return
+
+
+def _step_status(root: Path, mission_id: str, step_name: str) -> str:
+    steps = get_mission_steps(root, mission_id)
+    for step in steps:
+        if str(step.get("name", "")) == step_name:
+            return str(step.get("status", "pending"))
+    return "pending"
+
+
+def _step_is_complete(root: Path, mission_id: str, step_name: str) -> bool:
+    return _step_status(root, mission_id, step_name) in {"completed", "skipped"}
+
+
+def _serialize_selected_urls(selected: list[tuple[str, str]]) -> list[dict[str, str]]:
+    return [{"url": url, "domain": domain} for url, domain in selected]
+
+
+def _deserialize_selected_urls(raw: Any) -> list[tuple[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    selected: list[tuple[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url", "")).strip()
+        domain = str(item.get("domain", "")).strip().lower()
+        if url and domain:
+            selected.append((url, domain))
+    return selected
+
+
 def _progress_bar(pct: int) -> str:
     pct = max(0, min(100, int(pct)))
     filled = pct // 10
@@ -176,14 +258,15 @@ def _update_mission_progress(
     status_detail: str,
 ) -> None:
     event_payload: dict[str, Any] | None = None
-    cancelled = False
+    halted = False
     with _MISSIONS_LOCK:
         missions = load_missions(root)
         for mission in missions:
             if str(mission.get("mission_id", "")) != mission_id:
                 continue
-            if str(mission.get("status", "")).lower() == "cancelled":
-                cancelled = True
+            current_status = str(mission.get("status", "")).lower()
+            if current_status in {"cancelled", "paused", "blocked"}:
+                halted = True
                 break
             mission["status"] = status
             mission["progress_pct"] = max(0, min(100, int(progress_pct)))
@@ -198,7 +281,7 @@ def _update_mission_progress(
                 "status_detail": str(mission["status_detail"]),
             }
             break
-    if cancelled or event_payload is None:
+    if halted or event_payload is None:
         return
     if event_payload is not None:
         _log_mission_activity(
@@ -322,6 +405,9 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             if old is not None:
                 _page_cache_bytes[0] -= len(old[1].encode("utf-8"))
     value = _fetch_page_text_with_fallbacks(url, max_bytes=max_bytes)
+    if not value:
+        # Do not memoize transient fetch failures across retries.
+        return ""
     with _PAGE_CACHE_LOCK:
         # Adjust byte counter if key already exists (concurrent fetch or refresh)
         if key in _PAGE_CACHE:
@@ -456,17 +542,14 @@ def _start_mission(
     return topic, objective, sources
 
 
-def _fetch_mission_content(
+def _search_mission_urls(
     topic: str,
     queries: list[str],
     *,
     max_search_results: int,
     max_pages: int,
-) -> tuple[list[str], list[tuple[str, str]], list[dict[str, str]]]:
-    """Search the web, fetch pages, and extract candidate findings.
-
-    Returns ``(scanned_urls, selected, candidate_rows)``.
-    """
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Search the web and select a domain-diverse set of URLs to fetch."""
     urls: list[str] = []
     for query in queries:
         hits = _search_web(query, limit=max_search_results)
@@ -498,6 +581,14 @@ def _fetch_mission_content(
         selected.append((url, domain))
 
     scanned_urls = [url for url, _domain in selected]
+    return scanned_urls, selected
+
+
+def _fetch_selected_content(
+    topic: str,
+    selected: list[tuple[str, str]],
+) -> list[dict[str, str]]:
+    """Fetch selected pages and extract candidate findings."""
 
     candidate_rows: list[dict[str, str]] = []
     fetched_ok = 0
@@ -527,7 +618,34 @@ def _fetch_mission_content(
         "Mission '%s': %d/%d pages fetched OK, %d candidates extracted",
         topic, fetched_ok, len(selected), len(candidate_rows),
     )
-    return scanned_urls, selected, candidate_rows
+    return candidate_rows
+
+
+def _build_mission_report(
+    *,
+    mission_id: str,
+    topic: str,
+    objective: str,
+    queries: list[str],
+    scanned_urls: list[str],
+    candidate_rows: list[dict[str, str]],
+    verified: list[VerifiedFinding],
+    final_status: str = "",
+) -> MissionReport:
+    report: MissionReport = {
+        "mission_id": mission_id,
+        "topic": topic,
+        "objective": objective,
+        "queries": queries,
+        "scanned_urls": scanned_urls,
+        "candidate_count": len(candidate_rows),
+        "verified_findings": verified,
+        "verified_count": len(verified),
+        "completed_utc": now_iso(),
+    }
+    if final_status:
+        report["final_status"] = final_status
+    return report
 
 
 def _finalize_mission(
@@ -715,14 +833,8 @@ def run_learning_mission(
     max_search_results: int = 8,
     max_pages: int = 12,
 ) -> MissionReport:
-    # Initialize step tracking for this mission
-    with _MISSIONS_LOCK:
-        missions = load_missions(root)
-        for m in missions:
-            if str(m.get("mission_id", "")) == mission_id:
-                m["steps"] = _init_mission_steps()
-                _save_missions(root, missions)
-                break
+    # Initialize step tracking only for fresh missions. Resumed missions keep checkpoint state.
+    _ensure_mission_steps(root, mission_id)
 
     try:
         return _run_learning_mission_inner(
@@ -756,69 +868,195 @@ def _run_learning_mission_inner(
     max_pages: int = 12,
 ) -> MissionReport:
     """Inner implementation of run_learning_mission, wrapped by error handler."""
+    checkpoint = _get_mission_checkpoint(root, mission_id)
     _t0 = _now_ms()
-    _update_step(root, mission_id, "init", status="running")
     topic, objective, sources = _start_mission(root, mission_id)
-    queries = _mission_queries(topic, [str(s) for s in sources])
-    _update_step(root, mission_id, "init", status="completed", elapsed_ms=_now_ms() - _t0)
+    stored_queries = checkpoint.get("queries")
+    queries = [str(item) for item in stored_queries] if isinstance(stored_queries, list) else []
+
+    if not _step_is_complete(root, mission_id, "init"):
+        _update_step(root, mission_id, "init", status="running")
+        queries = _mission_queries(topic, [str(s) for s in sources])
+        _update_step(root, mission_id, "init", status="completed", elapsed_ms=_now_ms() - _t0)
+        _update_mission_checkpoint(root, mission_id, queries=queries)
+    elif not queries:
+        queries = _mission_queries(topic, [str(s) for s in sources])
+        _update_mission_checkpoint(root, mission_id, queries=queries)
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=[str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)],
+            candidate_rows=checkpoint.get("candidate_rows", []) if isinstance(checkpoint.get("candidate_rows", []), list) else [],
+            verified=checkpoint.get("verified_findings", []) if isinstance(checkpoint.get("verified_findings", []), list) else [],
+            final_status=halted,
+        )
 
     # Step: search web
-    _t1 = _now_ms()
-    _update_step(root, mission_id, "search_web", status="running")
-    _update_mission_progress(
-        root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
-        status_detail="Searching the web for sources",
-    )
+    scanned_urls = [str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)]
+    selected = _deserialize_selected_urls(checkpoint.get("selected_urls", []))
+    if not _step_is_complete(root, mission_id, "search_web"):
+        _t1 = _now_ms()
+        _update_step(root, mission_id, "search_web", status="running")
+        _update_mission_progress(
+            root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+            status_detail="Searching the web for sources",
+        )
+        scanned_urls, selected = _search_mission_urls(
+            topic,
+            queries,
+            max_search_results=max_search_results,
+            max_pages=max_pages,
+        )
+        _update_step(root, mission_id, "search_web", status="completed", elapsed_ms=_now_ms() - _t1, artifacts_produced=len(scanned_urls))
+        _update_mission_checkpoint(
+            root,
+            mission_id,
+            queries=queries,
+            scanned_urls=scanned_urls,
+            selected_urls=_serialize_selected_urls(selected),
+        )
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        checkpoint = _get_mission_checkpoint(root, mission_id)
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=[str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)],
+            candidate_rows=checkpoint.get("candidate_rows", []) if isinstance(checkpoint.get("candidate_rows", []), list) else [],
+            verified=checkpoint.get("verified_findings", []) if isinstance(checkpoint.get("verified_findings", []), list) else [],
+            final_status=halted,
+        )
 
     # Step: fetch pages
-    _update_step(root, mission_id, "search_web", status="completed", elapsed_ms=_now_ms() - _t1)
-    _t2 = _now_ms()
-    _update_step(root, mission_id, "fetch_pages", status="running")
-    scanned_urls, _, candidate_rows = _fetch_mission_content(
-        topic, queries,
-        max_search_results=max_search_results,
-        max_pages=max_pages,
-    )
-    _update_step(root, mission_id, "fetch_pages", status="completed",
-                 elapsed_ms=_now_ms() - _t2,
-                 artifacts_produced=len(scanned_urls))
+    checkpoint = _get_mission_checkpoint(root, mission_id)
+    candidate_rows = checkpoint.get("candidate_rows", [])
+    if not isinstance(candidate_rows, list):
+        candidate_rows = []
+    if not _step_is_complete(root, mission_id, "fetch_pages"):
+        _t2 = _now_ms()
+        _update_step(root, mission_id, "fetch_pages", status="running")
+        _update_mission_progress(
+            root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+            status_detail=f"Fetching and reading {len(selected)} pages",
+        )
+        candidate_rows = _fetch_selected_content(topic, selected)
+        _update_step(root, mission_id, "fetch_pages", status="completed",
+                     elapsed_ms=_now_ms() - _t2,
+                     artifacts_produced=len(scanned_urls))
+        _update_mission_checkpoint(root, mission_id, candidate_rows=candidate_rows)
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        checkpoint = _get_mission_checkpoint(root, mission_id)
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=[str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)],
+            candidate_rows=checkpoint.get("candidate_rows", []) if isinstance(checkpoint.get("candidate_rows", []), list) else [],
+            verified=checkpoint.get("verified_findings", []) if isinstance(checkpoint.get("verified_findings", []), list) else [],
+            final_status=halted,
+        )
 
     # Step: extract candidates (done inline during fetch_pages)
-    _t3 = _now_ms()
-    _update_step(root, mission_id, "extract_candidates", status="running")
-    _update_step(root, mission_id, "extract_candidates", status="completed",
-                 elapsed_ms=_now_ms() - _t3,
-                 artifacts_produced=len(candidate_rows))
+    if not _step_is_complete(root, mission_id, "extract_candidates"):
+        _t3 = _now_ms()
+        _update_step(root, mission_id, "extract_candidates", status="running")
+        _update_mission_progress(
+            root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+            status_detail=f"Extracting candidate findings from {len(scanned_urls)} pages",
+        )
+        _update_step(root, mission_id, "extract_candidates", status="completed",
+                     elapsed_ms=_now_ms() - _t3,
+                     artifacts_produced=len(candidate_rows))
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        checkpoint = _get_mission_checkpoint(root, mission_id)
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=[str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)],
+            candidate_rows=checkpoint.get("candidate_rows", []) if isinstance(checkpoint.get("candidate_rows", []), list) else [],
+            verified=checkpoint.get("verified_findings", []) if isinstance(checkpoint.get("verified_findings", []), list) else [],
+            final_status=halted,
+        )
 
     # Step: verify findings
-    _t4 = _now_ms()
-    _update_step(root, mission_id, "verify_findings", status="running")
-    _update_mission_progress(
-        root, mission_id, status="running",
-        progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
-        status_detail=f"Verifying {len(candidate_rows)} candidate findings",
-    )
-    verified = _verify_candidates(candidate_rows)
-    _update_step(root, mission_id, "verify_findings", status="completed",
-                 elapsed_ms=_now_ms() - _t4,
-                 artifacts_produced=len(verified))
+    checkpoint = _get_mission_checkpoint(root, mission_id)
+    verified = checkpoint.get("verified_findings", [])
+    if not isinstance(verified, list):
+        verified = []
+    if not _step_is_complete(root, mission_id, "verify_findings"):
+        _t4 = _now_ms()
+        _update_step(root, mission_id, "verify_findings", status="running")
+        _update_mission_progress(
+            root, mission_id, status="running",
+            progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+            status_detail=f"Verifying {len(candidate_rows)} candidate findings",
+        )
+        verified = _verify_candidates(candidate_rows)
+        _update_step(root, mission_id, "verify_findings", status="completed",
+                     elapsed_ms=_now_ms() - _t4,
+                     artifacts_produced=len(verified))
+        _update_mission_checkpoint(root, mission_id, verified_findings=verified)
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        checkpoint = _get_mission_checkpoint(root, mission_id)
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=[str(item) for item in checkpoint.get("scanned_urls", []) if isinstance(item, str)],
+            candidate_rows=checkpoint.get("candidate_rows", []) if isinstance(checkpoint.get("candidate_rows", []), list) else [],
+            verified=checkpoint.get("verified_findings", []) if isinstance(checkpoint.get("verified_findings", []), list) else [],
+            final_status=halted,
+        )
 
     # Step: finalize
     _t5 = _now_ms()
     _update_step(root, mission_id, "finalize", status="running")
+    _update_mission_progress(
+        root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+        status_detail="Finalizing mission report",
+    )
+
+    halted = _halted_mission_status(root, mission_id)
+    if halted:
+        return _build_mission_report(
+            mission_id=mission_id,
+            topic=topic,
+            objective=objective,
+            queries=queries,
+            scanned_urls=scanned_urls,
+            candidate_rows=candidate_rows,
+            verified=verified,
+            final_status=halted,
+        )
 
     # Build and persist report
-    report: MissionReport = {
-        "mission_id": mission_id,
-        "topic": topic,
-        "objective": objective,
-        "queries": queries,
-        "scanned_urls": scanned_urls,
-        "candidate_count": len(candidate_rows),
-        "verified_findings": verified,
-        "verified_count": len(verified),
-        "completed_utc": now_iso(),
-    }
+    report = _build_mission_report(
+        mission_id=mission_id,
+        topic=topic,
+        objective=objective,
+        queries=queries,
+        scanned_urls=scanned_urls,
+        candidate_rows=candidate_rows,
+        verified=verified,
+    )
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
     atomic_write_json(report_path, dict(report))  # type-safe dict conversion
@@ -914,6 +1152,8 @@ def retry_failed_missions(root: Path) -> int:
             mission["progress_pct"] = 0
             mission["status_detail"] = f"Retry #{retries + 1} queued (prior results preserved)"
             mission["progress_bar"] = _progress_bar(0)
+            mission["steps"] = _init_mission_steps()
+            mission.pop("checkpoint", None)
             re_queued += 1
             modified = True
         if modified:
@@ -1124,9 +1364,13 @@ def auto_generate_missions(
 
     conn = None
     try:
-        if db_path.exists():
-            from jarvis_engine._db_pragmas import connect_db
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        from jarvis_engine._db_pragmas import connect_db
+        try:
             conn = connect_db(db_path)
+        except (sqlite3.Error, OSError, ValueError) as exc:
+            logger.debug("Mission topic DB open failed for %s: %s", db_path, exc)
+            conn = None
 
         if conn is not None:
             _gather_topics_from_conversations(conn, collector)
@@ -1188,7 +1432,7 @@ def _update_step(
         for mission in missions:
             if str(mission.get("mission_id", "")) != mission_id:
                 continue
-            if str(mission.get("status", "")).lower() == "cancelled":
+            if str(mission.get("status", "")).lower() in {"cancelled", "paused", "blocked"}:
                 return
             steps = mission.get("steps", [])
             if not isinstance(steps, list):
@@ -1375,7 +1619,7 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         _check_transition(mission_id, current, "pending")
         target["status"] = "pending"  # Will be picked up by daemon loop
         target["updated_utc"] = now_iso()
-        target["status_detail"] = "Resumed — queued for execution"
+        target["status_detail"] = "Resumed — continuing from checkpoint"
         target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
 
@@ -1410,6 +1654,7 @@ def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         target["status_detail"] = "Restarted — queued for execution"
         target["updated_utc"] = now_iso()
         target["steps"] = _init_mission_steps()
+        target.pop("checkpoint", None)
         _save_missions(root, missions)
 
     _log_mission_activity(

@@ -248,7 +248,9 @@ def cmd_mission_run(
         return result.return_code
 
     report = result.report
-    print("learning_mission_completed=true")
+    final_status = str(report.get("final_status", "completed")).lower()
+    print(f"learning_mission_completed={'true' if final_status == 'completed' else 'false'}")
+    print(f"learning_mission_status={final_status or 'completed'}")
     print(f"mission_id={report.get('mission_id', '')}")
     print(f"candidate_count={report.get('candidate_count', 0)}")
     print(f"verified_count={report.get('verified_count', 0)}")

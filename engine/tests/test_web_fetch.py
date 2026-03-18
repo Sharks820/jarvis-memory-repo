@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 from urllib.request import Request
 
 from jarvis_engine.web.fetch import (
+    _html_to_text,
     SafeRedirectHandler,
     fetch_page_text,
     is_safe_public_url,
@@ -22,6 +23,27 @@ from jarvis_engine.web.fetch import (
     search_duckduckgo,
     search_web,
 )
+
+
+class TestHtmlToText:
+    def test_regex_fallback_strips_script_and_tags_without_lxml(self):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name.startswith("lxml.html"):
+                raise ImportError("lxml unavailable")
+            return real_import(name, globals, locals, fromlist, level)
+
+        raw = b"<html><script>alert(1)</script><style>body{color:red;}</style><p>Hello <b>world</b>.</p></html>"
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            text = _html_to_text(raw)
+
+        assert "alert(1)" not in text
+        assert "body{color:red;}" not in text
+        assert "Hello world" in text
 
 
 # ── Helper to build fake getaddrinfo results ────────────────────────────
@@ -673,14 +695,9 @@ class TestSearchWeb:
         """Even if search_brave raises unexpectedly, search_web shouldn't crash."""
         mock_brave.side_effect = RuntimeError("unexpected")
         mock_ddg.return_value = ["https://ddg-rescue.com/"]
-        # search_web calls search_brave which returns [] on errors internally,
-        # but if something unexpected happens, DuckDuckGo should still work.
-        # Since search_brave handles its own errors, we test that search_web
-        # gets [] from a broken brave and falls through.
-        mock_brave.side_effect = None
-        mock_brave.return_value = []
         urls = search_web("test", limit=5)
         assert urls == ["https://ddg-rescue.com/"]
+        mock_ddg.assert_called_once_with("test", limit=5)
 
     @patch("jarvis_engine.web.fetch.search_brave")
     @patch("jarvis_engine.web.fetch.search_duckduckgo")

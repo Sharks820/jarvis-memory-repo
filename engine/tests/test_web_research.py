@@ -7,14 +7,14 @@ from jarvis_engine.web.research import _extract_snippet, _query_keywords
 
 
 def _patch_web(monkeypatch, urls=None, page_text=""):
-    """Shared helper to monkeypatch _search_web and _fetch_page_text."""
+    """Shared helper to monkeypatch _search_web and the fetch helper."""
     monkeypatch.setattr(web_research, "_search_web", lambda query, limit: (urls or []))
     if isinstance(page_text, str):
         monkeypatch.setattr(
-            web_research, "_fetch_page_text", lambda url, max_bytes=250_000: page_text,
+            web_research, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: page_text,
         )
     else:
-        monkeypatch.setattr(web_research, "_fetch_page_text", page_text)
+        monkeypatch.setattr(web_research, "_fetch_page_text_with_fallbacks", page_text)
 
 
 # ── existing tests ────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ def test_run_web_research_collects_findings(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         web_research,
-        "_fetch_page_text",
+        "_fetch_page_text_with_fallbacks",
         lambda url, max_bytes=250_000: (
             "Samsung Galaxy S25 supports call filtering and spam controls. "
             "You can enable smart spam blocking in settings."
@@ -154,7 +154,7 @@ def test_run_web_research_deduplicates_findings(monkeypatch) -> None:
     )
     # Both pages return identical relevant content
     monkeypatch.setattr(
-        web_research, "_fetch_page_text",
+        web_research, "_fetch_page_text_with_fallbacks",
         lambda url, max_bytes=250_000: "Kotlin coroutines simplify asynchronous programming for Android development.",
     )
     report = web_research.run_web_research("kotlin coroutines android")
@@ -175,7 +175,7 @@ def test_run_web_research_malformed_url_no_domain(monkeypatch) -> None:
         lambda query, limit: ["not-a-valid-url", "https://valid.com/page"],
     )
     monkeypatch.setattr(
-        web_research, "_fetch_page_text",
+        web_research, "_fetch_page_text_with_fallbacks",
         lambda url, max_bytes=250_000: "Valid content about testing software applications with modern frameworks.",
     )
     report = web_research.run_web_research("testing software")
@@ -198,7 +198,7 @@ def test_run_web_research_max_results_bounds(monkeypatch, max_results, check) ->
         return []
 
     monkeypatch.setattr(web_research, "_search_web", capture_search)
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    monkeypatch.setattr(web_research, "_fetch_page_text_with_fallbacks", lambda url, max_bytes=250_000: "")
     web_research.run_web_research("test", max_results=max_results)
     assert check(called_limits[0])
 
@@ -217,7 +217,7 @@ def test_run_web_research_findings_have_domain(monkeypatch) -> None:
         lambda query, limit: ["https://docs.python.org/tutorial"],
     )
     monkeypatch.setattr(
-        web_research, "_fetch_page_text",
+        web_research, "_fetch_page_text_with_fallbacks",
         lambda url, max_bytes=250_000: "Python tutorial covers data structures, control flow, and module import patterns.",
     )
     report = web_research.run_web_research("python tutorial data structures")
@@ -227,3 +227,21 @@ def test_run_web_research_findings_have_domain(monkeypatch) -> None:
         assert "docs.python.org" in finding["domain"]
         assert "url" in finding
         assert "snippet" in finding
+
+
+def test_run_web_research_uses_fetch_fallbacks(monkeypatch) -> None:
+    monkeypatch.setattr(
+        web_research, "_search_web", lambda query, limit: ["https://example.com/page"],
+    )
+    monkeypatch.setattr(
+        web_research,
+        "_fetch_page_text_with_fallbacks",
+        lambda url, max_bytes=250_000: (
+            "Python packaging guides explain wheels, virtual environments, and dependency resolution in practice."
+        ),
+    )
+
+    report = web_research.run_web_research("python packaging guides")
+
+    assert report["finding_count"] == 1
+    assert report["summary_lines"]

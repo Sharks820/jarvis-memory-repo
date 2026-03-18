@@ -11,6 +11,7 @@ from jarvis_engine._shared import now_iso
 from jarvis_engine.learning.missions import (
     _compute_step_progress,
     _init_mission_steps,
+    _update_mission_progress,
     _update_step,
     cancel_mission,
     create_learning_mission,
@@ -160,9 +161,47 @@ class TestUpdateStep:
         # Should not raise, just silently skip
         _update_step(mission_root, m["mission_id"], "init", status="running")
 
+    def test_update_step_skips_paused_mission(self, mission_root: Path) -> None:
+        m = _create_test_mission(mission_root)
+        missions = load_missions(mission_root)
+        for mi in missions:
+            if mi["mission_id"] == m["mission_id"]:
+                mi["steps"] = _init_mission_steps()
+                mi["status"] = "paused"
+        from jarvis_engine.learning.missions import _save_missions
+        _save_missions(mission_root, missions)
+
+        _update_step(mission_root, m["mission_id"], "init", status="completed")
+
+        steps = get_mission_steps(mission_root, m["mission_id"])
+        init_step = next(s for s in steps if s["name"] == "init")
+        assert init_step["status"] == "pending"
+
     def test_update_step_unknown_mission(self, mission_root: Path) -> None:
         # Should not raise for unknown mission
         _update_step(mission_root, "nonexistent", "init", status="running")
+
+    def test_update_mission_progress_preserves_paused_status(self, mission_root: Path) -> None:
+        m = _create_test_mission(mission_root)
+        missions = load_missions(mission_root)
+        for mi in missions:
+            if mi["mission_id"] == m["mission_id"]:
+                mi["status"] = "paused"
+                mi["status_detail"] = "Paused"
+        from jarvis_engine.learning.missions import _save_missions
+        _save_missions(mission_root, missions)
+
+        _update_mission_progress(
+            mission_root,
+            m["mission_id"],
+            status="running",
+            progress_pct=60,
+            status_detail="Verifying findings",
+        )
+
+        mission = next(mi for mi in load_missions(mission_root) if mi["mission_id"] == m["mission_id"])
+        assert mission["status"] == "paused"
+        assert mission["status_detail"] == "Paused"
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from jarvis_engine._constants import STOP_WORDS
 from jarvis_engine._shared import now_iso
 from jarvis_engine.web.fetch import (
-    fetch_page_text as _fetch_page_text,
+    fetch_page_text_with_fallbacks as _fetch_page_text_with_fallbacks,
     search_web as _search_web,
 )
 
@@ -33,7 +33,7 @@ def _query_keywords(query: str) -> set[str]:
     return {word for word in words if word not in STOP_WORDS}
 
 
-# _is_safe_public_url, _search_web, _search_duckduckgo, _fetch_page_text imported from web_fetch
+# Search/fetch helpers imported from web.fetch.
 
 
 def _extract_snippet(text: str, *, query: str, max_sentences: int = 2) -> str:
@@ -73,7 +73,7 @@ def run_web_research(
         if not domain:
             continue
         scanned_urls.append(url)
-        page_text = _fetch_page_text(url)
+        page_text = _fetch_page_text_with_fallbacks(url)
         if not page_text:
             continue
         snippet = _extract_snippet(page_text, query=cleaned_query, max_sentences=2)

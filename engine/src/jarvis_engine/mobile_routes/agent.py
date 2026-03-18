@@ -15,11 +15,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import threading
 from http import HTTPStatus
 from typing import Any, Protocol
 
-from jarvis_engine._constants import SUBSYSTEM_ERRORS
 from jarvis_engine.mobile_routes._helpers import (
     MobileRouteHandlerProtocol,
     MobileRouteServerProtocol,

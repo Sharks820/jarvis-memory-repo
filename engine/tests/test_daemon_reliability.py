@@ -384,6 +384,8 @@ class TestLearningMissionPerformance:
         """M3: Mission should cache fetched pages."""
         from jarvis_engine.learning import missions as learning_missions
 
+        learning_missions._PAGE_CACHE.clear()
+
         fetch_count = 0
 
         def counting_fetch(url: str, *, max_bytes: int) -> str:
@@ -401,6 +403,29 @@ class TestLearningMissionPerformance:
 
         assert fetch_count == 1, f"Expected 1 fetch, got {fetch_count}"
         assert result1 == result2
+
+    def test_mission_cache_does_not_memoize_empty_fetches(self, tmp_path: Path, monkeypatch) -> None:
+        """Transient empty fetches should retry the network path on the next attempt."""
+        from jarvis_engine.learning import missions as learning_missions
+
+        learning_missions._PAGE_CACHE.clear()
+
+        fetch_count = 0
+
+        def flaky_fetch(url: str, *, max_bytes: int) -> str:
+            nonlocal fetch_count
+            fetch_count += 1
+            return "" if fetch_count == 1 else "Recovered content"
+
+        monkeypatch.setattr(learning_missions, "_fetch_page_text", flaky_fetch)
+        monkeypatch.setattr(learning_missions, "_fetch_page_text_with_fallbacks", flaky_fetch)
+
+        result1 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
+        result2 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
+
+        assert result1 == ""
+        assert result2 == "Recovered content"
+        assert fetch_count == 2, f"Expected 2 fetches after empty result, got {fetch_count}"
 
 
 # ---------------------------------------------------------------------------

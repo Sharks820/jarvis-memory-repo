@@ -281,7 +281,7 @@ class MissionRunHandler:
         return self._pipeline
 
     def handle(self, cmd: MissionRunCommand) -> MissionRunResult:
-        from jarvis_engine.learning.missions import run_learning_mission
+        from jarvis_engine.learning.missions import get_mission_by_id, run_learning_mission
 
         try:
             report = run_learning_mission(
@@ -296,7 +296,12 @@ class MissionRunHandler:
 
         ingested_ids: list[str] = []
         verified = report.get("verified_findings", [])
-        if cmd.auto_ingest and verified:
+        mission = get_mission_by_id(self._root, cmd.mission_id)
+        final_status = str(mission.get("status", "") if mission else "").lower()
+        report_out = dict(report)
+        if final_status:
+            report_out["final_status"] = final_status
+        if cmd.auto_ingest and verified and final_status == "completed":
             pipeline = self._get_ingest_pipeline()
             # Ingest each finding individually for better KG fact extraction
             for finding in verified[:20]:
@@ -320,8 +325,14 @@ class MissionRunHandler:
                         ingested_ids.append(result.record_id)
                 except SUBSYSTEM_ERRORS_DB as exc:
                     logger.warning("Mission auto-ingest failed for finding: %s", exc)
+        if final_status in {"paused", "blocked", "cancelled"}:
+            return MissionRunResult(
+                report=cast(dict[str, Any], report_out),
+                return_code=0,
+                message=f"mission_{final_status}",
+            )
         return MissionRunResult(
-            report=cast(dict[str, Any], report),
+            report=cast(dict[str, Any], report_out),
             return_code=0,
             ingested_record_id=ingested_ids[0] if ingested_ids else "",
         )

@@ -477,9 +477,10 @@ class TestMissionRunHandler:
         assert result.report == fake_report
         assert result.ingested_record_id == ""
 
+    @patch("jarvis_engine.learning.missions.get_mission_by_id")
     @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_successful_run_with_auto_ingest(
-        self, mock_run: MagicMock, tmp_path: Path
+        self, mock_run: MagicMock, mock_get_mission: MagicMock, tmp_path: Path
     ) -> None:
         """Successful run with auto_ingest=True ingests each verified finding individually."""
         fake_report = {
@@ -490,6 +491,7 @@ class TestMissionRunHandler:
             ],
         }
         mock_run.return_value = fake_report
+        mock_get_mission.return_value = {"mission_id": "m-456", "status": "completed"}
 
         mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_record = SimpleNamespace(record_id="rec-xyz")
@@ -532,9 +534,10 @@ class TestMissionRunHandler:
         assert result.return_code == 0
         assert result.ingested_record_id == ""
 
+    @patch("jarvis_engine.learning.missions.get_mission_by_id")
     @patch("jarvis_engine.learning.missions.run_learning_mission")
     def test_handle_ingest_failure_still_returns_report(
-        self, mock_run: MagicMock, tmp_path: Path
+        self, mock_run: MagicMock, mock_get_mission: MagicMock, tmp_path: Path
     ) -> None:
         """If auto-ingest raises, result still contains the report with empty ingested_id."""
         fake_report = {
@@ -544,6 +547,7 @@ class TestMissionRunHandler:
             ],
         }
         mock_run.return_value = fake_report
+        mock_get_mission.return_value = {"mission_id": "m-err", "status": "completed"}
 
         mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.side_effect = RuntimeError("db locked")
@@ -559,5 +563,37 @@ class TestMissionRunHandler:
             result = handler.handle(cmd)
 
         assert result.return_code == 0
-        assert result.report == fake_report
+        assert result.report["mission_id"] == fake_report["mission_id"]
+        assert result.report["verified_findings"] == fake_report["verified_findings"]
+        assert result.report["final_status"] == "completed"
         assert result.ingested_record_id == ""
+
+    @patch("jarvis_engine.learning.missions.get_mission_by_id")
+    @patch("jarvis_engine.learning.missions.run_learning_mission")
+    def test_handle_skips_auto_ingest_when_mission_not_completed(
+        self, mock_run: MagicMock, mock_get_mission: MagicMock, tmp_path: Path
+    ) -> None:
+        fake_report = {
+            "mission_id": "m-pause",
+            "verified_findings": [
+                {"statement": "something", "source_domains": ["a.com"]}
+            ],
+        }
+        mock_run.return_value = fake_report
+        mock_get_mission.return_value = {"mission_id": "m-pause", "status": "paused"}
+
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
+
+        handler = MissionRunHandler(root=tmp_path)
+        cmd = MissionRunCommand(mission_id="m-pause", auto_ingest=True)
+
+        with patch(
+            "jarvis_engine.memory.store.MemoryStore"
+        ), patch(
+            "jarvis_engine.memory.basic_ingest.IngestionPipeline", return_value=mock_pipeline
+        ):
+            result = handler.handle(cmd)
+
+        assert result.return_code == 0
+        assert result.ingested_record_id == ""
+        mock_pipeline.ingest.assert_not_called()

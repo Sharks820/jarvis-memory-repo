@@ -31,6 +31,7 @@ from jarvis_engine.learning.missions import (
     restart_mission,
     resume_mission,
     retry_failed_missions,
+    run_learning_mission,
     unblock_mission,
 )
 
@@ -552,6 +553,64 @@ class TestLifecycleIntegration:
         # resume (paused -> pending)
         resume_mission(tmp_path, mission_id=mid)
         assert load_missions(tmp_path)[0]["status"] == "pending"
+
+    def test_resume_continues_from_checkpoint_without_rerunning_search(self, tmp_path: Path, monkeypatch) -> None:
+        import jarvis_engine.learning.missions as learning_missions
+
+        mission = create_learning_mission(
+            tmp_path, topic="Resume checkpoint", objective="test"
+        )
+        mid = mission["mission_id"]
+
+        missions = load_missions(tmp_path)
+        missions[0]["status"] = "paused"
+        missions[0]["progress_pct"] = 25
+        missions[0]["steps"] = _init_mission_steps()
+        missions[0]["steps"][0]["status"] = "completed"
+        missions[0]["steps"][1]["status"] = "completed"
+        missions[0]["checkpoint"] = {
+            "queries": ["resume checkpoint"],
+            "scanned_urls": ["https://example.com/a"],
+            "selected_urls": [{"url": "https://example.com/a", "domain": "example.com"}],
+        }
+        _save(tmp_path, missions)
+
+        resume_mission(tmp_path, mission_id=mid)
+
+        def fail_search(*args, **kwargs):
+            raise AssertionError("search step should not rerun after resume")
+
+        monkeypatch.setattr(learning_missions, "_search_mission_urls", fail_search)
+        monkeypatch.setattr(
+            learning_missions,
+            "_fetch_selected_content",
+            lambda topic, selected: [
+                {
+                    "statement": "Resume checkpoints preserve completed search work.",
+                    "url": "https://example.com/a",
+                    "domain": "example.com",
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            learning_missions,
+            "_verify_candidates",
+            lambda rows: [
+                {
+                    "statement": "Resume checkpoints preserve completed search work.",
+                    "source_urls": ["https://example.com/a"],
+                    "source_domains": ["example.com"],
+                    "confidence": 0.3,
+                }
+            ],
+        )
+
+        report = run_learning_mission(tmp_path, mission_id=mid)
+
+        assert report["verified_count"] == 1
+        final = load_missions(tmp_path)[0]
+        assert final["status"] == "completed"
+        assert final["steps"][1]["status"] == "completed"
 
     def test_lifecycle_block_unblock(self, tmp_path: Path) -> None:
         """running -> blocked -> running."""

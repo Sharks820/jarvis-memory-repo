@@ -493,6 +493,36 @@ class TestDaemonCycleErrors:
         output = capsys.readouterr().out
         assert "mission_cycle_error=" in output
 
+    def test_run_missions_cycle_retries_failed_missions_every_cycle(self, root, capsys) -> None:
+        daemon_loop_mod._daemon_mission["backoff_until_cycle"] = 0
+        with patch("jarvis_engine.learning.missions.retry_failed_missions", return_value=1) as mock_retry, \
+             patch("jarvis_engine.learning.missions.auto_generate_missions", return_value=[]), \
+             patch("jarvis_engine.daemon_loop._run_next_pending_mission", return_value=0):
+            _run_missions_cycle(root, 1, False)
+        output = capsys.readouterr().out
+        mock_retry.assert_called_once_with(root)
+        assert "mission_retried=1" in output
+
+    def test_cmd_mission_run_emits_paused_status(self, capsys) -> None:
+        paused_result = MagicMock()
+        paused_result.return_code = 0
+        paused_result.report = {
+            "mission_id": "m-1",
+            "candidate_count": 1,
+            "verified_count": 0,
+            "verified_findings": [],
+            "final_status": "paused",
+        }
+
+        with patch("jarvis_engine.daemon_loop._get_daemon_bus") as mock_bus:
+            mock_bus.return_value.dispatch.return_value = paused_result
+            rc = cmd_mission_run("m-1", 4, 4, False)
+
+        output = capsys.readouterr().out
+        assert rc == 0
+        assert "learning_mission_completed=false" in output
+        assert "learning_mission_status=paused" in output
+
     def test_run_watchdog_cycle_handles_import_error(self, root, capsys) -> None:
         """Watchdog cycle should handle missing process_manager gracefully."""
         with patch("jarvis_engine.ops.process_manager.check_and_restart_services",
