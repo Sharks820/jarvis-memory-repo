@@ -309,17 +309,29 @@ namespace Jarvis.EditorBridge
 
         /// <summary>
         /// Validate that a path is under Assets/JarvisGenerated/.
+        /// Canonicalizes the path (resolving .. and . segments) before checking.
         /// Throws UnauthorizedAccessException on violation.
         /// </summary>
         private static void EnforceBuiltinPathJail(string path, string methodName)
         {
             string normalized = (path ?? "").Replace("\\", "/");
-            if (!normalized.StartsWith(s_jailPrefix, StringComparison.Ordinal)
-                && normalized != "Assets/JarvisGenerated")
+            // Resolve .. and . segments to prevent traversal bypasses
+            var parts = new List<string>();
+            foreach (var segment in normalized.Split('/'))
+            {
+                if (segment == ".." && parts.Count > 0)
+                    parts.RemoveAt(parts.Count - 1);
+                else if (segment != "." && segment != "")
+                    parts.Add(segment);
+            }
+            string canonical = string.Join("/", parts);
+
+            if (!canonical.StartsWith(s_jailPrefix, StringComparison.Ordinal)
+                && canonical != "Assets/JarvisGenerated")
             {
                 throw new UnauthorizedAccessException(
                     $"[Jarvis] Path jail violation in {methodName}: " +
-                    $"'{path}' is not under {s_jailPrefix}");
+                    $"'{path}' (resolved: '{canonical}') is not under {s_jailPrefix}");
             }
         }
 

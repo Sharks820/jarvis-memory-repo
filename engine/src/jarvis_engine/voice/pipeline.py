@@ -751,6 +751,10 @@ def _dispatch_and_handle_response(
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Voice telemetry response_ready mark failed: %s", exc)
 
+        # Always record user turn regardless of LLM success/failure
+        # to prevent losing user context on errors
+        _add_to_history("user", text)
+
         if result.return_code != 0:
             if web_searched:
                 fallback_lines_obj = web_result.get("summary_lines", [])
@@ -771,10 +775,6 @@ def _dispatch_and_handle_response(
             print("intent=llm_unavailable")
             print(f"reason={response or 'LLM gateway not available.'}")
             return 1
-        else:
-            # Always record user turn after successful LLM dispatch,
-            # even if response is empty (prevents losing user context)
-            _add_to_history("user", text)
 
         if response:
             _add_to_history("assistant", response)
@@ -805,6 +805,8 @@ def _dispatch_and_handle_response(
             print("reason=LLM returned empty response.")
             return 1
     except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+        # Record user turn even on exception so context is not lost
+        _add_to_history("user", text)
         print("intent=llm_error")
         print(f"reason={exc}")
         if speak:

@@ -10,6 +10,7 @@ always releases in a finally block to prevent GPU contention.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -79,15 +80,25 @@ def _parse_compile_errors(result: Any) -> list[str]:
     """Extract error strings from a compile() result dict.
 
     Handles both ``{"errors": [...]}`` and raw error string results.
+    Returns a sentinel ``["__pending__"]`` when the result indicates
+    compilation was triggered but not yet complete.
     """
     if isinstance(result, dict):
+        if result.get("pending"):
+            return ["__pending__"]
         return result.get("errors") or []
     return []
 
 
 def _parse_test_errors(result: Any) -> list[str]:
-    """Extract error strings from a RunTests call result dict."""
+    """Extract error strings from a RunTests call result dict.
+
+    Returns a sentinel ``["__pending__"]`` when the result indicates
+    tests were started but results are not yet available.
+    """
     if isinstance(result, dict):
+        if result.get("pending"):
+            return ["__pending__"]
         if result.get("passed", True):
             return []
         return result.get("errors") or ["NUnit tests failed (no details)"]
@@ -189,6 +200,10 @@ class CompileFixLoop:
             compile_result = await self._unity_tool.compile()
             compile_errors = _parse_compile_errors(compile_result)
 
+            # Poll for actual compile status if pending
+            if compile_errors == ["__pending__"]:
+                compile_errors = await self._poll_compile_errors()
+
             if compile_errors:
                 all_errors.extend(compile_errors)
                 logger.info(
@@ -226,6 +241,11 @@ class CompileFixLoop:
                     "RunTests", {"testFilter": test_class_name}
                 )
                 test_errors = _parse_test_errors(test_result)
+
+                # Poll for actual test results if pending
+                if test_errors == ["__pending__"]:
+                    test_errors = await self._poll_test_results(test_class_name)
+
                 if test_errors:
                     all_errors.extend(test_errors)
                     logger.info(
@@ -284,6 +304,38 @@ class CompileFixLoop:
             errors=all_errors,
             warnings=all_warnings,
         )
+
+    async def _poll_compile_errors(self, max_attempts: int = 30) -> list[str]:
+        """Poll GetCompileErrors until ready or timeout (1s intervals)."""
+        for _ in range(max_attempts):
+            await asyncio.sleep(1.0)
+            errors_result = await self._unity_tool.call("GetCompileErrors", {})
+            if not isinstance(errors_result, dict):
+                continue
+            errors = errors_result.get("errors") or []
+            if errors_result.get("ready", False) or errors:
+                return list(errors)
+        logger.warning("CompileFixLoop: compile status unknown after %ds timeout", max_attempts)
+        return ["Compilation status unknown after timeout"]
+
+    async def _poll_test_results(
+        self, test_class_name: str, max_attempts: int = 30
+    ) -> list[str]:
+        """Poll for test results until ready or timeout (1s intervals)."""
+        for _ in range(max_attempts):
+            await asyncio.sleep(1.0)
+            result = await self._unity_tool.call(
+                "RunTests", {"testFilter": test_class_name, "poll": True}
+            )
+            if not isinstance(result, dict):
+                continue
+            if result.get("pending"):
+                continue
+            if result.get("passed", True):
+                return []
+            return result.get("errors") or ["NUnit tests failed (no details)"]
+        logger.warning("CompileFixLoop: test status unknown after %ds timeout", max_attempts)
+        return ["Test results unknown after timeout"]
 
     async def _fix_with_llm(
         self, current_code: str, errors: list[str], file_label: str = "C# script"

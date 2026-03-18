@@ -180,7 +180,10 @@ class AgentRoutesMixin:
                         _sse_write(self, f"data: {data}\n\n")
 
                         # Stop streaming on terminal events
-                        if event.get("type") in ("task_done", "escalation", "budget_exceeded"):
+                        if event.get("type") in (
+                            "task_done", "task_failed", "escalation",
+                            "budget_exceeded", "approval_rejected",
+                        ):
                             break
             except (BrokenPipeError, ConnectionResetError, OSError):
                 logger.debug("SSE client disconnected")

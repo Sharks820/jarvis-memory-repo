@@ -96,6 +96,7 @@ class StepExecutor:
             if not approved:
                 task.approval_needed = False
                 task.status = "failed"
+                self._store.checkpoint(task)  # Persist rejection before returning
                 return StepResult(
                     success=False,
                     error=f"Approval rejected for step {step.step_index} ({step.tool_name})",

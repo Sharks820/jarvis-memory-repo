@@ -22,7 +22,9 @@ import json
 import logging
 import os
 import re
+import secrets
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -114,6 +116,30 @@ def _assert_safe_code(content: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _get_bridge_secret() -> str:
+    """Return the bridge authentication secret.
+
+    Priority: JARVIS_BRIDGE_SECRET env var > persisted runtime file > generate new.
+    Never falls back to a weak default — generates a cryptographically random
+    secret and persists it for the C# side to read.
+    """
+    env_secret = os.environ.get("JARVIS_BRIDGE_SECRET", "").strip()
+    if env_secret:
+        return env_secret
+    # Auto-generate and persist so both sides share the secret
+    from jarvis_engine.config import repo_root
+
+    secret_path = Path(repo_root()) / ".planning" / "runtime" / "bridge_secret.txt"
+    if secret_path.exists():
+        stored = secret_path.read_text(encoding="utf-8").strip()
+        if stored:
+            return stored
+    secret = secrets.token_urlsafe(32)
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+    secret_path.write_text(secret, encoding="utf-8")
+    return secret
+
+
 class BridgeState(Enum):
     """States of the WebSocket connection to the Unity Editor Bridge."""
 
@@ -195,7 +221,7 @@ class UnityTool:
         # Uses direct send/recv to avoid a race condition where the
         # listener task could consume the auth response before the RPC
         # future is registered.
-        secret = os.environ.get("JARVIS_BRIDGE_SECRET", "jarvis-dev-secret")
+        secret = _get_bridge_secret()
         auth_request = json.dumps({
             "jsonrpc": "2.0",
             "id": "auth",
@@ -339,13 +365,20 @@ class UnityTool:
             raise ConnectionError("UnityTool is not connected to the bridge.")
         # Pre-set WAITING state and clear event BEFORE sending to prevent race
         # where heartbeat arrives between send and state transition.
+        previous_state = self._state
         self._state = BridgeState.WAITING_FOR_BRIDGE
         self._ready_event.clear()
         logger.info("UnityTool: entering WAITING_FOR_BRIDGE for %r", rel_path)
-        result = await self._send_rpc(
-            "WriteScript", {"path": rel_path, "content": content}
-        )
-        return result
+        try:
+            result = await self._send_rpc(
+                "WriteScript", {"path": rel_path, "content": content}
+            )
+            return result
+        except Exception:
+            # Roll back state on RPC failure so the tool isn't stranded
+            self._state = previous_state
+            self._ready_event.set()
+            raise
 
     async def compile(self) -> Any:
         """Trigger Unity compilation and return the result (errors + warnings)."""
